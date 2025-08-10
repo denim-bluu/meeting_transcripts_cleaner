@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 import time
 from typing import Any, Literal
 
+from asyncio_throttle.throttler import Throttler
 import structlog
 
 from core.cleaning_agent import CleaningAgent
@@ -41,6 +42,7 @@ class TranscriptService:
         self.document_processor = DocumentProcessor()
         self.diff_viewer = DiffViewer()
         self.document_diff_viewer = DocumentDiffViewer()
+        self.throttler = Throttler(rate_limit=5, period=1.0)  # 5 requests per second
 
     def process_document(
         self, filename: str, content: str, file_size: int, content_type: str
@@ -216,17 +218,14 @@ class TranscriptService:
                 completed_count += 1  # Still count as completed to maintain progress
                 await update_progress()
 
-        # Create semaphore to limit concurrent requests
-        semaphore = asyncio.Semaphore(5)
-
-        async def sem_clean_segment(segment: DocumentSegment, index: int):
-            """Clean segment with semaphore rate limiting."""
-            async with semaphore:
+        async def throttled_clean_segment(segment: DocumentSegment, index: int):
+            """Clean segment with throttled rate limiting."""
+            async with self.throttler:
                 await clean_single_segment(segment, index)
 
-        # Execute all cleaning tasks concurrently
+        # Execute all cleaning tasks concurrently with throttling
         tasks = [
-            sem_clean_segment(segment, i) for i, segment in enumerate(document.segments)
+            throttled_clean_segment(segment, i) for i, segment in enumerate(document.segments)
         ]
 
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -319,17 +318,14 @@ class TranscriptService:
                 completed_count += 1  # Still count as completed to maintain progress
                 await update_progress()
 
-        # Create semaphore to limit concurrent requests
-        semaphore = asyncio.Semaphore(5)
-
-        async def sem_review_segment(segment: DocumentSegment, index: int):
-            """Review segment with semaphore rate limiting."""
-            async with semaphore:
+        async def throttled_review_segment(segment: DocumentSegment, index: int):
+            """Review segment with throttled rate limiting."""
+            async with self.throttler:
                 await review_single_segment(segment, index)
 
-        # Execute all review tasks concurrently
+        # Execute all review tasks concurrently with throttling
         tasks = [
-            sem_review_segment(segment, i)
+            throttled_review_segment(segment, i)
             for i, segment in enumerate(document.segments)
         ]
 

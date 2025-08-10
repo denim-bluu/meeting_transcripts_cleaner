@@ -12,11 +12,13 @@ from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.settings import ModelSettings
 import structlog
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import get_agents_config, get_openai_config
 from models.schemas import CleaningResult, DocumentSegment
 from prompts.cleaning import get_cleaning_prompt
 from utils.config_manager import get_merged_agent_config
+from utils.validators import validate_cleaning_result
 
 load_dotenv()
 
@@ -44,6 +46,7 @@ class CleaningAgent:
         self.max_retries = openai_config.max_retries
 
         from pydantic_ai.providers.openai import OpenAIProvider
+
         provider = OpenAIProvider(api_key=openai_config.api_key)
         self.model = OpenAIModel(self.model_name, provider=provider)
 
@@ -129,127 +132,72 @@ class CleaningAgent:
             phase="cleaning",
         )
 
-        # Attempt cleaning with retries
-        for attempt in range(self.max_retries + 1):
-            try:
-                # Call the PydanticAI agent with correct token parameter for o3 models
-                run_settings = ModelSettings()
-                run_settings["max_tokens"] = self.max_tokens
+        # Call the AI cleaning method with automatic retry
+        result = await self._clean_with_retry(prompt, segment, start_time)
 
-                agent_result = await self.agent.run(prompt, model_settings=run_settings)
+        logger.info(
+            "Segment cleaned successfully",
+            segment_id=segment.id,
+            changes_count=len(result.changes_made),
+            processing_time_ms=result.processing_time_ms,
+            phase="cleaning",
+        )
 
-                # Get the structured output
-                result = agent_result.output
+        return result
 
-                # Add metadata that might not be included in the output
-                processing_time = (time.time() - start_time) * 1000
-
-                # Create a new result with updated metadata if needed
-                result_data = result.model_dump()
-                if not result_data.get("segment_id"):
-                    result_data["segment_id"] = segment.id
-                if result_data.get("processing_time_ms") is None:
-                    result_data["processing_time_ms"] = processing_time
-                if not result_data.get("model_used"):
-                    result_data["model_used"] = self.model_name
-
-                # Create updated result
-                result = CleaningResult(**result_data)
-
-                # Validate the result
-                self._validate_cleaning_result(segment, result)
-
-                logger.info(
-                    "Segment cleaned successfully",
-                    segment_id=segment.id,
-                    changes_count=len(result.changes_made),
-                    processing_time_ms=processing_time,
-                    phase="cleaning",
-                )
-
-                return result
-
-            except Exception as e:
-                logger.error(
-                    "Unexpected error cleaning segment",
-                    segment_id=segment.id,
-                    attempt=attempt + 1,
-                    max_attempts=self.max_retries + 1,
-                    error=str(e),
-                    phase="cleaning",
-                )
-                if attempt == self.max_retries:
-                    raise Exception(
-                        f"Cleaning failed after {self.max_retries + 1} attempts: {e}"
-                    ) from e
-
-                await self._wait_with_backoff(attempt)
-
-        # This should never be reached due to the exception handling above
-        # But add a fallback just in case
-        raise Exception(f"Unable to clean segment {segment.id} after all attempts")
-
-    def _validate_cleaning_result(
-        self, original_segment: DocumentSegment, result: CleaningResult
-    ) -> None:
+    @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=1, max=30))
+    async def _clean_with_retry(
+        self, prompt: str, segment: DocumentSegment, start_time: float
+    ) -> CleaningResult:
         """
-        Validate that the cleaning result is reasonable.
+        Clean a segment with automatic exponential backoff retry.
 
         Args:
-            original_segment: Original segment that was cleaned
-            result: Cleaning result to validate
+            prompt: The cleaning prompt to use
+            segment: The document segment to clean
+            start_time: Start time for processing time calculation
+
+        Returns:
+            CleaningResult with cleaned text and metadata
 
         Raises:
-            ValueError: If the result fails validation
+            Exception: If cleaning fails after all retries
         """
-        # Check that cleaned text exists and isn't empty
-        if not result.cleaned_text or not result.cleaned_text.strip():
-            raise ValueError("Cleaned text is empty")
+        try:
+            # Call the PydanticAI agent with correct token parameter for o3 models
+            run_settings = ModelSettings()
+            run_settings["max_tokens"] = self.max_tokens
 
-        # Validate that changes_made is populated if there are significant changes
-        if (
-            len(result.cleaned_text.strip()) != len(original_segment.content.strip())
-            and not result.changes_made
-        ):
-            logger.warning(
-                "Significant text changes without documented changes",
-                segment_id=original_segment.id,
-                phase="validation",
-                warning_type="undocumented_changes",
+            agent_result = await self.agent.run(prompt, model_settings=run_settings)
+
+            # Get the structured output
+            result = agent_result.output
+
+            # Add metadata that might not be included in the output
+            processing_time = (time.time() - start_time) * 1000
+
+            # Create a new result with updated metadata if needed
+            result_data = result.model_dump()
+            if not result_data.get("segment_id"):
+                result_data["segment_id"] = segment.id
+            if result_data.get("processing_time_ms") is None:
+                result_data["processing_time_ms"] = processing_time
+            if not result_data.get("model_used"):
+                result_data["model_used"] = self.model_name
+
+            # Create updated result
+            result = CleaningResult(**result_data)
+
+            # Validate the result using shared validator
+            validate_cleaning_result(segment, result)
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                "Error cleaning segment",
+                segment_id=segment.id,
+                error=str(e),
+                phase="cleaning",
             )
-
-        # Check that cleaned text isn't dramatically different in length
-        original_len = len(original_segment.content)
-        cleaned_len = len(result.cleaned_text)
-
-        # Allow up to 50% change in length
-        length_ratio = cleaned_len / original_len if original_len > 0 else 0
-        if length_ratio < 0.5 or length_ratio > 2.0:
-            logger.warning(
-                "Significant length change detected",
-                segment_id=original_segment.id,
-                original_length=original_len,
-                cleaned_length=cleaned_len,
-                length_ratio=length_ratio,
-                phase="validation",
-                warning_type="length_change",
-            )
-
-        # Check segment ID matches
-        if result.segment_id != original_segment.id:
-            raise ValueError(
-                f"Segment ID mismatch: {result.segment_id} vs {original_segment.id}"
-            )
-
-    async def _wait_with_backoff(self, attempt: int) -> None:
-        """
-        Wait with exponential backoff.
-
-        Args:
-            attempt: Current attempt number (0-indexed)
-        """
-        import asyncio
-
-        wait_time = min(2**attempt, 30)  # Cap at 30 seconds
-        logger.info("Waiting before retry", wait_time_seconds=wait_time, phase="retry")
-        await asyncio.sleep(wait_time)
+            raise

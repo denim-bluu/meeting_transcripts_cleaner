@@ -11,11 +11,13 @@ from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.settings import ModelSettings
 import structlog
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import get_agents_config, get_openai_config
 from models.schemas import CleaningResult, DocumentSegment, ReviewDecision
 from prompts.review import get_review_prompt
 from utils.config_manager import get_merged_agent_config
+from utils.validators import validate_review_decision
 
 logger = structlog.get_logger(__name__)
 
@@ -128,134 +130,75 @@ Output JSON with: segment_id, decision, confidence, preservation_score, issues_f
             "Reviewing segment", segment_id=original_segment.id, phase="review"
         )
 
-        # Attempt review with retries
-        for attempt in range(self.max_retries + 1):
-            try:
-                # Call the PydanticAI agent with correct token parameter for o3 models
-                run_settings = ModelSettings()
-                run_settings["max_tokens"] = self.max_tokens
-
-                agent_result = await self.agent.run(prompt, model_settings=run_settings)
-
-                # Get the structured output
-                result = agent_result.output
-
-                # Add metadata that might not be included in the output
-                processing_time = (time.time() - start_time) * 1000
-                if not result.segment_id:
-                    result.segment_id = original_segment.id
-                if result.processing_time_ms is None:
-                    result.processing_time_ms = processing_time
-                if not result.model_used:
-                    result.model_used = self.model_name
-
-                # Validate the result
-                self._validate_review_decision(
-                    original_segment, cleaning_result, result
-                )
-
-                logger.info(
-                    "Review completed for segment",
-                    segment_id=original_segment.id,
-                    decision=result.decision,
-                    confidence=result.confidence,
-                    preservation_score=result.preservation_score,
-                    processing_time_ms=processing_time,
-                    phase="review",
-                )
-
-                return result
-
-            except Exception as e:
-                logger.error(
-                    "Unexpected error reviewing segment",
-                    segment_id=original_segment.id,
-                    attempt=attempt + 1,
-                    max_attempts=self.max_retries + 1,
-                    error=str(e),
-                    phase="review",
-                )
-                if attempt == self.max_retries:
-                    raise Exception(
-                        f"Review failed after {self.max_retries + 1} attempts: {e}"
-                    ) from e
-
-                await self._wait_with_backoff(attempt)
-
-        # This should never be reached due to exception handling above, but provide fallback
-        raise Exception(
-            f"Unable to review segment {original_segment.id} after all attempts"
+        # Call the AI review method with automatic retry
+        result = await self._review_with_retry(
+            prompt, original_segment, cleaning_result, start_time
         )
 
-    def _validate_review_decision(
+        logger.info(
+            "Review completed for segment",
+            segment_id=original_segment.id,
+            decision=result.decision,
+            confidence=result.confidence,
+            preservation_score=result.preservation_score,
+            processing_time_ms=result.processing_time_ms,
+            phase="review",
+        )
+
+        return result
+
+    @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=1, max=30))
+    async def _review_with_retry(
         self,
+        prompt: str,
         original_segment: DocumentSegment,
         cleaning_result: CleaningResult,
-        decision: ReviewDecision,
-    ) -> None:
+        start_time: float,
+    ) -> ReviewDecision:
         """
-        Validate that the review decision is reasonable.
+        Review a cleaning result with automatic exponential backoff retry.
 
         Args:
-            original_segment: Original segment
-            cleaning_result: Cleaning result that was reviewed
-            decision: Review decision to validate
+            prompt: The review prompt to use
+            original_segment: The original document segment
+            cleaning_result: The cleaning result to review
+            start_time: Start time for processing time calculation
+
+        Returns:
+            ReviewDecision with approval/rejection and reasoning
 
         Raises:
-            ValueError: If the decision fails validation
+            Exception: If review fails after all retries
         """
-        # Check confidence score is in valid range
-        if not (0.0 <= decision.confidence <= 1.0):
-            raise ValueError(f"Invalid confidence score: {decision.confidence}")
+        try:
+            # Call the PydanticAI agent with correct token parameter for o3 models
+            run_settings = ModelSettings()
+            run_settings["max_tokens"] = self.max_tokens
 
-        # Check preservation score is in valid range
-        if not (0.0 <= decision.preservation_score <= 1.0):
-            raise ValueError(
-                f"Invalid preservation score: {decision.preservation_score}"
-            )
+            agent_result = await self.agent.run(prompt, model_settings=run_settings)
 
-        # Ensure segment ID matches (fix if AI returned wrong ID)
-        if decision.segment_id != original_segment.id:
-            logger.warning(
-                "AI returned wrong segment_id, correcting",
-                ai_returned_id=decision.segment_id,
-                correct_id=original_segment.id,
-                phase="validation",
-                warning_type="incorrect_segment_id",
-            )
-            decision.segment_id = original_segment.id
+            # Get the structured output
+            result = agent_result.output
 
-        # Check that reasoning exists
-        if not decision.reasoning or not decision.reasoning.strip():
-            raise ValueError("Review decision must include reasoning")
+            # Add metadata that might not be included in the output
+            processing_time = (time.time() - start_time) * 1000
+            if not result.segment_id:
+                result.segment_id = original_segment.id
+            if result.processing_time_ms is None:
+                result.processing_time_ms = processing_time
+            if not result.model_used:
+                result.model_used = self.model_name
 
-        # Check that modify decisions include suggested corrections
-        if decision.decision == "modify" and not decision.suggested_corrections:
-            raise ValueError("Modify decisions must include suggested_corrections")
+            # Validate the result using shared validator
+            validate_review_decision(original_segment, cleaning_result, result)
 
-        # Validate suggested corrections are different from original
-        if (
-            decision.decision == "modify"
-            and decision.suggested_corrections
-            and decision.suggested_corrections.strip()
-            == cleaning_result.cleaned_text.strip()
-        ):
-            logger.warning(
-                "Modify decision has identical corrections to cleaned text",
+            return result
+
+        except Exception as e:
+            logger.error(
+                "Error reviewing segment",
                 segment_id=original_segment.id,
-                phase="validation",
-                warning_type="redundant_corrections",
+                error=str(e),
+                phase="review",
             )
-
-    async def _wait_with_backoff(self, attempt: int) -> None:
-        """
-        Wait with exponential backoff.
-
-        Args:
-            attempt: Current attempt number (0-indexed)
-        """
-        import asyncio
-
-        wait_time = min(2**attempt, 30)  # Cap at 30 seconds
-        logger.info("Waiting before retry", wait_time_seconds=wait_time, phase="retry")
-        await asyncio.sleep(wait_time)
+            raise

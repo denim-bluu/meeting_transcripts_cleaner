@@ -64,10 +64,7 @@ from config import (
     AgentConfig,
     ConfidenceThresholds,
     ProcessingConfig,
-    get_agents_config,
-    get_confidence_thresholds,
-    get_openai_config,
-    get_processing_config,
+    get_settings,
 )
 
 
@@ -157,98 +154,73 @@ class CostEstimate:
     confidence: str  # "Low", "Medium", "High"
 
 
-def get_config_overrides() -> dict[str, Any]:
-    """Get configuration overrides from session state."""
-    overrides = st.session_state.get("config_overrides", {})
-    return overrides if isinstance(overrides, dict) else {}
-
-
-def set_config_override(section: str, key: str, value: Any) -> None:
-    """Set a configuration override in session state."""
-    if "config_overrides" not in st.session_state:
-        st.session_state.config_overrides = {}
-
-    if section not in st.session_state.config_overrides:
-        st.session_state.config_overrides[section] = {}
-
-    st.session_state.config_overrides[section][key] = value
-
-
-def clear_config_overrides() -> None:
-    """Clear all configuration overrides from session state."""
-    st.session_state.config_overrides = {}
-
-
-def apply_preset(preset: QualityPreset) -> None:
-    """Apply a quality preset to configuration overrides."""
-    config = QUALITY_PRESETS[preset]
-
-    # Clear existing overrides
-    clear_config_overrides()
-
-    # Apply agent settings
-    set_config_override("agents", "cleaning_temperature", config.cleaning_temperature)
-    set_config_override("agents", "review_temperature", config.review_temperature)
-    set_config_override("agents", "cleaning_model", config.cleaning_model)
-    set_config_override("agents", "review_model", config.review_model)
-
-    # Apply processing settings
-    set_config_override("processing", "max_section_tokens", config.max_section_tokens)
-    set_config_override("processing", "token_overlap", config.token_overlap)
-
-    # Apply confidence thresholds
-    set_config_override(
-        "confidence_thresholds", "auto_accept_threshold", config.auto_accept_threshold
-    )
-    set_config_override(
-        "confidence_thresholds", "quick_review_threshold", config.quick_review_threshold
-    )
-    set_config_override(
-        "confidence_thresholds",
-        "detailed_review_threshold",
-        config.detailed_review_threshold,
-    )
-
-
 def get_merged_agent_config() -> AgentConfig:
-    """Get agent configuration with session overrides applied."""
-    base_config = get_agents_config()
-    overrides = get_config_overrides().get("agents", {})
-
+    """Get agent configuration with session state overrides applied."""
+    base_config = get_settings().get_agents_config()
+    
+    if not STREAMLIT_AVAILABLE:
+        return base_config
+        
+    # Apply session state overrides if they exist
+    overrides = st.session_state.get("config_overrides", {}).get("agents", {})
+    if not overrides:
+        return base_config
+        
     # Create new config with overrides
-    merged_data = base_config.model_dump()
-    merged_data.update(overrides)
-
-    return AgentConfig(**merged_data)
+    return AgentConfig(
+        cleaning_temperature=overrides.get("cleaning_temperature", base_config.cleaning_temperature),
+        review_temperature=overrides.get("review_temperature", base_config.review_temperature),
+        cleaning_model=overrides.get("cleaning_model", base_config.cleaning_model),
+        review_model=overrides.get("review_model", base_config.review_model),
+        max_concurrent_requests=overrides.get("max_concurrent_requests", base_config.max_concurrent_requests),
+        rate_limit_requests_per_minute=overrides.get("rate_limit_requests_per_minute", base_config.rate_limit_requests_per_minute),
+    )
 
 
 def get_merged_processing_config() -> ProcessingConfig:
-    """Get processing configuration with session overrides applied."""
-    base_config = get_processing_config()
-    overrides = get_config_overrides().get("processing", {})
-
+    """Get processing configuration with session state overrides applied."""
+    base_config = get_settings().get_processing_config()
+    
+    if not STREAMLIT_AVAILABLE:
+        return base_config
+        
+    # Apply session state overrides if they exist
+    overrides = st.session_state.get("config_overrides", {}).get("processing", {})
+    if not overrides:
+        return base_config
+        
     # Create new config with overrides
-    merged_data = base_config.model_dump()
-    merged_data.update(overrides)
-
-    return ProcessingConfig(**merged_data)
+    return ProcessingConfig(
+        max_section_tokens=overrides.get("max_section_tokens", base_config.max_section_tokens),
+        token_overlap=overrides.get("token_overlap", base_config.token_overlap),
+        min_segment_tokens=overrides.get("min_segment_tokens", base_config.min_segment_tokens),
+        preserve_sentence_boundaries=overrides.get("preserve_sentence_boundaries", base_config.preserve_sentence_boundaries),
+    )
 
 
 def get_merged_confidence_thresholds() -> ConfidenceThresholds:
-    """Get confidence thresholds with session overrides applied."""
-    base_config = get_confidence_thresholds()
-    overrides = get_config_overrides().get("confidence_thresholds", {})
-
+    """Get confidence thresholds with session state overrides applied."""
+    base_config = get_settings().get_confidence_thresholds()
+    
+    if not STREAMLIT_AVAILABLE:
+        return base_config
+        
+    # Apply session state overrides if they exist
+    overrides = st.session_state.get("config_overrides", {}).get("confidence_thresholds", {})
+    if not overrides:
+        return base_config
+        
     # Create new config with overrides
-    merged_data = base_config.model_dump()
-    merged_data.update(overrides)
-
-    return ConfidenceThresholds(**merged_data)
+    return ConfidenceThresholds(
+        auto_accept_threshold=overrides.get("auto_accept_threshold", base_config.auto_accept_threshold),
+        quick_review_threshold=overrides.get("quick_review_threshold", base_config.quick_review_threshold),
+        detailed_review_threshold=overrides.get("detailed_review_threshold", base_config.detailed_review_threshold),
+    )
 
 
 def validate_configuration() -> tuple[bool, list[str]]:
     """
-    Validate current configuration (base + overrides).
+    Validate current configuration.
 
     Returns:
         Tuple of (is_valid, list of error messages)
@@ -256,22 +228,10 @@ def validate_configuration() -> tuple[bool, list[str]]:
     errors = []
 
     try:
-        # Validate agent config
-        get_merged_agent_config()
+        # Validate by creating settings instance
+        get_settings()
     except Exception as e:
-        errors.append(f"Agent configuration error: {str(e)}")
-
-    try:
-        # Validate processing config
-        get_merged_processing_config()
-    except Exception as e:
-        errors.append(f"Processing configuration error: {str(e)}")
-
-    try:
-        # Validate confidence thresholds
-        get_merged_confidence_thresholds()
-    except Exception as e:
-        errors.append(f"Confidence threshold error: {str(e)}")
+        errors.append(f"Configuration error: {str(e)}")
 
     return len(errors) == 0, errors
 
@@ -287,7 +247,7 @@ def estimate_processing_cost(document_length_chars: int | None = None) -> CostEs
         CostEstimate with rough cost and time projections
     """
     # Get current configuration
-    processing_config = get_merged_processing_config()
+    processing_config = get_settings().get_processing_config()
 
     # Default document size if not provided (typical meeting transcript)
     if document_length_chars is None:
@@ -340,9 +300,10 @@ def get_configuration_summary() -> dict[str, Any]:
     Returns:
         Dictionary with human-readable configuration summary
     """
-    agent_config = get_merged_agent_config()
-    processing_config = get_merged_processing_config()
-    confidence_config = get_merged_confidence_thresholds()
+    settings = get_settings()
+    agent_config = settings.get_agents_config()
+    processing_config = settings.get_processing_config()
+    confidence_config = settings.get_confidence_thresholds()
 
     return {
         "Agent Settings": {
@@ -364,12 +325,6 @@ def get_configuration_summary() -> dict[str, Any]:
     }
 
 
-def has_config_overrides() -> bool:
-    """Check if any configuration overrides are currently active."""
-    overrides = get_config_overrides()
-    return bool(overrides)
-
-
 def get_active_preset() -> QualityPreset | None:
     """
     Determine if current configuration matches a quality preset.
@@ -377,12 +332,10 @@ def get_active_preset() -> QualityPreset | None:
     Returns:
         QualityPreset if configuration matches a preset, None otherwise
     """
-    if not has_config_overrides():
-        return None
-
-    current_agent = get_merged_agent_config()
-    current_processing = get_merged_processing_config()
-    current_confidence = get_merged_confidence_thresholds()
+    settings = get_settings()
+    current_agent = settings.get_agents_config()
+    current_processing = settings.get_processing_config()
+    current_confidence = settings.get_confidence_thresholds()
 
     for preset, config in QUALITY_PRESETS.items():
         if (
@@ -424,9 +377,10 @@ def get_config_warnings() -> list[str]:
     warnings = []
 
     try:
-        agent_config = get_merged_agent_config()
-        processing_config = get_merged_processing_config()
-        confidence_config = get_merged_confidence_thresholds()
+        settings = get_settings()
+        agent_config = settings.get_agents_config()
+        processing_config = settings.get_processing_config()
+        confidence_config = settings.get_confidence_thresholds()
 
         # Check for very high temperatures
         if agent_config.cleaning_temperature > 1.5:
@@ -485,7 +439,7 @@ def get_available_openai_models() -> list[str]:
         import openai
 
         # Get OpenAI configuration
-        openai_config = get_openai_config()
+        openai_config = get_settings().get_openai_config()
 
         # Initialize OpenAI client
         client = openai.OpenAI(api_key=openai_config.api_key)
@@ -513,3 +467,106 @@ def get_available_openai_models() -> list[str]:
         logger.error(f"Failed to fetch OpenAI models: {e}")
         # Return fallback models with o3-mini first
         return ["o3-mini", "o3"]
+
+
+def apply_preset(preset: QualityPreset) -> None:
+    """
+    Apply a quality preset to the current session configuration.
+    
+    Args:
+        preset: The quality preset to apply
+    """
+    if not STREAMLIT_AVAILABLE:
+        logger.warning("Streamlit not available, cannot apply preset")
+        return
+        
+    config = QUALITY_PRESETS[preset]
+    
+    # Clear existing overrides
+    clear_config_overrides()
+    
+    # Apply preset configuration to config_overrides
+    st.session_state.config_overrides = {
+        "agents": {
+            "cleaning_temperature": config.cleaning_temperature,
+            "review_temperature": config.review_temperature,
+            "cleaning_model": config.cleaning_model,
+            "review_model": config.review_model,
+        },
+        "processing": {
+            "max_section_tokens": config.max_section_tokens,
+            "token_overlap": config.token_overlap,
+        },
+        "confidence_thresholds": {
+            "auto_accept_threshold": config.auto_accept_threshold,
+            "quick_review_threshold": config.quick_review_threshold,
+            "detailed_review_threshold": config.detailed_review_threshold,
+        }
+    }
+    
+    # Also update the Streamlit widget keys so the UI reflects the new values
+    st.session_state["cleaning_temperature"] = config.cleaning_temperature
+    st.session_state["review_temperature"] = config.review_temperature
+    st.session_state["cleaning_model"] = config.cleaning_model
+    st.session_state["review_model"] = config.review_model
+    st.session_state["max_section_tokens"] = config.max_section_tokens
+    st.session_state["token_overlap"] = config.token_overlap
+    st.session_state["auto_accept_threshold"] = config.auto_accept_threshold
+    st.session_state["quick_review_threshold"] = config.quick_review_threshold
+    st.session_state["detailed_review_threshold"] = config.detailed_review_threshold
+    
+    logger.info(f"Applied {preset.value} preset configuration")
+
+
+def clear_config_overrides() -> None:
+    """Clear all configuration overrides from session state."""
+    if not STREAMLIT_AVAILABLE:
+        return
+        
+    # Clear the config overrides
+    if "config_overrides" in st.session_state:
+        del st.session_state.config_overrides
+    
+    # Also clear the widget keys to reset them to default values
+    widget_keys = [
+        "cleaning_temperature", "review_temperature", "cleaning_model", "review_model",
+        "max_section_tokens", "token_overlap", "min_segment_tokens", "preserve_sentence_boundaries",
+        "auto_accept_threshold", "quick_review_threshold", "detailed_review_threshold"
+    ]
+    
+    for key in widget_keys:
+        if key in st.session_state:
+            del st.session_state[key]
+    
+    logger.info("Cleared configuration overrides and widget keys")
+
+
+def has_config_overrides() -> bool:
+    """Check if there are any configuration overrides in session state."""
+    if not STREAMLIT_AVAILABLE:
+        return False
+        
+    return bool(st.session_state.get("config_overrides", {}))
+
+
+def set_config_override(section: str, key: str, value: Any) -> None:
+    """
+    Set a configuration override in session state.
+    
+    Args:
+        section: Configuration section (agents, processing, confidence_thresholds)
+        key: Configuration key
+        value: New value
+    """
+    if not STREAMLIT_AVAILABLE:
+        logger.warning("Streamlit not available, cannot set config override")
+        return
+        
+    if "config_overrides" not in st.session_state:
+        st.session_state.config_overrides = {}
+        
+    if section not in st.session_state.config_overrides:
+        st.session_state.config_overrides[section] = {}
+        
+    st.session_state.config_overrides[section][key] = value
+    logger.info(f"Set config override: {section}.{key} = {value}")

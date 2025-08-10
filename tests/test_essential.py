@@ -20,6 +20,7 @@ from models.schemas import (
     ReviewDecisionEnum,
     TranscriptDocument,
 )
+import utils.validators
 
 
 class TestEssentialFunctionality:
@@ -105,9 +106,9 @@ class TestEssentialFunctionality:
         )
 
         # Use PydanticAI's TestModel for structured output
-        with agent.agent.override(model=TestModel()):
-            # Temporarily patch validation for testing
-            with patch.object(agent, "_validate_cleaning_result"):
+        # Mock the validation function to avoid issues with TestModel's random data
+        with patch("core.cleaning_agent.validate_cleaning_result"):
+            with agent.agent.override(model=TestModel()):
                 result = await agent.clean_segment(segment)
 
             # Assertions
@@ -144,9 +145,9 @@ class TestEssentialFunctionality:
         )
 
         # Use PydanticAI's TestModel for structured output
-        with agent.agent.override(model=TestModel()):
-            # Temporarily patch validation for testing
-            with patch.object(agent, "_validate_review_decision"):
+        # Mock the validation function to avoid issues with TestModel's random data
+        with patch("core.review_agent.validate_review_decision"):
+            with agent.agent.override(model=TestModel()):
                 result = await agent.review_cleaning(
                     original_segment=segment, cleaning_result=cleaning_result
                 )

@@ -5,15 +5,13 @@ This module handles YAML configuration files and environment variable overrides
 for the dual-agent system. Secrets are kept in .env files.
 """
 
-from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
-from dotenv import load_dotenv
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings.sources import YamlConfigSettingsSource
 import structlog
-
-load_dotenv()
 
 
 class OpenAIConfig(BaseSettings):
@@ -231,57 +229,232 @@ class AppConfig(BaseSettings):
             directory.mkdir(exist_ok=True)
 
 
-@lru_cache
-def get_config() -> AppConfig:
-    """
-    Get application configuration from YAML file with environment variable overrides.
-
-    This function is cached to avoid repeated file parsing.
-    """
-    return AppConfig()
-
-
-# Simplified config access - single global instance
-_config_instance: AppConfig | None = None
-
-
 def get_openai_config() -> OpenAIConfig:
     """Get OpenAI config section."""
-    global _config_instance
-    if _config_instance is None:
-        _config_instance = get_config()
-    return _config_instance.openai
+    return get_settings().get_openai_config()
 
 
 def get_agents_config() -> AgentConfig:
     """Get agents config section."""
-    global _config_instance
-    if _config_instance is None:
-        _config_instance = get_config()
-    return _config_instance.agents
+    return get_settings().get_agents_config()
 
 
 def get_processing_config() -> ProcessingConfig:
     """Get processing config section."""
-    global _config_instance
-    if _config_instance is None:
-        _config_instance = get_config()
-    return _config_instance.processing
+    return get_settings().get_processing_config()
 
 
 def get_confidence_thresholds() -> ConfidenceThresholds:
     """Get confidence thresholds config section."""
-    global _config_instance
-    if _config_instance is None:
-        _config_instance = get_config()
-    return _config_instance.confidence_thresholds
+    return get_settings().get_confidence_thresholds()
 
 
-# For testing override
-def reset_config():
+def reset_config() -> None:
     """Reset config cache - useful for testing."""
-    global _config_instance
-    _config_instance = None
+    global _settings_instance
+    _settings_instance = None
+
+
+class Settings(BaseSettings):
+    """Application settings with automatic environment variable loading."""
+
+    model_config = SettingsConfigDict(
+        env_file='.env',
+        env_file_encoding='utf-8',
+        env_nested_delimiter='__',
+        extra='ignore',
+        case_sensitive=False,
+    )
+
+    # OpenAI settings
+    openai_api_key: str = Field(default="", description="OpenAI API key")
+    openai_model: str = Field(default="o3-mini-2025-01-31", description="Default OpenAI model")
+    openai_max_tokens: int = Field(
+        default=4000, gt=0, description="Maximum tokens per request"
+    )
+    openai_timeout_seconds: int = Field(
+        default=30, gt=0, description="Request timeout in seconds"
+    )
+    openai_max_retries: int = Field(default=3, ge=0, description="Maximum retry attempts")
+
+    # Agent settings
+    agents_cleaning_temperature: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=2.0,
+        description="Temperature for cleaning agent (lower = more focused)",
+    )
+    agents_review_temperature: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=2.0,
+        description="Temperature for review agent (0 = deterministic)",
+    )
+    agents_cleaning_model: str = Field(
+        default="o3-mini-2025-01-31", description="Model to use for cleaning agent"
+    )
+    agents_review_model: str = Field(
+        default="o3-mini-2025-01-31", description="Model to use for review agent"
+    )
+    agents_max_concurrent_requests: int = Field(
+        default=5, ge=1, le=20, description="Maximum concurrent API requests"
+    )
+    agents_rate_limit_requests_per_minute: int = Field(
+        default=50, ge=1, description="Rate limit for API requests per minute"
+    )
+
+    # Processing settings
+    processing_max_section_tokens: int = Field(
+        default=500, gt=0, le=8000, description="Maximum tokens per document segment"
+    )
+    processing_token_overlap: int = Field(
+        default=50, ge=0, description="Token overlap between segments"
+    )
+    processing_min_segment_tokens: int = Field(
+        default=50, gt=0, description="Minimum tokens per segment"
+    )
+    processing_preserve_sentence_boundaries: bool = Field(
+        default=True,
+        description="Whether to preserve sentence boundaries when segmenting",
+    )
+
+    # Confidence thresholds
+    confidence_thresholds_auto_accept_threshold: float = Field(
+        default=0.95,
+        ge=0.0,
+        le=1.0,
+        description="Threshold for auto-accepting segments (>95%)",
+    )
+    confidence_thresholds_quick_review_threshold: float = Field(
+        default=0.85, ge=0.0, le=1.0, description="Threshold for quick review (85-95%)"
+    )
+    confidence_thresholds_detailed_review_threshold: float = Field(
+        default=0.70,
+        ge=0.0,
+        le=1.0,
+        description="Threshold for detailed review (70-85%)",
+    )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls,
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        """Customize settings sources to load YAML first, then env vars."""
+        return (
+            init_settings,
+            YamlConfigSettingsSource(settings_cls, yaml_file="config.yaml"),
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+        )
+
+    @field_validator("openai_api_key")
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        """Validate OpenAI API key format."""
+        # Allow empty API key for testing
+        if not v:
+            return v
+        if not v.startswith("sk-") and not v.startswith("test-"):
+            raise ValueError(
+                'OpenAI API key must start with "sk-" or "test-" for testing'
+            )
+        if v.startswith("sk-") and len(v) < 20:
+            raise ValueError("OpenAI API key appears to be too short")
+        return v
+
+    @field_validator("processing_token_overlap")
+    @classmethod
+    def validate_overlap(cls, v: int, info) -> int:
+        """Ensure overlap is reasonable compared to max_section_tokens."""
+        if "processing_max_section_tokens" in info.data:
+            max_tokens = info.data["processing_max_section_tokens"]
+            if v >= max_tokens / 2:
+                raise ValueError(
+                    "token_overlap should be less than half of max_section_tokens"
+                )
+        return v
+
+    @field_validator("confidence_thresholds_quick_review_threshold")
+    @classmethod
+    def validate_quick_review(cls, v: float, info) -> float:
+        """Ensure quick review threshold is below auto accept."""
+        if (
+            "confidence_thresholds_auto_accept_threshold" in info.data
+            and v >= info.data["confidence_thresholds_auto_accept_threshold"]
+        ):
+            raise ValueError(
+                "quick_review_threshold must be less than auto_accept_threshold"
+            )
+        return v
+
+    @field_validator("confidence_thresholds_detailed_review_threshold")
+    @classmethod
+    def validate_detailed_review(cls, v: float, info) -> float:
+        """Ensure detailed review threshold is below quick review."""
+        if (
+            "confidence_thresholds_quick_review_threshold" in info.data
+            and v >= info.data["confidence_thresholds_quick_review_threshold"]
+        ):
+            raise ValueError(
+                "detailed_review_threshold must be less than quick_review_threshold"
+            )
+        return v
+
+    def get_openai_config(self) -> "OpenAIConfig":
+        """Get OpenAI configuration."""
+        return OpenAIConfig(
+            api_key=self.openai_api_key,
+            model=self.openai_model,
+            max_tokens=self.openai_max_tokens,
+            timeout_seconds=self.openai_timeout_seconds,
+            max_retries=self.openai_max_retries,
+        )
+
+    def get_agents_config(self) -> "AgentConfig":
+        """Get agents configuration."""
+        return AgentConfig(
+            cleaning_temperature=self.agents_cleaning_temperature,
+            review_temperature=self.agents_review_temperature,
+            cleaning_model=self.agents_cleaning_model,
+            review_model=self.agents_review_model,
+            max_concurrent_requests=self.agents_max_concurrent_requests,
+            rate_limit_requests_per_minute=self.agents_rate_limit_requests_per_minute,
+        )
+
+    def get_processing_config(self) -> "ProcessingConfig":
+        """Get processing configuration."""
+        return ProcessingConfig(
+            max_section_tokens=self.processing_max_section_tokens,
+            token_overlap=self.processing_token_overlap,
+            min_segment_tokens=self.processing_min_segment_tokens,
+            preserve_sentence_boundaries=self.processing_preserve_sentence_boundaries,
+        )
+
+    def get_confidence_thresholds(self) -> "ConfidenceThresholds":
+        """Get confidence thresholds configuration."""
+        return ConfidenceThresholds(
+            auto_accept_threshold=self.confidence_thresholds_auto_accept_threshold,
+            quick_review_threshold=self.confidence_thresholds_quick_review_threshold,
+            detailed_review_threshold=self.confidence_thresholds_detailed_review_threshold,
+        )
+
+
+# Global settings instance
+_settings_instance: Settings | None = None
+
+
+def get_settings() -> Settings:
+    """Get application settings instance."""
+    global _settings_instance
+    if _settings_instance is None:
+        _settings_instance = Settings()
+    return _settings_instance
 
 
 def configure_structlog() -> None:
