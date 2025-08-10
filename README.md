@@ -6,6 +6,7 @@ A production-grade dual-agent system that cleans meeting transcripts and notes u
 
 ## Table of Contents
 
+- [Quick Demo Video](#quick-demo-video)
 - [Problem Statement](#problem-statement)
 - [Solution Architecture](#solution-architecture)
 - [Key Features](#key-features)
@@ -19,6 +20,13 @@ A production-grade dual-agent system that cleans meeting transcripts and notes u
 - [Security](#security)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Quick Demo Video
+
+<iframe width="560" height="315" s{{INSERTED_CODE}}
+<video width="560" height="315" controls>
+  <source src="Demo.mov" type="video/quicktime">
+</video>
 
 ## Problem Statement
 
