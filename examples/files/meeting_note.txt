@@ -1,0 +1,51 @@
+Date: 2025-08-04
+Topic: Analytics Workshop Review
+Facilitator: John D.
+
+Analytics not just reports or dashboards, it’s about asking the right questions. We started workshop to get team aligned, find priorities, what’s on everyone’s mind, know each other better. Lots of qs around team diversity & strengths.
+
+Important to always frame the WHY before getting deep into data. Otherwise, ppl get lost in details.
+
+John mentioned linking ideas manually — e.g., balance linked with travel, travel with clean inbox, sports to health, health to family. He said this coding is manual and time consuming but helps find themes.
+
+Talked about innovation & deadlines — sometimes no deadlines, just understanding team & connecting concepts. John spent a lot of time moving arrows, boxes in workshop tool.
+
+Asked what if there was a better way to see connections? Started showing use of dashboard tools (PowerBI etc). Encourages use of existing tools first before building new stuff.
+
+Learner mindset not explicitly discussed but learning was mentioned once. Stakeholders mentioned several times (Renee, Julius, Venu). Conflict also raised by General.
+
+Julius had the most “stickies” (input notes). Not a competition but useful to see who contributed where. Helps understand team engagement.
+
+Discussed data entry issues — Jello wondered if some data could be skipped or entered later. Important to digitize first, or info just goes hidden and lost.
+
+John highlighted sharing info in structured formats (with forms and tagging) lets you capture it properly. Linking ERP data related to this effort.
+
+Spoke about hopes and wishes — John picked examples: more time with family, efficiency, impact. Said he manually curated these but data can be exported as CSV to automate.
+
+Tagging & putting stickies in “boxes” important so tags work properly. Related to data quality & standard mappings (P&L, VPSHIP mapping analogies).
+
+Noted a section for “What we need help with” provides direct insight into team support needs.
+
+Workshop was manual, not fast enough for real-time use but concept can scale.
+
+There was side banter — “Alpha Bravo Charlie, pick up laundry” (colleague joked).
+
+Explained PowerBI features like sentiment scoring (positive/negative), phrase extraction. Said these features exist out-of-the-box.
+
+Emphasized curiosity to explore tools more deeply, even ones used daily, beyond surface-level.
+
+Showed example of another workshop’s day-by-day notes analysis using PowerBI — richer insights on priorities shifts over time.
+
+Said main point: always link data efforts to business questions — don’t just do dashboards for dashboards sake.
+
+Urged process discipline — one idea per sticky note, good tagging, standardized data capture.
+
+Integration & interoperability between tools (Excel, Mural, ERP, Oscar data hub) mentioned. Possibility of linking systems better.
+
+John said team is unique in approach — start with business questions, then look for data, unlike other data groups focused on governance first.
+
+Wrapping up, John reminded team to keep strategic question front and center, digitize carefully, then analyze and iterate.
+
+Final: shared a trick to paste multiple sticky notes together from Excel to Mural for faster input.
+
+Recording stopped after Q&A, some good insights noted.

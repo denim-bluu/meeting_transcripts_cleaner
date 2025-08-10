@@ -1,0 +1,64 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:08.500
+<v John D.>Alright, welcome everyone to today’s analytics workshop review. So, the main focus here is not just about reports or dashboards, but about asking the right questions. You know, it’s about framing why we do what we do.</v>
+
+00:00:08.600 --> 00:00:21.300
+<v Sarah L.>Yeah, makes sense. Sometimes people jump straight into the data and miss what the actual business need is. I’ve noticed teams get lost that way.</v>
+
+00:00:21.400 --> 00:00:38.700
+<v John D.>Exactly. When we started this workshop, the aim was to get aligned on priorities, understand what’s on everyone’s mind, and really get to know each other’s strengths. There were a lot of questions around team dynamics, and honestly, I think that was as important as the data itself.
+
+00:00:39.100 --> 00:01:05.000
+<v Sarah L.>Right, and I liked how you showed the manual linking of ideas — balance linked to travel, travel to inbox cleaning, then sports leading to health and family. That’s a neat way to see the thematic links emerge, even if it’s manual and time-consuming.
+
+00:01:05.100 --> 00:01:22.400
+<v John D.>Yeah, but that’s kinda the point. It’s tedious, but it makes you think about the connections. Also, sometimes there’s no hard deadline, so you’re just trying to innovate and understand the team’s landscape.
+
+00:01:22.500 --> 00:01:34.200
+<v Sarah L.>Speaking of deadlines, I was wondering—are we sure we need to capture every piece of data immediately? Like, Jello mentioned maybe entering some info later or skipping it altogether?
+
+00:01:34.300 --> 00:01:50.900
+<v John D.>Good question. My take is digitalize first. Capture what you can so nothing gets lost. If data stays in someone’s head or in emails, it’s invisible to everyone. That’s a big risk.
+
+00:01:51.000 --> 00:02:05.300
+<v Mark H.>Totally agree. If something isn’t digitized and structured, you can’t analyze it or spot patterns. Like with ERP data, it needs to be pulled together properly, not just scattered across systems.
+
+00:02:05.400 --> 00:02:22.700
+<v John D.>Exactly, Mark. And speaking of ERP, we talked about using forms and tagging consistently. For example, putting sticky notes in the right “boxes” so they inherit tags correctly. It’s a bit like P&L or VPSHIP mapping—if the mapping isn’t right, the data analysis fails.
+
+00:02:22.800 --> 00:02:41.500
+<v Sarah L.>Makes sense. Also, I thought Julius’ high contribution count was interesting — not a contest, but it shows the areas where people are most engaged. That helps us understand where to focus.
+
+00:02:41.600 --> 00:02:57.600
+<v John D.>Right, and that connects back to knowing the “why.” Are we engaged because we see purpose? Or are we just filling in numbers? The data only helps if the team cares about the question behind it.
+
+00:02:57.700 --> 00:03:12.400
+<v Mark H.>Quick question: John, you mentioned Power BI features like sentiment analysis and key phrase extraction. How mature are those? Can we trust sentiment scores from short sticky notes?
+
+00:03:12.500 --> 00:03:33.600
+<v John D.>Good point, Mark. They’re not perfect, but they give directional insights — positive, negative, or neutral tones. It’s another tool in the toolbox, not a replacement for context. Think of it as augmenting human judgment.
+
+00:03:33.700 --> 00:03:47.800
+<v Sarah L.>Cool, so those features can help speed up synthesis of qualitative data from workshops without losing the nuance, right?
+
+00:03:47.900 --> 00:04:04.100
+<v John D.>Exactly. Also, we’ve got tricks like pasting multiple stickies from Excel into Mural to speed input. The goal is interoperability — tools talking to each other smoothly.
+
+00:04:04.200 --> 00:04:22.700
+<v Mark H.>Speaking of interoperability, do we have plans to link ERP with Oscar data hub more tightly? And what about governance around that? I know others focus heavily on governance first, but our team starts with the business question.
+
+00:04:22.800 --> 00:04:41.300
+<v John D.>Yep, governance is crucial, but we believe starting with the question makes data more actionable. As for integration, it’s on the roadmap, but we’re navigating technical and process complexities. We’re cautiously optimistic.
+
+00:04:41.400 --> 00:04:55.100
+<v Sarah L.>Thanks, guys. This is useful. Any final thoughts before we close?
+
+00:04:55.200 --> 00:05:09.300
+<v John D.>Just remember: keep your purpose front and center. Capture and digitize consistently. Use existing tools before inventing new processes. And always stay curious about what your data can reveal.
+
+00:05:09.400 --> 00:05:13.500
+<v Mark H.>Agreed. Thanks everyone.
+
+00:05:13.600 --> 00:05:15.000
+<v Sarah L.>Thanks all. Catch you next time.
