@@ -41,6 +41,7 @@ class ReviewAgent:
 
         # Create OpenAI model instance with proper provider
         from pydantic_ai.providers.openai import OpenAIProvider
+
         provider = OpenAIProvider(api_key=openai_config.api_key)
         self.model = OpenAIModel(self.model_name, provider=provider)
         # Initialize Pydantic AI agent with proper configuration
@@ -77,7 +78,11 @@ Output JSON with: segment_id, decision, confidence, preservation_score, issues_f
             # Key identifier (flat)
             agent_type="review",
             # Configuration (grouped)
-            ai_config={"model": self.model_name, "temperature": self.temperature, "max_tokens": self.max_tokens}
+            ai_config={
+                "model": self.model_name,
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens,
+            },
         )
 
     async def review_cleaning(
@@ -119,7 +124,9 @@ Output JSON with: segment_id, decision, confidence, preservation_score, issues_f
             following_context=following_context,
         )
 
-        logger.debug("Reviewing segment", segment_id=original_segment.id, phase="review")
+        logger.debug(
+            "Reviewing segment", segment_id=original_segment.id, phase="review"
+        )
 
         # Attempt review with retries
         for attempt in range(self.max_retries + 1):
@@ -154,20 +161,19 @@ Output JSON with: segment_id, decision, confidence, preservation_score, issues_f
                     confidence=result.confidence,
                     preservation_score=result.preservation_score,
                     processing_time_ms=processing_time,
-                    phase="review"
+                    phase="review",
                 )
 
                 return result
 
             except Exception as e:
-                # Handle other errors immediately
                 logger.error(
                     "Unexpected error reviewing segment",
                     segment_id=original_segment.id,
                     attempt=attempt + 1,
                     max_attempts=self.max_retries + 1,
                     error=str(e),
-                    phase="review"
+                    phase="review",
                 )
                 if attempt == self.max_retries:
                     raise Exception(
@@ -215,7 +221,7 @@ Output JSON with: segment_id, decision, confidence, preservation_score, issues_f
                 ai_returned_id=decision.segment_id,
                 correct_id=original_segment.id,
                 phase="validation",
-                warning_type="incorrect_segment_id"
+                warning_type="incorrect_segment_id",
             )
             decision.segment_id = original_segment.id
 
@@ -238,7 +244,7 @@ Output JSON with: segment_id, decision, confidence, preservation_score, issues_f
                 "Modify decision has identical corrections to cleaned text",
                 segment_id=original_segment.id,
                 phase="validation",
-                warning_type="redundant_corrections"
+                warning_type="redundant_corrections",
             )
 
     async def _wait_with_backoff(self, attempt: int) -> None:
@@ -253,4 +259,3 @@ Output JSON with: segment_id, decision, confidence, preservation_score, issues_f
         wait_time = min(2**attempt, 30)  # Cap at 30 seconds
         logger.info("Waiting before retry", wait_time_seconds=wait_time, phase="retry")
         await asyncio.sleep(wait_time)
-

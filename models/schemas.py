@@ -9,7 +9,7 @@ These models define the data structures used throughout the pipeline for:
 - Overall processing status
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from uuid import uuid4
 
@@ -252,7 +252,10 @@ class TranscriptDocument(BaseModel):
     )
 
     # Metadata
-    uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    uploaded_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Timestamp when the document was uploaded (UTC)",
+    )
     processing_status: ProcessingStatus | None = Field(None)
 
     # Configuration used
