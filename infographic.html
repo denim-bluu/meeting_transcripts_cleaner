@@ -31,6 +31,14 @@
                 transform: translateY(-5px);
                 box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
             }
+            .story-card {
+                background: rgba(30, 41, 59, 0.5);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+            }
+            .note-card {
+                background: rgba(71, 85, 105, 0.2);
+                border-left: 4px solid #6366f1;
+            }
         </style>
     </head>
     <body class="bg-gray-900 text-white antialiased">
@@ -43,128 +51,114 @@
                     Meeting Transcript Cleaner
                 </h1>
                 <p class="mt-4 text-lg md:text-xl text-gray-300 max-w-3xl mx-auto">
-                    Transforming raw conversations into polished documents with
-                    unprecedented accuracy and efficiency.
+                    Transforming raw conversations into polished documents with accuracy
+                    and efficiency.
                 </p>
             </header>
 
-            <!-- The Problem Section -->
+            <!-- Note for Business Users -->
             <section class="mb-12 md:mb-16">
-                <h2 class="text-3xl font-bold text-center mb-8 text-red-400">
-                    The Problem with LLMs & Long Documents
+                <div class="note-card p-6 rounded-lg max-w-4xl mx-auto">
+                    <h2 class="text-2xl font-bold mb-3 text-indigo-300">
+                        Designed for Business Clarity
+                    </h2>
+                    <p class="text-gray-300">
+                        This document is for our PMs. Our goal is to demystify the
+                        complex AI working behind the scenes. By understanding how this
+                        tool works, you can better appreciate its capabilities, know
+                        what to expect, and see why it's more reliable than standard AI
+                        models.
+                    </p>
+                </div>
+            </section>
+
+            <!-- The Story Section -->
+            <section class="mb-12 md:mb-16">
+                <h2 class="text-3xl font-bold text-center mb-8">
+                    The Story of a 2-Hour Meeting, Solved by Science
                 </h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <!-- Card 1: Hallucination -->
-                    <div class="bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <div
-                            class="flex items-center justify-center h-12 w-12 rounded-full bg-red-500/20 mx-auto mb-4"
-                        >
-                            <svg
-                                class="h-6 w-6 text-red-400"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                />
-                            </svg>
-                        </div>
-                        <h3 class="text-xl font-semibold text-center text-white">
-                            Hallucination
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                    <div class="story-card p-8 rounded-2xl h-full">
+                        <h3 class="text-2xl font-bold mb-4 text-red-400">
+                            The "Before": A Familiar Struggle
                         </h3>
-                        <p class="text-gray-400 text-center mt-2 text-sm">
-                            Models invent phantom conversations and non-existent
-                            content.
+                        <p class="text-gray-300 mb-4">
+                            You just finished a critical 2-hour meeting. The raw
+                            transcript is a mess. You feed it to a standard AI, hoping
+                            for a quick summary, but the output is flawed a problem AI
+                            researchers call "hallucination" and "content loss."
                         </p>
+                        <ul class="space-y-3 text-gray-400">
+                            <li class="flex items-start">
+                                <span class="mr-3 mt-1 text-red-500">❌</span>
+                                <div>
+                                    <strong class="text-gray-200"
+                                        >Phantom Facts:</strong
+                                    >
+                                    The summary invents decisions that were never made.
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="mr-3 mt-1 text-red-500">❌</span>
+                                <div>
+                                    <strong class="text-gray-200"
+                                        >Missing Actions:</strong
+                                    >
+                                    A key action item for the design team is completely
+                                    gone.
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="mr-3 mt-1 text-red-500">❌</span>
+                                <div>
+                                    <strong class="text-gray-200">Wasted Time:</strong>
+                                    You're forced into 40 minutes of manual
+                                    fact-checking, defeating the purpose of AI.
+                                </div>
+                            </li>
+                        </ul>
                     </div>
-                    <!-- Card 2: Content Loss -->
-                    <div class="bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <div
-                            class="flex items-center justify-center h-12 w-12 rounded-full bg-yellow-500/20 mx-auto mb-4"
-                        >
-                            <svg
-                                class="h-6 w-6 text-yellow-400"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"
-                                />
-                            </svg>
-                        </div>
-                        <h3 class="text-xl font-semibold text-center text-white">
-                            Content Loss
+                    <div class="story-card p-8 rounded-2xl h-full">
+                        <h3 class="text-2xl font-bold mb-4 text-green-400">
+                            The "After": A Research-Backed Solution
                         </h3>
-                        <p class="text-gray-400 text-center mt-2 text-sm">
-                            Important details get omitted, overlooked, or completely
-                            dropped.
+                        <p class="text-gray-300 mb-4">
+                            With this tool, you upload the same messy file. It uses a
+                            "segment-and-validate" method, an approach supported by AI
+                            research—to deliver a reliable result in minutes.
                         </p>
-                    </div>
-                    <!-- Card 3: No Transparency -->
-                    <div class="bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <div
-                            class="flex items-center justify-center h-12 w-12 rounded-full bg-blue-500/20 mx-auto mb-4"
-                        >
-                            <svg
-                                class="h-6 w-6 text-blue-400"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                                />
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                                />
-                            </svg>
-                        </div>
-                        <h3 class="text-xl font-semibold text-center text-white">
-                            No Transparency
-                        </h3>
-                        <p class="text-gray-400 text-center mt-2 text-sm">
-                            Changes happen in a black box with no clear audit trail.
-                        </p>
-                    </div>
-                    <!-- Card 4: All-or-Nothing -->
-                    <div class="bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <div
-                            class="flex items-center justify-center h-12 w-12 rounded-full bg-indigo-500/20 mx-auto mb-4"
-                        >
-                            <svg
-                                class="h-6 w-6 text-indigo-400"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                />
-                            </svg>
-                        </div>
-                        <h3 class="text-xl font-semibold text-center text-white">
-                            All-or-Nothing
-                        </h3>
-                        <p class="text-gray-400 text-center mt-2 text-sm">
-                            No mechanism to review changes based on confidence levels.
-                        </p>
+                        <ul class="space-y-3 text-gray-400">
+                            <li class="flex items-start">
+                                <span class="mr-3 mt-1 text-green-500">✅</span>
+                                <div>
+                                    <strong class="text-gray-200"
+                                        >Guaranteed Accuracy:</strong
+                                    >
+                                    Our dual-agent system cross-checks every change,
+                                    eliminating errors.
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="mr-3 mt-1 text-green-500">✅</span>
+                                <div>
+                                    <strong class="text-gray-200"
+                                        >Zero Content Loss:</strong
+                                    >
+                                    The system ensures the design team's action item is
+                                    preserved correctly.
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="mr-3 mt-1 text-green-500">✅</span>
+                                <div>
+                                    <strong class="text-gray-200"
+                                        >5-Minute Review:</strong
+                                    >
+                                    You only need to review the small percentage of
+                                    segments needing a human touch.
+                                </div>
+                            </li>
+                        </ul>
                     </div>
                 </div>
             </section>
@@ -172,8 +166,13 @@
             <!-- The Solution Section -->
             <section class="mb-12 md:mb-20 bg-gray-800 p-8 rounded-2xl shadow-2xl">
                 <h2 class="text-3xl font-bold text-center mb-8 text-green-400">
-                    Our Solution: Dual-Agent Progressive Review
+                    How It Works: The Dual-Agent Pipeline
                 </h2>
+                <p class="text-center text-gray-300 max-w-2xl mx-auto mb-10">
+                    Our system doesn't just read your document; it deconstructs it for
+                    analysis. By breaking it down and using two specialized AI agents,
+                    we turn chaos into clarity with full transparency.
+                </p>
                 <div
                     class="flex flex-col md:flex-row items-center justify-between space-y-8 md:space-y-0 md:space-x-4"
                 >
@@ -196,9 +195,10 @@
                                 />
                             </svg>
                         </div>
-                        <h3 class="text-xl font-semibold">1. Segment</h3>
-                        <p class="text-gray-400 mt-1">
-                            Break down document into 500-token chunks.
+                        <h3 class="text-xl font-semibold">1. Smart Segmentation</h3>
+                        <p class="text-gray-400 mt-1 text-sm">
+                            This mirrors the "retrieve-and-read" strategy proven in AI
+                            research to prevent context loss.
                         </p>
                     </div>
                     <div class="text-gray-600 text-4xl hidden md:block">&rarr;</div>
@@ -221,9 +221,10 @@
                                 />
                             </svg>
                         </div>
-                        <h3 class="text-xl font-semibold">2. Clean Agent</h3>
-                        <p class="text-gray-400 mt-1">
-                            First-pass AI processing for initial cleanup.
+                        <h3 class="text-xl font-semibold">2. Cleaning Agent</h3>
+                        <p class="text-gray-400 mt-1 text-sm">
+                            Performs the initial cleanup, removing filler and fixing
+                            errors.
                         </p>
                     </div>
                     <div class="text-gray-600 text-4xl hidden md:block">&rarr;</div>
@@ -247,8 +248,9 @@
                             </svg>
                         </div>
                         <h3 class="text-xl font-semibold">3. Review Agent</h3>
-                        <p class="text-gray-400 mt-1">
-                            Second-pass AI validation for accuracy.
+                        <p class="text-gray-400 mt-1 text-sm">
+                            Validates the first agent's work, catching errors and
+                            ensuring consistency.
                         </p>
                     </div>
                     <div class="text-gray-600 text-4xl hidden md:block">&rarr;</div>
@@ -272,8 +274,9 @@
                             </svg>
                         </div>
                         <h3 class="text-xl font-semibold">4. Progressive UI</h3>
-                        <p class="text-gray-400 mt-1">
-                            Review only what needs attention.
+                        <p class="text-gray-400 mt-1 text-sm">
+                            You only review the few segments that need a human touch,
+                            saving you time.
                         </p>
                     </div>
                 </div>
@@ -282,7 +285,7 @@
             <!-- Key Performance Indicators -->
             <section class="mb-12 md:mb-20">
                 <h2 class="text-3xl font-bold text-center mb-8">
-                    Unprecedented Performance
+                    The Result: Efficient & Reliable Processing
                 </h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     <div class="kpi-card p-6 rounded-xl text-center">
@@ -316,144 +319,16 @@
                 </div>
             </section>
 
-            <!-- Progressive Review UI -->
-            <section class="mb-12 md:mb-20">
-                <h2 class="text-3xl font-bold text-center mb-8">
-                    Focus on What Matters: Progressive Review
-                </h2>
-                <div class="bg-gray-800 rounded-2xl p-8 shadow-2xl max-w-3xl mx-auto">
-                    <div class="flex flex-col md:flex-row gap-8">
-                        <div class="flex-1">
-                            <h3
-                                class="text-2xl font-bold mb-6 text-center md:text-left"
-                            >
-                                Confidence Breakdown
-                            </h3>
-                            <ul class="space-y-4">
-                                <li class="flex items-center">
-                                    <span class="text-green-400 mr-4">✅</span>
-                                    <div>
-                                        <span class="font-semibold"
-                                            >Auto-Accept (&gt;95%):</span
-                                        >
-                                        <span class="text-gray-300">
-                                            ~85-90% of segments</span
-                                        >
-                                    </div>
-                                </li>
-                                <li class="flex items-center">
-                                    <span class="text-yellow-400 mr-4">⚡️</span>
-                                    <div>
-                                        <span class="font-semibold"
-                                            >Quick Review (85-95%):</span
-                                        >
-                                        <span class="text-gray-300">
-                                            ~7-10% of segments</span
-                                        >
-                                    </div>
-                                </li>
-                                <li class="flex items-center">
-                                    <span class="text-orange-400 mr-4">🔍</span>
-                                    <div>
-                                        <span class="font-semibold"
-                                            >Detailed Review (&lt;85%):</span
-                                        >
-                                        <span class="text-gray-300">
-                                            ~2-3% of segments</span
-                                        >
-                                    </div>
-                                </li>
-                                <li class="flex items-center">
-                                    <span class="text-red-400 mr-4">⚠️</span>
-                                    <div>
-                                        <span class="font-semibold">AI Flagged:</span>
-                                        <span class="text-gray-300">
-                                            ~1-2% with issues</span
-                                        >
-                                    </div>
-                                </li>
-                            </ul>
-                        </div>
-                        <div class="flex-shrink-0 w-full md:w-64">
-                            <div
-                                class="bg-gray-900 p-6 rounded-lg border border-gray-700 h-full flex flex-col justify-center"
-                            >
-                                <h4 class="text-lg font-semibold text-center mb-4">
-                                    Review Interface
-                                </h4>
-                                <div class="bg-gray-800 p-4 rounded-md text-sm">
-                                    <p class="text-green-400">✅ Auto-Accepted: 52</p>
-                                    <p class="text-yellow-400">⚡️ Quick Review: 6</p>
-                                    <p class="text-orange-400">🔍 Detailed Review: 2</p>
-                                    <p class="text-red-400">⚠️ AI Flagged: 0</p>
-                                </div>
-                                <button
-                                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg mt-4 transition-colors"
-                                >
-                                    Start Review
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Technology Stack -->
-            <section>
-                <h2 class="text-3xl font-bold text-center mb-8">
-                    Powered by a Modern Tech Stack
-                </h2>
-                <div class="max-w-4xl mx-auto bg-gray-800/50 p-6 rounded-2xl">
-                    <div
-                        class="flex flex-wrap items-center justify-center gap-x-8 gap-y-6 md:gap-x-12"
-                    >
-                        <div class="flex items-center space-x-3">
-                            <span class="text-lg font-semibold">Streamlit</span>
-                        </div>
-                        <div class="flex items-center space-x-3">
-                            <span class="text-lg font-semibold">OpenAI</span>
-                        </div>
-                        <div class="flex items-center space-x-3">
-                                <path
-                                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1.03 15.5l-4.2-4.21 1.41-1.41 2.79 2.79 5.96-5.96L18.33 8l-7.36 7.5z"
-                                />
-                            </svg>
-                            <span class="text-lg font-semibold">Pydantic</span>
-                        </div>
-                        <div class="flex items-center space-x-3">
-
-                                <path
-                                    d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z"
-                                    fill="#343A40"
-                                ></path>
-                                <path
-                                    d="M16.5 7.5L12 16.5L7.5 7.5H16.5Z"
-                                    fill="#4D85E3"
-                                ></path>
-                                <path
-                                    d="M12 16.5L7.5 7.5H12V16.5Z"
-                                    fill="#FFD43B"
-                                ></path>
-                            </svg>
-                            <span class="text-lg font-semibold">Python</span>
-                        </div>
-                        <div class="flex items-center space-x-3">
-
-                                <path
-                                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"
-                                />
-                            </svg>
-                            <span class="text-lg font-semibold">AsyncIO</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
             <!-- Footer -->
             <footer class="text-center mt-16 pt-8 border-t border-gray-700">
-                <p class="text-gray-400">
-                    Built with a focus on accuracy, efficiency, and developer
-                    experience.
+                <p class="text-gray-400 mb-4">
+                    Our methodology is informed by advancements in AI research to ensure
+                    state-of-the-art reliability.
+                </p>
+                <p class="text-xs text-gray-500">
+                    Reference: Asai, A., et al. (2025). Augmenting Large Language Models
+                    with Retrieval for Long-Form Open-Domain Question Answering.
+                    arXiv:2507.14417.
                 </p>
             </footer>
         </div>

@@ -25,7 +25,6 @@ A production-grade dual-agent system that cleans meeting transcripts and notes u
 
 https://github.com/user-attachments/assets/b90a64c5-43aa-48fe-8091-c7ff0b645cdd
 
-
 ## Problem Statement
 
 Current Large Language Models (LLMs) face critical challenges when processing long documents (15,000-30,000 words):
