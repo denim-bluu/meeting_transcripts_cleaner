@@ -23,10 +23,8 @@ A production-grade dual-agent system that cleans meeting transcripts and notes u
 
 ## Quick Demo Video
 
-<iframe width="560" height="315" s{{INSERTED_CODE}}
-<video width="560" height="315" controls>
-  <source src="Demo.mov" type="video/quicktime">
-</video>
+https://github.com/user-attachments/assets/b90a64c5-43aa-48fe-8091-c7ff0b645cdd
+
 
 ## Problem Statement
 
