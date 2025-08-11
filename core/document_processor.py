@@ -157,15 +157,22 @@ class DocumentProcessor:
                     current_segment = sentence
                     current_start = segments[-1].end_index if segments else 0
 
-        # Add final segment if it has content
+        # Add final segment if it has content and is valid
         if current_segment and self.count_tokens(current_segment) >= self.min_tokens:
-            segment = self._create_segment(
-                content=current_segment,
-                start_index=current_start,
-                sequence_number=sequence_number,
-                original_text=text,
-            )
-            segments.append(segment)
+            # Check if we can create a valid segment
+            if current_start < len(text):
+                try:
+                    segment = self._create_segment(
+                        content=current_segment,
+                        start_index=current_start,
+                        sequence_number=sequence_number,
+                        original_text=text,
+                    )
+                    segments.append(segment)
+                except ValueError as e:
+                    logger.warning(f"Skipped invalid final segment: {e}")
+            else:
+                logger.warning(f"Skipped final segment: start_index ({current_start}) is beyond text length ({len(text)})")
 
         return segments
 
@@ -184,6 +191,10 @@ class DocumentProcessor:
         Returns:
             DocumentSegment instance
         """
+        # Skip creating segment if start_index is at or beyond text length
+        if start_index >= len(original_text):
+            raise ValueError(f"Cannot create segment: start_index ({start_index}) is beyond text length ({len(original_text)})")
+
         # Calculate end index by finding content in original text
         # This is approximate since we may have overlap/modifications
         end_index = start_index + len(content)
@@ -191,6 +202,14 @@ class DocumentProcessor:
         # Ensure end index doesn't exceed text length
         if end_index > len(original_text):
             end_index = len(original_text)
+
+        # Ensure end_index is greater than start_index (DocumentSegment validation requirement)
+        if end_index <= start_index:
+            end_index = start_index + 1
+            # If that would exceed text length, adjust start_index instead
+            if end_index > len(original_text):
+                end_index = len(original_text)
+                start_index = end_index - 1
 
         return DocumentSegment(
             content=content.strip(),
