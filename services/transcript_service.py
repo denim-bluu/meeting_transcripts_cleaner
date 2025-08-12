@@ -204,20 +204,29 @@ class TranscriptService:
                 progress_callback(
                     progress, f"Processing batch {batch_start//batch_size + 1}"
                 )
-
             # Create tasks for concurrent processing
-            tasks = []
+            tasks: list[
+                tuple[int, asyncio.Task[tuple[CleaningResult, ReviewResult]]]
+            ] = []
+
             for i, chunk in enumerate(batch_chunks):
-                chunk_index = batch_start + i
+                chunk_index: int = batch_start + i
+
                 # Get previous chunk context (sequential for quality)
-                prev_text = ""
-                prev_chunk = (
+                prev_text: str = ""
+                prev_chunk: CleaningResult | None = (
                     cleaned_chunks[chunk_index - 1] if chunk_index > 0 else None
                 )
                 if prev_chunk is not None:
                     prev_text = prev_chunk.cleaned_text[-200:]  # Last 200 chars
 
-                task = self._process_chunk_with_retry(chunk, chunk_index, prev_text)
+                # Explicitly create an asyncio.Task so we can add type hints
+                task: asyncio.Task[tuple[CleaningResult, ReviewResult]] = (
+                    asyncio.create_task(
+                        self._process_chunk_with_retry(chunk, chunk_index, prev_text)
+                    )
+                )
+
                 tasks.append((chunk_index, task))
 
             # Execute batch concurrently using asyncio.gather
