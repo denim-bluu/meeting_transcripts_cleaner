@@ -200,4 +200,8 @@ exclude_lines = [
 ]
 
 [tool.uv]
-dev-dependencies = ["ptpython>=3.0.30", "pytest>=8.4.1"]
+dev-dependencies = [
+    "ptpython>=3.0.30",
+    "pyright>=1.1.403",
+    "pytest>=8.4.1",
+]

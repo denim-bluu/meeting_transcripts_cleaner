@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -27,7 +27,6 @@ project_root = test_dir.parent
 sys.path.insert(0, str(project_root))
 
 # Import after setting up environment
-from config import Config
 from core.ai_agents import TranscriptCleaner, TranscriptReviewer
 from core.vtt_processor import VTTProcessor
 from models.vtt import VTTChunk, VTTEntry
@@ -37,14 +36,11 @@ from services.transcript_service import TranscriptService
 @pytest.fixture(autouse=True)
 def setup_test_environment():
     """Set up clean test environment."""
-    # Ensure test directories exist
-    Config.ensure_directories()
-    
     # Set test-specific environment variables
     os.environ["OPENAI_API_KEY"] = "sk-test-key-for-testing-only"
-    
+
     yield
-    
+
     # Cleanup after test if needed
 
 
@@ -107,7 +103,7 @@ def sample_vtt_entry() -> VTTEntry:
         start_time=1.0,
         end_time=5.0,
         speaker="John Smith",
-        text="Um, so welcome everyone to, uh, the quarterly meeting."
+        text="Um, so welcome everyone to, uh, the quarterly meeting.",
     )
 
 
@@ -120,21 +116,21 @@ def sample_vtt_entries() -> list[VTTEntry]:
             start_time=1.0,
             end_time=5.0,
             speaker="John Smith",
-            text="Welcome everyone to the quarterly meeting."
+            text="Welcome everyone to the quarterly meeting.",
         ),
         VTTEntry(
             cue_id="2",
             start_time=5.0,
             end_time=10.0,
             speaker="John Smith",
-            text="I know we're all excited to get started."
+            text="I know we're all excited to get started.",
         ),
         VTTEntry(
             cue_id="3",
             start_time=10.0,
             end_time=15.0,
             speaker="Sarah Johnson",
-            text="Thanks John. I'm looking forward to this project."
+            text="Thanks John. I'm looking forward to this project.",
         ),
     ]
 
@@ -142,11 +138,7 @@ def sample_vtt_entries() -> list[VTTEntry]:
 @pytest.fixture
 def sample_vtt_chunk(sample_vtt_entries) -> VTTChunk:
     """Create a sample VTT chunk for testing."""
-    return VTTChunk(
-        chunk_id=0,
-        entries=sample_vtt_entries,
-        token_count=150
-    )
+    return VTTChunk(chunk_id=0, entries=sample_vtt_entries, token_count=150)
 
 
 @pytest.fixture
@@ -162,11 +154,13 @@ def mock_openai_response():
         "choices": [
             {
                 "message": {
-                    "content": json.dumps({
-                        "cleaned_text": "Welcome everyone to the quarterly meeting. I know we're all excited to get started.",
-                        "confidence": 0.95,
-                        "changes_made": ["Removed filler words", "Fixed grammar"]
-                    })
+                    "content": json.dumps(
+                        {
+                            "cleaned_text": "Welcome everyone to the quarterly meeting. I know we're all excited to get started.",
+                            "confidence": 0.95,
+                            "changes_made": ["Removed filler words", "Fixed grammar"],
+                        }
+                    )
                 }
             }
         ]
@@ -180,11 +174,9 @@ def mock_openai_review_response():
         "choices": [
             {
                 "message": {
-                    "content": json.dumps({
-                        "quality_score": 0.85,
-                        "issues": [],
-                        "accept": True
-                    })
+                    "content": json.dumps(
+                        {"quality_score": 0.85, "issues": [], "accept": True}
+                    )
                 }
             }
         ]
@@ -236,19 +228,19 @@ def mock_transcript_service():
 # Test utilities
 class VTTTestUtils:
     """Utility class for VTT testing helpers."""
-    
+
     @staticmethod
     def count_speakers(entries: list[VTTEntry]) -> int:
         """Count unique speakers in VTT entries."""
         return len(set(entry.speaker for entry in entries))
-    
+
     @staticmethod
     def total_duration(entries: list[VTTEntry]) -> float:
         """Calculate total duration from VTT entries."""
         if not entries:
             return 0.0
         return max(entry.end_time for entry in entries)
-    
+
     @staticmethod
     def count_filler_words(text: str) -> int:
         """Count common filler words in text."""
@@ -258,7 +250,7 @@ class VTTTestUtils:
         for filler in filler_words:
             count += text_lower.count(filler)
         return count
-    
+
     @staticmethod
     def assert_vtt_entry_valid(entry: VTTEntry):
         """Assert that a VTT entry is valid."""
@@ -267,7 +259,7 @@ class VTTTestUtils:
         assert entry.end_time > entry.start_time
         assert entry.speaker is not None
         assert entry.text is not None
-    
+
     @staticmethod
     def assert_chunk_valid(chunk: VTTChunk):
         """Assert that a VTT chunk is valid."""

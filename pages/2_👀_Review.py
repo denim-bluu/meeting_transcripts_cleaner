@@ -147,7 +147,11 @@ if cleaned_transcript and "cleaned_chunks" in cleaned_transcript:
         st.markdown("**Processing Results by Chunk:**")
 
         for i, (chunk, review) in enumerate(
-            zip(cleaned_chunks, review_results, strict=False)
+            zip(
+                cleaned_transcript.get("cleaned_chunks", []),
+                cleaned_transcript.get("review_results", []),
+                strict=False,
+            )
         ):
             with st.expander(
                 f"Chunk {i+1} - Quality: {review.get('quality_score', 0):.2f} {'✅' if review.get('accept', False) else '⚠️'}"
@@ -202,6 +206,7 @@ if cleaned_transcript and "cleaned_chunks" in cleaned_transcript:
         st.markdown("**Summary of All Changes:**")
 
         all_changes = []
+        cleaned_chunks = cleaned_transcript.get("cleaned_chunks", [])
         for chunk in cleaned_chunks:
             all_changes.extend(chunk.get("changes_made", []))
 

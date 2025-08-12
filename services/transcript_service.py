@@ -4,19 +4,16 @@ import asyncio
 from collections.abc import Callable
 import json
 import time
+from typing import Any
 
 from asyncio_throttle.throttler import Throttler
 import structlog
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
+# Tenacity removed - Pydantic AI agents handle retries internally
 from config import Config
 from core.ai_agents import TranscriptCleaner, TranscriptReviewer
 from core.vtt_processor import VTTProcessor
+from models.agents import CleaningResult, ReviewResult
 from models.vtt import VTTChunk
 
 logger = structlog.get_logger(__name__)
@@ -111,14 +108,9 @@ class TranscriptService:
             "duration": duration,
         }
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type((Exception,)),
-    )
     async def _process_chunk_with_retry(
         self, chunk: VTTChunk, chunk_index: int, prev_text: str = ""
-    ) -> tuple[dict, dict]:
+    ) -> tuple[CleaningResult, ReviewResult]:
         """Process a single chunk with retry logic and rate limiting."""
         async with self.semaphore, self.throttler:
             start_time = time.time()
@@ -143,7 +135,7 @@ class TranscriptService:
 
                 # Review cleaning
                 review_result = await self.reviewer.review_chunk(
-                    chunk, clean_result["cleaned_text"]
+                    chunk, clean_result.cleaned_text
                 )
 
                 processing_time = time.time() - start_time
@@ -151,9 +143,9 @@ class TranscriptService:
                     "Chunk processed successfully",
                     chunk_id=chunk.chunk_id,
                     processing_time_ms=int(processing_time * 1000),
-                    confidence=clean_result.get("confidence", 0),
-                    quality_score=review_result.get("quality_score", 0),
-                    accepted=review_result.get("accept", False),
+                    confidence=clean_result.confidence,
+                    quality_score=review_result.quality_score,
+                    accepted=review_result.accept,
                 )
 
                 return clean_result, review_result
@@ -198,8 +190,10 @@ class TranscriptService:
         batch_size = (
             5  # Process 5 chunks at a time for balance between speed and context
         )
-        cleaned_chunks = [None] * total_chunks  # Pre-allocate for order preservation
-        review_results = [None] * total_chunks
+        cleaned_chunks: list[CleaningResult | None] = [
+            None
+        ] * total_chunks  # Pre-allocate for order preservation
+        review_results: list[ReviewResult | None] = [None] * total_chunks
 
         for batch_start in range(0, total_chunks, batch_size):
             batch_end = min(batch_start + batch_size, total_chunks)
@@ -217,10 +211,11 @@ class TranscriptService:
                 chunk_index = batch_start + i
                 # Get previous chunk context (sequential for quality)
                 prev_text = ""
-                if chunk_index > 0 and cleaned_chunks[chunk_index - 1]:
-                    prev_text = cleaned_chunks[chunk_index - 1]["cleaned_text"][
-                        -200:
-                    ]  # Last 200 chars
+                prev_chunk = (
+                    cleaned_chunks[chunk_index - 1] if chunk_index > 0 else None
+                )
+                if prev_chunk is not None:
+                    prev_text = prev_chunk.cleaned_text[-200:]  # Last 200 chars
 
                 task = self._process_chunk_with_retry(chunk, chunk_index, prev_text)
                 tasks.append((chunk_index, task))
@@ -247,19 +242,20 @@ class TranscriptService:
                             chunk_index=chunk_index,
                             error=str(result),
                         )
+
                         # Fallback to original text
-                        cleaned_chunks[chunk_index] = {
-                            "cleaned_text": chunks[chunk_index].to_transcript_text(),
-                            "confidence": 0.0,
-                            "changes_made": [f"Processing failed: {str(result)}"],
-                        }
-                        review_results[chunk_index] = {
-                            "quality_score": 0.0,
-                            "issues": [f"Processing error: {str(result)}"],
-                            "accept": False,
-                        }
+                        cleaned_chunks[chunk_index] = CleaningResult(
+                            cleaned_text=chunks[chunk_index].to_transcript_text(),
+                            confidence=0.0,
+                            changes_made=[f"Processing failed: {str(result)}"],
+                        )
+                        review_results[chunk_index] = ReviewResult(
+                            quality_score=0.0,
+                            issues=[f"Processing error: {str(result)}"],
+                            accept=False,
+                        )
                     else:
-                        clean_result, review_result = result
+                        clean_result, review_result = result  # type: ignore
                         cleaned_chunks[chunk_index] = clean_result
                         review_results[chunk_index] = review_result
 
@@ -271,17 +267,18 @@ class TranscriptService:
                     error=str(e),
                 )
                 # Fallback for entire batch
+
                 for chunk_index, _ in tasks:
-                    cleaned_chunks[chunk_index] = {
-                        "cleaned_text": chunks[chunk_index].to_transcript_text(),
-                        "confidence": 0.0,
-                        "changes_made": [f"Batch processing failed: {str(e)}"],
-                    }
-                    review_results[chunk_index] = {
-                        "quality_score": 0.0,
-                        "issues": [f"Batch error: {str(e)}"],
-                        "accept": False,
-                    }
+                    cleaned_chunks[chunk_index] = CleaningResult(
+                        cleaned_text=chunks[chunk_index].to_transcript_text(),
+                        confidence=0.0,
+                        changes_made=[f"Batch processing failed: {str(e)}"],
+                    )
+                    review_results[chunk_index] = ReviewResult(
+                        quality_score=0.0,
+                        issues=[f"Batch error: {str(e)}"],
+                        accept=False,
+                    )
 
         # Final progress update
         if progress_callback:
@@ -289,14 +286,14 @@ class TranscriptService:
 
         # Combine all cleaned text
         final_transcript = "\n\n".join(
-            chunk["cleaned_text"] for chunk in cleaned_chunks if chunk
+            chunk.cleaned_text for chunk in cleaned_chunks if chunk
         )
 
         processing_time = time.time() - start_time
 
         # Log final statistics
-        accepted_count = sum(1 for r in review_results if r and r.get("accept", False))
-        avg_quality = sum(r.get("quality_score", 0) for r in review_results if r) / len(
+        accepted_count = sum(1 for r in review_results if r and r.accept)
+        avg_quality = sum(r.quality_score for r in review_results if r) / len(
             review_results
         )
 
@@ -379,7 +376,7 @@ class TranscriptService:
         secs = seconds % 60
         return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
 
-    def _make_serializable(self, obj) -> dict:
+    def _make_serializable(self, obj: Any) -> Any:
         """Convert objects to serializable format for JSON export."""
         if isinstance(obj, dict):
             return {k: self._make_serializable(v) for k, v in obj.items()}
