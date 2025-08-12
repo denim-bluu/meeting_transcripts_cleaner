@@ -57,22 +57,22 @@ if cleaned_transcript and "review_results" in cleaned_transcript:
 
     # Calculate metrics
     total_chunks = len(cleaned_chunks)
-    accepted_count = sum(1 for r in review_results if r.get("accept", False))
+    accepted_count = sum(1 for r in review_results if r.accept)
     avg_quality = (
-        sum(r.get("quality_score", 0) for r in review_results) / len(review_results)
+        sum(r.quality_score for r in review_results) / len(review_results)
         if review_results
         else 0
     )
-    total_changes = sum(len(c.get("changes_made", [])) for c in cleaned_chunks)
+    total_changes = sum(len(c.changes_made) for c in cleaned_chunks)
 
     # Show metrics
     metrics = [
         ("Total Chunks", total_chunks, None),
-        ("Accepted", accepted_count, f"{accepted_count/total_chunks*100:.1f}%"),
+        ("Accepted", accepted_count, f"{accepted_count / total_chunks * 100:.1f}%"),
         (
             "Needs Review",
             total_chunks - accepted_count,
-            f"{(total_chunks-accepted_count)/total_chunks*100:.1f}%",
+            f"{(total_chunks - accepted_count) / total_chunks * 100:.1f}%",
         ),
         (
             "Avg Quality",
@@ -85,7 +85,7 @@ if cleaned_transcript and "review_results" in cleaned_transcript:
 
     # Quality distribution
     st.subheader("🎯 Quality Distribution")
-    quality_scores = [r.get("quality_score", 0) for r in review_results]
+    quality_scores = [r.quality_score for r in review_results]
     high_quality = sum(1 for score in quality_scores if score >= 0.8)
     medium_quality = sum(1 for score in quality_scores if 0.6 <= score < 0.8)
     low_quality = sum(1 for score in quality_scores if score < 0.6)
@@ -154,7 +154,7 @@ if cleaned_transcript and "cleaned_chunks" in cleaned_transcript:
             )
         ):
             with st.expander(
-                f"Chunk {i+1} - Quality: {review.get('quality_score', 0):.2f} {'✅' if review.get('accept', False) else '⚠️'}"
+                f"Chunk {i + 1} - Quality: {review.quality_score:.2f} {'✅' if review.accept else '⚠️'}"
             ):
                 col1, col2 = st.columns(2)
 
@@ -174,7 +174,7 @@ if cleaned_transcript and "cleaned_chunks" in cleaned_transcript:
 
                 with col2:
                     st.markdown("**Cleaned:**")
-                    cleaned_text = chunk.get("cleaned_text", "")
+                    cleaned_text = chunk.cleaned_text
                     st.text(
                         cleaned_text[:300] + "..."
                         if len(cleaned_text) > 300
@@ -182,14 +182,14 @@ if cleaned_transcript and "cleaned_chunks" in cleaned_transcript:
                     )
 
                 # Show changes and issues
-                if chunk.get("changes_made"):
+                if chunk.changes_made:
                     st.markdown("**Changes Made:**")
-                    for change in chunk["changes_made"]:
+                    for change in chunk.changes_made:
                         st.markdown(f"- {change}")
 
-                if review.get("issues"):
+                if review.issues:
                     st.markdown("**Issues Found:**")
-                    for issue in review["issues"]:
+                    for issue in review.issues:
                         st.markdown(f"- {issue}")
 
     with tabs[1]:  # Full Transcript
@@ -208,7 +208,7 @@ if cleaned_transcript and "cleaned_chunks" in cleaned_transcript:
         all_changes = []
         cleaned_chunks = cleaned_transcript.get("cleaned_chunks", [])
         for chunk in cleaned_chunks:
-            all_changes.extend(chunk.get("changes_made", []))
+            all_changes.extend(chunk.changes_made)
 
         if all_changes:
             # Count change types

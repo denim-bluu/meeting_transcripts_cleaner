@@ -231,7 +231,7 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
         # Show completion metrics using the result from processing_state
         cleaned_transcript = processing_state.get("result", {})
         review_results = cleaned_transcript.get("review_results", [])
-        accepted_count = sum(1 for r in review_results if r.get("accept", False))
+        accepted_count = sum(1 for r in review_results if r.accept)
 
         completion_metrics = [
             ("Total Chunks", len(cleaned_transcript.get("cleaned_chunks", [])), None),
@@ -239,7 +239,7 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
             ("Needs Review", len(review_results) - accepted_count, None),
             (
                 "Quality Score",
-                f"{sum(r.get('quality_score', 0) for r in review_results) / len(review_results):.2f}"
+                f"{sum(r.quality_score for r in review_results) / len(review_results):.2f}"
                 if review_results
                 else "N/A",
                 None,
@@ -315,12 +315,12 @@ if uploaded_file is not None:
         # Run async processing
         asyncio.run(process_document_with_status(uploaded_file))
 
-# Removed redundant processing overview - details available in expander above
 
+st.divider()
+st.subheader("📋 Current Transcript")
 # Show recent transcript if available
 if "transcript" in st.session_state and st.session_state.transcript:
     transcript = st.session_state.transcript
-    st.subheader("📋 Current Transcript")
 
     # Display transcript metrics
     current_metrics = [
@@ -337,6 +337,6 @@ if "transcript" in st.session_state and st.session_state.transcript:
 
     # Show VTT preview
     with st.expander("📝 Transcript Preview (First 3 Chunks)", expanded=False):
-        for i, chunk in enumerate(transcript["chunks"][:3]):
-            st.markdown(f"**Chunk {i+1}** ({chunk.token_count} tokens):")
+        for i, chunk in enumerate(transcript["chunks"][:5]):
+            st.markdown(f"**Chunk {i + 1}** ({chunk.token_count} tokens):")
             st.text(chunk.to_transcript_text()[:200] + "...")

@@ -9,7 +9,6 @@ from typing import Any
 from asyncio_throttle.throttler import Throttler
 import structlog
 
-# Tenacity removed - Pydantic AI agents handle retries internally
 from config import Config
 from core.ai_agents import TranscriptCleaner, TranscriptReviewer
 from core.vtt_processor import VTTProcessor
@@ -22,14 +21,14 @@ logger = structlog.get_logger(__name__)
 class TranscriptService:
     """Orchestrate the complete VTT processing pipeline with concurrent processing and rate limiting."""
 
-    def __init__(self, api_key: str, max_concurrent: int = 3, rate_limit: int = 20):
+    def __init__(self, api_key: str, max_concurrent: int = 30, rate_limit: int = 300):
         """
         Initialize transcript service with concurrency and rate limiting.
 
         Args:
             api_key: OpenAI API key
-            max_concurrent: Maximum concurrent API calls (default: 3 for safety)
-            rate_limit: Maximum requests per minute (default: 20 for tier 1)
+            max_concurrent: Maximum concurrent API calls (default: 30 for high throughput)
+            rate_limit: Maximum requests per minute (default: 300 for Tier 2-3 usage)
         """
         self.processor = VTTProcessor()
         self.cleaner = TranscriptCleaner(api_key, Config.CLEANING_MODEL)
@@ -69,10 +68,11 @@ class TranscriptService:
             else content,
         )
 
+
         entries = self.processor.parse_vtt(content)
         chunks = self.processor.create_chunks(entries)
 
-        speakers = list(set(e.speaker for e in entries))
+        speakers = list({e.speaker for e in entries})
         duration = max(e.end_time for e in entries) if entries else 0
 
         processing_time = time.time() - start_time
@@ -108,13 +108,13 @@ class TranscriptService:
             "duration": duration,
         }
 
-    async def _process_chunk_with_retry(
+    async def _process_chunk_with_concurrency_control(
         self, chunk: VTTChunk, chunk_index: int, prev_text: str = ""
     ) -> tuple[CleaningResult, ReviewResult]:
-        """Process a single chunk with retry logic and rate limiting."""
+        """Process a single chunk with concurrency control and rate limiting. Retries are handled by Pydantic AI agents."""
         async with self.semaphore, self.throttler:
             start_time = time.time()
-            chunk_speakers = list(set(entry.speaker for entry in chunk.entries))
+            chunk_speakers = list({entry.speaker for entry in chunk.entries})
 
             logger.info(
                 "Processing chunk with concurrency control",
@@ -187,8 +187,8 @@ class TranscriptService:
         start_time = time.time()
 
         # Process chunks concurrently in batches to maintain context flow
-        batch_size = (
-            5  # Process 5 chunks at a time for balance between speed and context
+        batch_size = min(
+            30, total_chunks  # Process up to 30 chunks at a time or all chunks if fewer
         )
         cleaned_chunks: list[CleaningResult | None] = [
             None
@@ -202,7 +202,7 @@ class TranscriptService:
             if progress_callback:
                 progress = batch_start / total_chunks
                 progress_callback(
-                    progress, f"Processing batch {batch_start//batch_size + 1}"
+                    progress, f"Processing batch {batch_start // batch_size + 1}"
                 )
             # Create tasks for concurrent processing
             tasks: list[
@@ -223,7 +223,7 @@ class TranscriptService:
                 # Explicitly create an asyncio.Task so we can add type hints
                 task: asyncio.Task[tuple[CleaningResult, ReviewResult]] = (
                     asyncio.create_task(
-                        self._process_chunk_with_retry(chunk, chunk_index, prev_text)
+                        self._process_chunk_with_concurrency_control(chunk, chunk_index, prev_text)
                     )
                 )
 
@@ -231,7 +231,7 @@ class TranscriptService:
 
             # Execute batch concurrently using asyncio.gather
             logger.debug(
-                f"Executing batch {batch_start//batch_size + 1} with {len(tasks)} chunks"
+                f"Executing batch {batch_start // batch_size + 1} with {len(tasks)} chunks"
             )
 
             # Extract just the tasks for concurrent execution
@@ -302,16 +302,22 @@ class TranscriptService:
 
         # Log final statistics
         accepted_count = sum(1 for r in review_results if r and r.accept)
-        avg_quality = sum(r.quality_score for r in review_results if r) / len(
-            review_results
+        avg_quality = (
+            sum(r.quality_score for r in review_results if r) / len(review_results)
+            if review_results
+            else 0.0
         )
 
         logger.info(
             "Transcript processing completed",
             processing_time_seconds=round(processing_time, 2),
-            chunks_per_second=round(total_chunks / processing_time, 2),
+            chunks_per_second=round(total_chunks / processing_time, 2)
+            if processing_time > 0
+            else 0.0,
             accepted_chunks=accepted_count,
-            acceptance_rate=f"{accepted_count/total_chunks*100:.1f}%",
+            acceptance_rate=f"{accepted_count / total_chunks * 100:.1f}%"
+            if total_chunks > 0
+            else "0.0%",
             average_quality_score=round(avg_quality, 3),
         )
 

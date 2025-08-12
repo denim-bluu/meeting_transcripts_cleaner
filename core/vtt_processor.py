@@ -1,5 +1,3 @@
-"""Simple VTT processor for parsing and chunking."""
-
 import re
 import time
 
@@ -39,7 +37,9 @@ class VTTProcessor:
         )
 
         entries: list[VTTEntry] = []
-        blocks = content.strip().split("\n\n")
+        # Normalize line endings to handle both Unix (\n) and Windows (\r\n) formats
+        normalized_content = content.replace('\r\n', '\n').replace('\r', '\n')
+        blocks = normalized_content.strip().split("\n\n")
 
         logger.debug(
             "VTT content split into blocks",
@@ -47,6 +47,14 @@ class VTTProcessor:
             processing_blocks=len(
                 [b for b in blocks if b.strip() and "WEBVTT" not in b]
             ),
+        )
+
+        # Debug: Show first few blocks for troubleshooting
+        logger.debug(
+            "First few blocks for debugging",
+            first_block=blocks[0][:100] if blocks else "No blocks",
+            second_block=blocks[1][:100] if len(blocks) > 1 else "No second block",
+            third_block=blocks[2][:100] if len(blocks) > 2 else "No third block",
         )
 
         skipped_blocks = 0
@@ -60,7 +68,7 @@ class VTTProcessor:
                 continue
 
             lines = block.strip().split("\n")
-            if len(lines) < 3:
+            if len(lines) < 2:
                 skipped_blocks += 1
                 logger.debug(
                     "Skipping malformed block",
@@ -70,17 +78,38 @@ class VTTProcessor:
                 )
                 continue
 
-            cue_id = lines[0]
+            # Determine if first line is cue_id or timestamp
+            # Check if first line looks like a timestamp
+            timestamp_match = re.search(self.TIMESTAMP_PATTERN, lines[0])
+            if timestamp_match:
+                # No cue_id, first line is timestamp
+                cue_id = f"cue_{block_idx}"
+                timestamp_line = lines[0]
+                text_lines = lines[1:]
+            else:
+                # First line is cue_id, second line is timestamp
+                if len(lines) < 3:
+                    skipped_blocks += 1
+                    logger.debug(
+                        "Skipping block with cue_id but insufficient lines",
+                        block_index=block_idx,
+                        lines_count=len(lines),
+                        block_content=block[:50],
+                    )
+                    continue
+                cue_id = lines[0]
+                timestamp_line = lines[1]
+                text_lines = lines[2:]
 
             # Parse timestamps
-            timestamp_match = re.search(self.TIMESTAMP_PATTERN, lines[1])
+            timestamp_match = re.search(self.TIMESTAMP_PATTERN, timestamp_line)
             if not timestamp_match:
                 invalid_timestamp_blocks += 1
                 logger.warning(
                     "Invalid timestamp format in block",
                     block_index=block_idx,
-                    timestamp_line=lines[1],
-                    cue_id=lines[0],
+                    timestamp_line=timestamp_line,
+                    cue_id=cue_id,
                 )
                 continue
 
@@ -101,7 +130,7 @@ class VTTProcessor:
 
             # Parse speaker and text (may be multi-line)
             text_lines = lines[2:]
-            full_text = " ".join(text_lines)
+            full_text = ' '.join(text_lines)
 
             speaker_match = re.search(self.SPEAKER_PATTERN, full_text)
             if speaker_match:
