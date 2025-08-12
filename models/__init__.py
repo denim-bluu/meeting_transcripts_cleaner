@@ -1,19 +1,8 @@
-"""Models package for Meeting Transcript Cleaner."""
+"""Simple VTT models package for Meeting Transcript Cleaner."""
 
-from .schemas import (
-    CleaningResult,
-    DocumentSegment,
-    ProcessingStatus,
-    ReviewDecision,
-    SegmentCategory,
-    TranscriptDocument,
-)
+from .vtt import VTTEntry, VTTChunk
 
 __all__ = [
-    "CleaningResult",
-    "DocumentSegment",
-    "ProcessingStatus",
-    "ReviewDecision",
-    "SegmentCategory",
-    "TranscriptDocument",
+    "VTTEntry",
+    "VTTChunk",
 ]

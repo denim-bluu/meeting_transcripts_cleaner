@@ -1,232 +1,462 @@
-# VTT-Native Transcript Processing Implementation Plan
+# Simplified VTT Processing Implementation Plan
 
 ## Task Tracker
 | Task | Owner | Status |
 |------|-------|--------|
-| Create VTT data models | Sonnet | Pending |
-| Implement VTT parser | Sonnet | Pending |
-| Build conversation chunker | Sonnet | Pending |
-| Create context builder | Sonnet | Pending |
-| Update cleaning agent | Sonnet | Pending |
-| Update review agent | Sonnet | Pending |
-| Refactor transcript service | Sonnet | Pending |
-| Update Streamlit UI | Sonnet | Pending |
-| Remove obsolete code | Sonnet | Pending |
-| Test with real VTT files | Sonnet | Pending |
+| Delete all over-engineered VTT files | Sonnet | ✅ Done |
+| Create simple VTT parser | Sonnet | ✅ Done |
+| Create token-based chunker | Sonnet | ✅ Done |
+| Create AI cleaning agent | Sonnet | ✅ Done |
+| Create AI review agent | Sonnet | ✅ Done |
+| Create unified transcript service | Sonnet | ✅ Done |
+| Update UI for simplified flow | Sonnet | ✅ Done |
+| Remove complex configurations | Sonnet | ✅ Done |
+| Test with quarterly_review_meeting.vtt | Sonnet | ✅ Done |
+| Fix API key configuration | Sonnet | ✅ Done |
+| Validate all acceptance criteria | Sonnet | ✅ Done |
 
 ## Implementation Plan
 
 ### 1. High-Level Overview
-Replace the current dual-mode text/VTT processing system with a VTT-native architecture that preserves speaker attribution and temporal metadata throughout the pipeline. The system will chunk transcripts by natural speaker turns instead of arbitrary token counts, provide 2000+ token context windows to AI agents instead of 100 characters, and achieve 10x performance improvement by eliminating conversational chaos that confuses AI models.
+Replace the over-engineered 4-layer architecture with a simple 2-layer approach: Parse VTT directly into entries, then chunk by token count. No ConversationTurns, no ProcessingSegments, no EnrichedContext. Process chunks with AI agents using simple previous/next text for context. Target: <1000 lines total code, <2 sec per chunk processing.
 
 ### 2. Detailed Steps
 
-#### Phase 1: Data Models & Parser
-- [ ] Create `models/vtt_models.py` with VTTEntry, ConversationTurn, ProcessingSegment, EnrichedContext dataclasses
-- [ ] Create `core/vtt_parser.py` to parse VTT format into List[VTTEntry] preserving cue_id, timestamps, speaker, text
-- [ ] Test parser with `examples/files/quarterly_review_meeting.vtt` (1,308 entries, 348 speaker turns expected)
-
-#### Phase 2: Conversation Chunking
-- [ ] Create `core/conversation_chunker.py` to group VTT entries by speaker turns (consecutive same-speaker entries)
-- [ ] Implement merge_to_segments() to combine turns into ~500 token ProcessingSegments
-- [ ] Validate creates 35-40 segments from quarterly_review_meeting.vtt (not 52 as current system)
-
-#### Phase 3: Context Builder
-- [ ] Create `core/context_builder.py` to assemble EnrichedContext with 2-3 previous/next segments
-- [ ] Include speaker history, temporal position (0.0-1.0), all speakers list
-- [ ] Ensure minimum 2000 tokens context (vs current 100 chars)
-
-#### Phase 4: Agent Updates
-- [ ] Update `core/cleaning_agent.py` clean_segment() signature: `async def clean_segment(self, context: EnrichedContext) -> CleaningResult`
-- [ ] Replace cleaning prompt to include: current_speaker, meeting_progress, num_speakers, previous_speakers
-- [ ] Update `core/review_agent.py` review_segment() signature: `async def review_segment(self, context: EnrichedContext, cleaning_result: CleaningResult) -> ReviewResult`
-- [ ] Add speaker consistency validation to review criteria (check speaker names preserved, transitions natural)
-- [ ] Both agents must log context.current_segment.turns to verify speaker awareness
-
-#### Phase 5: Service Integration
-- [ ] `services/transcript_service.py` Line 63-64: DELETE parse_vtt_content() call and _vtt_mode flag
-- [ ] Line 68: Add `vtt_entries = self.vtt_parser.parse(content)`
-- [ ] Line 69: Add `turns = self.conversation_chunker.chunk_by_speaker_turns(vtt_entries)`
-- [ ] Line 70: Add `segments = self.conversation_chunker.merge_to_segments(turns, 500)`
-- [ ] Line 195-200: Replace context dict with `context = self.context_builder.build_context(index, document.processing_segments)`
-- [ ] Line 196: Change agent call to `await self.cleaning_agent.clean_segment(context)`
-- [ ] Update parallel processing to pass ProcessingSegment not DocumentSegment
-- [ ] Store results by segment.id for proper reassembly
-
-#### Phase 6: UI Updates
-- [ ] `pages/1_📤_Upload_Process.py` Line 43: Change to show `{len(turns)} speaker turns → {len(segments)} segments`
-- [ ] Line 165: Update progress to show `Processing turn {current_turn}/{total_turns}`
-- [ ] Line 210-220: Display with `st.markdown(f"**{turn.speaker}** ({turn.start_time:.1f}s): {text}")`
-- [ ] `streamlit_app.py`: Add speaker metrics (total speakers, total turns, duration)
-- [ ] Create `components/speaker_display.py` with display_speaker_timeline() and display_speaker_stats()
-- [ ] Add export buttons for VTT, text with speakers, JSON formats
-
-#### Phase 7: Cleanup
-- [ ] Remove all DocumentProcessor text processing methods
-- [ ] Delete overlap management code
-- [ ] Remove _vtt_mode flag and special cases
-- [ ] Delete DocumentSegment model (replaced by ProcessingSegment)
+- [ ] **Delete all existing VTT modules** - Remove core/context_builder.py, core/conversation_chunker.py, core/vtt_parser.py, core/vtt_cleaning_agent.py, core/vtt_review_agent.py, models/vtt_models.py, models/vtt_document.py, services/vtt_transcript_service.py
+- [ ] **Create models/vtt.py** - Simple dataclasses for VTTEntry and VTTChunk
+- [ ] **Create core/vtt_processor.py** - Parser using regex, chunker using token counting
+- [ ] **Create core/ai_agents.py** - TranscriptCleaner and TranscriptReviewer with structured prompts
+- [ ] **Create services/transcript_service.py** - Orchestration with progress tracking
+- [ ] **Update pages/1_📤_Upload_Process.py** - Use new TranscriptService
+- [ ] **Remove complex configs** - Delete overlap, context_window, preserve_sentences settings
+- [ ] **Test end-to-end** - Validate with quarterly_review_meeting.vtt
 
 ### 3. Code Stubs / Public Interfaces
 
 ```python
-# models/vtt_models.py
+# models/vtt.py
+from dataclasses import dataclass
+from typing import List
+
 @dataclass
 class VTTEntry:
-    """Atomic unit of VTT transcript - represents single speaker utterance with timing."""
-    cue_id: str
-    start_time: float  # seconds
-    end_time: float
-    speaker: str
-    text: str
+    """Single VTT cue exactly as it appears in the file."""
+    cue_id: str          # e.g., "d700e97e-1c7f-4753-9597-54e5e43b4642/18-0"
+    start_time: float    # seconds from 00:00:00.000
+    end_time: float      # seconds from 00:00:00.000
+    speaker: str         # e.g., "Rian Campbell"
+    text: str           # e.g., "OK. Yeah."
 
 @dataclass
-class ConversationTurn:
-    """Natural conversation boundary - consecutive entries from same speaker."""
-    speaker: str
+class VTTChunk:
+    """Group of VTT entries chunked by token count for AI processing."""
+    chunk_id: int        # Sequential: 0, 1, 2...
     entries: List[VTTEntry]
-    start_time: float
-    end_time: float
+    token_count: int     # Approximate tokens (len(text) / 4)
     
-@dataclass
-class ProcessingSegment:
-    """Unit of work for AI agents - contains multiple turns up to token limit."""
-    id: str
-    turns: List[ConversationTurn]
-    token_count: int
-    sequence_number: int
+    def to_transcript_text(self) -> str:
+        """Format entries as 'Speaker: text' for AI processing."""
+        lines = []
+        for entry in self.entries:
+            lines.append(f"{entry.speaker}: {entry.text}")
+        return "\n".join(lines)
+
+# core/vtt_processor.py
+import re
+from typing import List
+from models.vtt import VTTEntry, VTTChunk
+
+class VTTProcessor:
+    """Parse VTT files and create token-based chunks."""
     
-@dataclass
-class EnrichedContext:
-    """Full conversation context provided to AI agents for processing."""
-    current_segment: ProcessingSegment
-    previous_segments: List[ProcessingSegment]  # 2-3
-    next_segments: List[ProcessingSegment]      # 2-3
-    all_speakers: List[str]
-    meeting_progress: float  # 0.0 to 1.0
-
-# core/vtt_parser.py
-class VTTParser:
-    def parse(self, content: str) -> List[VTTEntry]:
-        """Parse raw VTT content into structured entries preserving all metadata."""
-
-# core/conversation_chunker.py
-class ConversationChunker:
-    def chunk_by_speaker_turns(self, entries: List[VTTEntry]) -> List[ConversationTurn]:
-        """Group consecutive same-speaker entries into natural conversation turns."""
+    # Regex patterns for VTT parsing
+    TIMESTAMP_PATTERN = r'(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s+-->\s+(\d{2}):(\d{2}):(\d{2})\.(\d{3})'
+    SPEAKER_PATTERN = r'<v\s+([^>]+)>(.*?)</v>'
     
-    def merge_to_segments(self, turns: List[ConversationTurn], target_tokens: int = 500) -> List[ProcessingSegment]:
-        """Merge turns into processing segments respecting token limits."""
-
-# core/context_builder.py
-class ContextBuilder:
-    def build_context(self, segment_index: int, all_segments: List[ProcessingSegment]) -> EnrichedContext:
-        """Assemble rich context with adjacent segments and conversation metadata."""
-
-# core/cleaning_agent.py
-class CleaningAgent:
-    async def clean_segment(self, context: EnrichedContext) -> CleaningResult:
-        """Clean transcript segment with full conversation awareness."""
-
-# core/review_agent.py
-class ReviewAgent:
-    async def review_segment(self, context: EnrichedContext, cleaning_result: CleaningResult) -> ReviewResult:
-        """Review cleaned segment with conversation flow understanding."""
-```
-
-### 4. Configuration & Session Changes
-
-**Configuration Updates (config.py)**:
-```python
-# REMOVE these settings
-- max_section_tokens = 500  # Replaced by target_tokens in chunker
-- token_overlap = 50  # No more overlaps
-- preserve_sentence_boundaries = True  # Natural turns handle this
-
-# ADD these settings
-+ target_segment_tokens = 500  # Target size for ProcessingSegments
-+ min_context_tokens = 2000  # Minimum context for agents
-+ max_turns_per_segment = 10  # Prevent too many speaker switches
-```
-
-**Session State Schema (streamlit_app.py)**:
-```python
-# Initialize session state with new structure
-if "vtt_document" not in st.session_state:
-    st.session_state.vtt_document = None
-    st.session_state.vtt_entries = []
-    st.session_state.conversation_turns = []
-    st.session_state.processing_segments = []
-    st.session_state.speakers = []
-    st.session_state.cleaning_results = {}
-    st.session_state.review_results = {}
-```
-
-### 5. Cleanup Actions
-
-**Files to modify/remove methods from:**
-- `core/document_processor.py`: DELETE parse_vtt_content(), create_segments_with_sentences(), split_into_sentences(), _get_overlap_text(), _create_segment()
-- `services/transcript_service.py`: DELETE lines 63-64 (parse_vtt_content call and _vtt_mode flag)
-- `models/schemas.py`: DELETE DocumentSegment class after migrating to ProcessingSegment
-
-**Flags/modes to remove:**
-- `_vtt_mode` flag throughout codebase
-- `overlap_tokens` configuration and logic
-- `preserve_sentences` configuration (natural turns replace this)
-
-**Test files to update:**
-- Update all tests expecting DocumentSegment to use ProcessingSegment
-- Remove tests for overlap functionality
-- Add tests for speaker turn preservation
-
-### 5. Critical Testing Points
-
-**VTT Parser Validation**:
-```python
-# Test with quarterly_review_meeting.vtt
-assert len(vtt_entries) == 1308
-assert sum(1 for e in vtt_entries if e.speaker == "Meixler, Nathaniel") == 955
-assert all(e.start_time < e.end_time for e in vtt_entries)
-```
-
-**Chunking Validation**:
-```python
-# Natural boundaries test
-turns = chunker.chunk_by_speaker_turns(vtt_entries)
-assert 340 <= len(turns) <= 360  # Expected ~348
-segments = chunker.merge_to_segments(turns, 500)
-assert 35 <= len(segments) <= 40  # Not 52 like current system
-```
-
-**Context Size Validation**:
-```python
-# In clean_segment(), add logging
-logger.info(f"Context tokens: {len(tokenizer.encode(str(context)))}")
-assert len(tokenizer.encode(str(context))) >= 2000  # Must be 2000+ tokens
-```
-
-**Export Functionality**:
-```python
-# utils/export.py - Must support three formats
-def export_as_vtt(document: VTTDocument) -> str:
-    """WEBVTT\n\n{cue_id}\n{start} --> {end}\n<v {speaker}>{cleaned_text}</v>"""
+    def parse_vtt(self, content: str) -> List[VTTEntry]:
+        """
+        Parse VTT content into entries.
+        
+        Algorithm:
+        1. Split by double newline to get cue blocks
+        2. For each block: extract cue_id, timestamps, speaker, text
+        3. Handle multi-line text within <v> tags
+        4. Convert timestamps to seconds
+        """
+        entries = []
+        blocks = content.strip().split('\n\n')
+        
+        for block in blocks:
+            if 'WEBVTT' in block or not block.strip():
+                continue
+                
+            lines = block.strip().split('\n')
+            if len(lines) < 3:
+                continue
+                
+            # Line 0: cue_id
+            # Line 1: timestamps
+            # Line 2+: speaker and text
+            
+            # Parse and return entries
+        return entries
     
-def export_with_speakers(document: VTTDocument) -> str:
-    """Speaker: text\n\nSpeaker2: text"""
+    def create_chunks(self, entries: List[VTTEntry], target_tokens: int = 500) -> List[VTTChunk]:
+        """
+        Group entries into chunks by token count.
+        
+        Algorithm:
+        1. Iterate through entries
+        2. Add to current chunk until target_tokens reached
+        3. Create new chunk when limit exceeded
+        4. Never split an entry across chunks
+        
+        Token estimation: character_count / 4
+        """
+        chunks = []
+        current_chunk_entries = []
+        current_tokens = 0
+        chunk_id = 0
+        
+        for entry in entries:
+            entry_tokens = len(entry.text) / 4
+            
+            if current_tokens + entry_tokens > target_tokens and current_chunk_entries:
+                # Save current chunk
+                chunks.append(VTTChunk(
+                    chunk_id=chunk_id,
+                    entries=current_chunk_entries.copy(),
+                    token_count=int(current_tokens)
+                ))
+                chunk_id += 1
+                current_chunk_entries = []
+                current_tokens = 0
+            
+            current_chunk_entries.append(entry)
+            current_tokens += entry_tokens
+        
+        # Don't forget last chunk
+        if current_chunk_entries:
+            chunks.append(VTTChunk(
+                chunk_id=chunk_id,
+                entries=current_chunk_entries,
+                token_count=int(current_tokens)
+            ))
+        
+        return chunks
+
+# core/ai_agents.py
+import asyncio
+from typing import Dict, Optional
+from openai import AsyncOpenAI
+from models.vtt import VTTChunk
+
+class TranscriptCleaner:
+    """Clean transcript chunks using OpenAI API."""
     
-def export_as_json(document: VTTDocument) -> dict:
-    """{"speakers": [...], "turns": [...], "segments": [...]}"""
+    def __init__(self, api_key: str, model: str = "gpt-4"):
+        self.client = AsyncOpenAI(api_key=api_key)
+        self.model = model
+    
+    async def clean_chunk(self, chunk: VTTChunk, prev_text: str = "") -> Dict:
+        """
+        Clean a single chunk with minimal context.
+        
+        Returns:
+        {
+            "cleaned_text": str,  # Cleaned version maintaining speakers
+            "confidence": float,  # 0.0 to 1.0
+            "changes_made": List[str]  # What was fixed
+        }
+        
+        Prompt template:
+        - Role: You are a transcript editor
+        - Task: Clean up speech-to-text errors
+        - Rules: Preserve speaker labels, fix grammar, remove filler words
+        - Context: Previous chunk ending (last 100 chars)
+        - Input: Current chunk text
+        - Output: JSON with cleaned_text, confidence, changes_made
+        """
+        context = prev_text[-200:] if prev_text else ""
+        
+        prompt = f"""Clean this meeting transcript chunk. Preserve all speaker names exactly.
+
+Previous context: ...{context}
+
+Current chunk:
+{chunk.to_transcript_text()}
+
+Fix grammar, remove filler words (um, uh), but keep the conversational tone.
+Return JSON with: cleaned_text, confidence (0-1), changes_made (list)."""
+
+        # Call OpenAI and parse response
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "system", "content": "You are a transcript editor."},
+                     {"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        
+        # Parse and return JSON response
+
+class TranscriptReviewer:
+    """Review cleaned transcripts for quality."""
+    
+    def __init__(self, api_key: str, model: str = "gpt-4"):
+        self.client = AsyncOpenAI(api_key=api_key)
+        self.model = model
+    
+    async def review_chunk(self, original: VTTChunk, cleaned: str) -> Dict:
+        """
+        Review cleaned text quality.
+        
+        Returns:
+        {
+            "quality_score": float,  # 0.0 to 1.0
+            "issues": List[str],     # Problems found
+            "accept": bool           # Whether to accept cleaning
+        }
+        
+        Prompt focuses on:
+        - Speaker preservation
+        - Meaning preservation
+        - Grammar correctness
+        - Natural flow
+        """
+        prompt = f"""Review this transcript cleaning quality.
+
+Original:
+{original.to_transcript_text()}
+
+Cleaned:
+{cleaned}
+
+Check: speaker names preserved, meaning intact, grammar fixed, flows naturally.
+Return JSON with: quality_score (0-1), issues (list), accept (boolean)."""
+
+        # Call OpenAI and parse response
+
+# services/transcript_service.py
+from typing import Dict, List, Optional, Callable
+from models.vtt import VTTEntry, VTTChunk
+from core.vtt_processor import VTTProcessor
+from core.ai_agents import TranscriptCleaner, TranscriptReviewer
+
+class TranscriptService:
+    """Orchestrate the complete VTT processing pipeline."""
+    
+    def __init__(self, api_key: str):
+        self.processor = VTTProcessor()
+        self.cleaner = TranscriptCleaner(api_key)
+        self.reviewer = TranscriptReviewer(api_key)
+        
+    def process_vtt(self, content: str) -> Dict:
+        """
+        Parse and chunk VTT file.
+        
+        Returns:
+        {
+            "entries": List[VTTEntry],  # All 1308 entries
+            "chunks": List[VTTChunk],   # ~40 chunks
+            "speakers": List[str],      # Unique speakers
+            "duration": float           # Total seconds
+        }
+        """
+        entries = self.processor.parse_vtt(content)
+        chunks = self.processor.create_chunks(entries)
+        
+        speakers = list(set(e.speaker for e in entries))
+        duration = max(e.end_time for e in entries) if entries else 0
+        
+        return {
+            "entries": entries,
+            "chunks": chunks,
+            "speakers": sorted(speakers),
+            "duration": duration
+        }
+    
+    async def clean_transcript(
+        self, 
+        transcript: Dict,
+        progress_callback: Optional[Callable[[float, str], None]] = None
+    ) -> Dict:
+        """
+        Run AI cleaning and review on all chunks.
+        
+        Args:
+            transcript: Output from process_vtt()
+            progress_callback: Called with (progress_pct, status_msg)
+        
+        Returns transcript with added:
+        {
+            ...existing fields...,
+            "cleaned_chunks": List[Dict],  # Cleaning results per chunk
+            "review_results": List[Dict],  # Review results per chunk
+            "final_transcript": str        # Complete cleaned text
+        }
+        """
+        chunks = transcript["chunks"]
+        cleaned_chunks = []
+        review_results = []
+        
+        for i, chunk in enumerate(chunks):
+            if progress_callback:
+                progress_callback(i / len(chunks), f"Cleaning chunk {i+1}/{len(chunks)}")
+            
+            # Get previous chunk text for context
+            prev_text = cleaned_chunks[-1]["cleaned_text"] if cleaned_chunks else ""
+            
+            # Clean chunk
+            clean_result = await self.cleaner.clean_chunk(chunk, prev_text)
+            cleaned_chunks.append(clean_result)
+            
+            # Review cleaning
+            review_result = await self.reviewer.review_chunk(chunk, clean_result["cleaned_text"])
+            review_results.append(review_result)
+        
+        # Combine all cleaned text
+        final_transcript = "\n\n".join(c["cleaned_text"] for c in cleaned_chunks)
+        
+        transcript["cleaned_chunks"] = cleaned_chunks
+        transcript["review_results"] = review_results
+        transcript["final_transcript"] = final_transcript
+        
+        return transcript
+    
+    def export(self, transcript: Dict, format: str) -> str:
+        """
+        Export cleaned transcript in requested format.
+        
+        Formats:
+        - "vtt": WEBVTT with cleaned text, preserving timestamps
+        - "txt": Simple text with "Speaker: text" format
+        - "json": Complete data structure
+        
+        For VTT: Reconstruct using original timestamps but cleaned text
+        For TXT: Simple concatenation of cleaned chunks
+        For JSON: Return full transcript dict as JSON string
+        """
+        if format == "vtt":
+            # Reconstruct VTT with cleaned text
+            lines = ["WEBVTT", ""]
+            # Map cleaned text back to entries and format
+            
+        elif format == "txt":
+            return transcript.get("final_transcript", "")
+            
+        elif format == "json":
+            import json
+            return json.dumps(transcript, indent=2, default=str)
+
+# pages/1_📤_Upload_Process.py updates needed:
+"""
+1. Import new TranscriptService instead of old VTTTranscriptService
+2. Replace complex document processing with simple:
+   - service = TranscriptService(api_key)
+   - transcript = service.process_vtt(content)
+   - await service.clean_transcript(transcript, progress_callback)
+3. Update progress display to show chunk-based progress
+4. Simplify metrics display (just chunks, speakers, duration)
+5. Add export buttons calling service.export(transcript, format)
+"""
 ```
+
+### 4. Cleanup Actions
+
+**Delete these files entirely:**
+- `core/context_builder.py`
+- `core/conversation_chunker.py` 
+- `core/vtt_parser.py`
+- `core/vtt_cleaning_agent.py`
+- `core/vtt_review_agent.py`
+- `models/vtt_models.py`
+- `models/vtt_document.py`
+- `services/vtt_transcript_service.py`
+- `test_vtt_pipeline.py`
+- `test_ai_processing.py`
+
+**Remove from config files:**
+- In `config.py`: Remove token_overlap, preserve_sentence_boundaries, context_window_size
+- In `utils/config_manager.py`: Remove all overlap calculation logic
+- In `pages/3_⚙️_Settings.py`: Remove UI controls for above settings
+
+### 5. Critical Implementation Details
+
+**VTT Parsing Algorithm:**
+```python
+def parse_vtt(self, content: str) -> List[VTTEntry]:
+    entries = []
+    blocks = content.strip().split('\n\n')
+    
+    for block in blocks:
+        if 'WEBVTT' in block or not block.strip():
+            continue
+        
+        lines = block.strip().split('\n')
+        if len(lines) < 3:
+            continue
+            
+        cue_id = lines[0]
+        
+        # Parse timestamps
+        timestamp_match = re.search(self.TIMESTAMP_PATTERN, lines[1])
+        if not timestamp_match:
+            continue
+        
+        # Convert to seconds
+        start_time = int(timestamp_match.group(1)) * 3600 + \
+                    int(timestamp_match.group(2)) * 60 + \
+                    int(timestamp_match.group(3)) + \
+                    int(timestamp_match.group(4)) / 1000
+        
+        end_time = int(timestamp_match.group(5)) * 3600 + \
+                  int(timestamp_match.group(6)) * 60 + \
+                  int(timestamp_match.group(7)) + \
+                  int(timestamp_match.group(8)) / 1000
+        
+        # Parse speaker and text (may be multi-line)
+        text_lines = lines[2:]
+        full_text = ' '.join(text_lines)
+        
+        speaker_match = re.search(self.SPEAKER_PATTERN, full_text)
+        if speaker_match:
+            speaker = speaker_match.group(1).strip()
+            text = speaker_match.group(2).strip()
+            
+            entries.append(VTTEntry(
+                cue_id=cue_id,
+                start_time=start_time,
+                end_time=end_time,
+                speaker=speaker,
+                text=text
+            ))
+    
+    return entries
+```
+
+**Token Counting:**
+- Use simple approximation: 1 token ≈ 4 characters
+- `token_count = len(text) / 4`
+
+**Progress Tracking:**
+- Call progress_callback with (percentage, message)
+- Percentage: current_chunk / total_chunks
+- Message: "Cleaning chunk X of Y"
+
+**Error Handling:**
+- Wrap all API calls in try/except
+- On error, store error in result dict and continue
+- Never fail entire pipeline for one chunk
 
 ### 6. Acceptance Criteria
 
-1. **Parser correctness**: quarterly_review_meeting.vtt parses to exactly 1,308 VTT entries with speaker "Meixler, Nathaniel" appearing 955 times
-2. **Natural chunking**: Same file produces 35-40 ProcessingSegments (not 52) with average 3-5 speaker switches per segment (not 27)
-3. **Context size**: Every AI agent call receives minimum 2000 tokens of context (verified via logging)
-4. **Performance**: 95% of segments process in <5 seconds (current: 30s average, 74s max)
-5. **No empty responses**: Zero "Received empty model response" errors in logs
-6. **Speaker preservation**: Final output maintains all speaker labels and can be exported as valid VTT
-7. **UI displays**: Speaker list, turn counts, and progress by conversation turns visible in Streamlit
-8. **Code reduction**: Net removal of 200+ lines of overlap/mode management code
-9. **Test coverage**: All existing tests pass with new models, no dangling references to removed code
-10. **Real file validation**: Successfully processes VTT exports from Teams, Zoom, and included example files
+1. **Parse correctly**: 1,308 entries from quarterly_review_meeting.vtt, "Nathaniel Meixler" in 955 entries
+2. **Simple chunks**: 35-45 chunks of ~500 tokens each
+3. **Fast processing**: <2 seconds per chunk (with API calls)
+4. **Small codebase**: <1000 lines total across all new files
+5. **No abstraction layers**: Only VTTEntry → VTTChunk
+6. **AI integration**: Both cleaning and review return valid JSON
+7. **Progress tracking**: UI shows real-time progress
+8. **Export works**: All three formats (VTT, TXT, JSON) produce valid output
+9. **No old references**: Zero imports of deleted modules
+10. **Error resilient**: One chunk failure doesn't stop pipeline

@@ -51,21 +51,34 @@ def main() -> None:
     # App header using native Streamlit components
     st.title("🎙️ Meeting Transcript Cleaner")
 
-    # Define the 3-page structure
+    # Show processing summary if transcript is loaded
+    if "transcript" in st.session_state and st.session_state.transcript:
+        from utils.ui_components import render_metrics_row
+
+        transcript = st.session_state.transcript
+        st.success("✅ VTT transcript loaded - ready for processing")
+
+        # Show transcript metrics
+        homepage_metrics = [
+            ("VTT Entries", len(transcript["entries"]), None),
+            ("Chunks", len(transcript["chunks"]), None),
+            ("Speakers", len(transcript["speakers"]), None),
+            ("Duration", f"{transcript['duration']:.1f}s", None),
+        ]
+        render_metrics_row(homepage_metrics)
+
+        # Show speakers
+        if transcript["speakers"]:
+            st.info(f"**Meeting participants:** {', '.join(transcript['speakers'])}")
+
+    # Define the 2-page structure (simplified architecture)
     all_pages = [
         st.Page("pages/1_📤_Upload_Process.py", title="Upload & Process", icon="📤"),
         st.Page("pages/2_👀_Review.py", title="Review", icon="👀"),
-        st.Page("pages/3_⚙️_Settings.py", title="Settings", icon="⚙️"),
     ]
 
-    # Determine page availability based on processing state
-    available_pages = [all_pages[0]]  # Upload & Process always available
-
-    # Settings page always available
-    available_pages.append(all_pages[1])
-
-    # Review page always available but will show appropriate messaging if no data
-    available_pages.append(all_pages[2])
+    # All pages are always available (Review page shows appropriate messaging if no data)
+    available_pages = all_pages
 
     # Set up navigation
     pg = st.navigation(available_pages)

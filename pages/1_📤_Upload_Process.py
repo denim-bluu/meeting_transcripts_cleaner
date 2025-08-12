@@ -13,25 +13,33 @@ import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 import structlog
 
-from config import configure_structlog
+from config import Config, configure_structlog
 from services.transcript_service import TranscriptService
-from utils.ui_components import render_document_preview, render_metrics_row
+from utils.ui_components import render_metrics_row
 
 # Configure structured logging
 configure_structlog()
 logger = structlog.get_logger(__name__)
 
+# Ensure we see logs in Streamlit terminal
+logger.info("Upload & Process page initialized", streamlit_page=True)
+
 
 async def process_document_with_status(uploaded_file: UploadedFile) -> None:
     """Handle file upload and processing in single workflow with live updates."""
     try:
-        # Initialize service (cached)
-        @st.cache_resource
-        def get_transcript_service() -> TranscriptService:
-            """Get cached TranscriptService instance."""
-            return TranscriptService()
+        # Initialize service - get API key from config (loads from .env)
+        api_key = Config.OPENAI_API_KEY
 
-        service = get_transcript_service()
+        if not api_key:
+            st.error("❌ OpenAI API key not found. Please set OPENAI_API_KEY in:")
+            st.error("- `.env` file in project root")
+            st.error("- Environment variable")
+            st.info("Create `.env` file with:")
+            st.code("OPENAI_API_KEY=sk-your-actual-openai-key-here")
+            return
+
+        service = TranscriptService(api_key)
 
         # Phase 1: Document Processing
         with st.status("Processing document...", expanded=True) as status:
@@ -41,29 +49,31 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
             status_placeholder.write("📖 Reading file content...")
             content = uploaded_file.getvalue().decode("utf-8")
 
-            status_placeholder.write("🔧 Parsing and segmenting document...")
-            document = service.process_document(
-                filename=uploaded_file.name,
-                content=content,
-                file_size=uploaded_file.size,
-                content_type=uploaded_file.type,
-            )
+            status_placeholder.write("🔧 Parsing and chunking VTT file...")
+            transcript = service.process_vtt(content)
 
             # Store in session state
-            st.session_state.document = document
-            status_placeholder.success(
-                f"✅ Created {len(document.segments)} segments ({document.total_tokens:,} tokens)"
-            )
-            status.update(label="Document processed successfully!", state="complete")
+            st.session_state.transcript = transcript
 
-        # Show metrics after processing using shared component
+            # Display success message
+            status_placeholder.success(
+                f"✅ Created {len(transcript['chunks'])} chunks from {len(transcript['entries'])} VTT entries"
+            )
+            status.update(label="VTT processed successfully!", state="complete")
+
+        # Show metrics after processing
         metrics = [
-            ("Segments", len(document.segments), None),
-            ("Total Tokens", f"{document.total_tokens:,}", None),
-            ("File Size", f"{uploaded_file.size:,} bytes", None),
-            ("Type", uploaded_file.type or "text/plain", None),
+            ("VTT Entries", len(transcript["entries"]), None),
+            ("Chunks", len(transcript["chunks"]), None),
+            ("Speakers", len(transcript["speakers"]), None),
+            ("Duration", f"{transcript['duration']:.1f}s", None),
         ]
         render_metrics_row(metrics)
+
+        # Show speaker list
+        speakers = transcript["speakers"]
+        if speakers:
+            st.markdown(f"**Speakers:** {', '.join(speakers)}")
 
         # Phase 2: AI Processing
         st.container()
@@ -77,52 +87,73 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
             "tokens_per_sec": 0,
             "completed": False,
             "error": None,
+            "result": None,  # Store the cleaned transcript result
         }
 
         def update_progress(progress: float, status: str):
             """Callback to update processing progress."""
+            logger.info(f"Progress update: {progress:.2%} - {status}")  # Log progress
+
             processing_state["progress"] = progress
             processing_state["status"] = status
 
-            # Calculate ETA and tokens/sec
+            # Calculate ETA and processing rate
             if progress > 0:
                 total_time = time.time() - start_time
                 eta = (total_time / progress) * (1 - progress)
-                tokens_processed = int(progress * document.total_tokens)
-                tokens_per_sec = tokens_processed / total_time if total_time > 0 else 0
+
+                # Calculate chunks per second
+                chunks_processed = int(progress * len(transcript["chunks"]))
+                chunks_per_sec = chunks_processed / total_time if total_time > 0 else 0
+                processing_state["tokens_per_sec"] = (
+                    chunks_per_sec  # Reuse field name for display
+                )
 
                 processing_state["eta"] = eta
-                processing_state["tokens_per_sec"] = tokens_per_sec
 
         def run_ai_processing():
-            """Run AI processing in background thread."""
+            """Run AI processing in background thread with proper async handling."""
             try:
+                processing_info = {
+                    "chunk_count": len(transcript["chunks"]),
+                    "speakers": len(transcript["speakers"]),
+                    "vtt_native": True,
+                }
+
                 logger.info(
                     "Starting AI processing",
-                    # Key identifier (flat)
                     phase="ai_processing",
-                    # Processing context (grouped)
-                    processing={"segment_count": len(document.segments)},
+                    processing=processing_info,
                 )
-                asyncio.run(
-                    service.process_transcript(
-                        document=document, progress_callback=update_progress
+
+                # Create new event loop for this thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+                try:
+                    # Run cleaning and review with proper async context
+                    cleaned_transcript = loop.run_until_complete(
+                        service.clean_transcript(transcript, update_progress)
                     )
-                )
-                processing_state["completed"] = True
-                processing_state["status"] = "AI processing completed!"
-                logger.info(
-                    "AI processing completed successfully",
-                    # Key identifier (flat)
-                    phase="ai_processing_complete",
-                )
+
+                    # Store result in processing_state (will be moved to session_state in main thread)
+                    processing_state["result"] = cleaned_transcript
+
+                    processing_state["completed"] = True
+                    processing_state["status"] = "AI processing completed!"
+                    logger.info(
+                        "AI processing completed successfully",
+                        phase="ai_processing_complete",
+                    )
+                finally:
+                    loop.close()
+
             except Exception as e:
                 logger.error(
                     "AI processing failed",
-                    # Key identifier (flat)
                     phase="ai_processing_error",
-                    # Error details (grouped)
                     error_info={"error": str(e)},
+                    exc_info=True,
                 )
                 processing_state["error"] = str(e)
                 processing_state["status"] = f"Processing failed: {str(e)}"
@@ -136,6 +167,7 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
         with st.status("AI Processing Pipeline", expanded=True) as ai_status:
             progress_bar = st.progress(0)
             status_text = st.empty()
+
             metrics_cols = st.columns(3)
 
             # Create metric placeholders once (prevents stacking)
@@ -158,8 +190,9 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
                     "Progress", f"{processing_state['progress']:.1%}"
                 )
                 eta_placeholder.metric("ETA", f"{processing_state['eta']:.1f}s")
+                # Display processing rate metric
                 tokens_placeholder.metric(
-                    "Tokens/sec", f"{processing_state['tokens_per_sec']:.0f}"
+                    "Chunks/sec", f"{processing_state['tokens_per_sec']:.1f}"
                 )
 
                 # Check for completion or error
@@ -176,18 +209,13 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
         # Wait for thread completion
         thread.join()
 
-        # Extract categories for Review page
-        if hasattr(document, "segment_categories") and document.segment_categories:
-            st.session_state.categories = list(document.segment_categories.values())
-            logger.info(
-                "Extracted categories",
-                # Key identifier (flat)
-                phase="categorization_complete",
-                # Results (grouped)
-                results={"category_count": len(st.session_state.categories)},
-            )
-        else:
-            st.session_state.categories = []
+        # Store the cleaned transcript result in session state (main thread)
+        if processing_state.get("result"):
+            st.session_state.cleaned_transcript = processing_state["result"]
+            logger.info("Cleaned transcript stored in session state")
+
+        # Set up for Review page
+        st.session_state.categories = []
 
         # Set processing complete flag for navigation
         st.session_state.processing_complete = True
@@ -200,33 +228,20 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
         # Show completion metrics using shared component
         st.success("✅ Processing completed successfully!")
 
+        # Show completion metrics using the result from processing_state
+        cleaned_transcript = processing_state.get("result", {})
+        review_results = cleaned_transcript.get("review_results", [])
+        accepted_count = sum(1 for r in review_results if r.get("accept", False))
+
         completion_metrics = [
+            ("Total Chunks", len(cleaned_transcript.get("cleaned_chunks", [])), None),
+            ("Accepted", accepted_count, None),
+            ("Needs Review", len(review_results) - accepted_count, None),
             (
-                "Auto Accept",
-                document.processing_status.auto_accept_count
-                if document.processing_status
-                else 0,
-                None,
-            ),
-            (
-                "Quick Review",
-                document.processing_status.quick_review_count
-                if document.processing_status
-                else 0,
-                None,
-            ),
-            (
-                "Detailed Review",
-                document.processing_status.detailed_review_count
-                if document.processing_status
-                else 0,
-                None,
-            ),
-            (
-                "AI Flagged",
-                document.processing_status.ai_flagged_count
-                if document.processing_status
-                else 0,
+                "Quality Score",
+                f"{sum(r.get('quality_score', 0) for r in review_results) / len(review_results):.2f}"
+                if review_results
+                else "N/A",
                 None,
             ),
         ]
@@ -262,28 +277,30 @@ st.set_page_config(
 st.header("📤 Upload & Process Transcript")
 
 # Help section
-with st.expander("ℹ️ How it works", expanded=False):
+with st.expander("ℹ️ VTT-Native Processing Pipeline", expanded=False):
     st.markdown("""
-    **Unified Workflow:**
-    1. **Upload** your meeting transcript (TXT or VTT format)
-    2. **Parse** document into optimized segments
-    3. **Clean** segments with AI (parallel processing)
-    4. **Review** cleaned content for quality (parallel processing)
-    5. **Categorize** segments for efficient review
+    **Simple VTT Workflow:**
+    1. **Upload** your VTT meeting transcript (Zoom, Teams, Google Meet)
+    2. **Parse** with token-based chunking (preserves speakers & timing)
+    3. **Clean** using AI with minimal context for efficiency
+    4. **Review** with quality scoring and acceptance validation
+    5. **Export** in VTT, text, or JSON format
     6. **Navigate** to Review page for final adjustments
 
-    **Performance Features:**
-    - 🚀 **Parallel Processing**: 5-10x faster than sequential
-    - 📊 **Real-time Progress**: Live ETA and tokens/sec metrics
-    - 🎯 **Smart Categorization**: Focus only on segments that need attention
-    - 🔄 **VTT Support**: Preserves speaker boundaries automatically
+    **Key Features:**
+    - 🎯 **Speaker Preservation**: Maintains who said what throughout
+    - 🚀 **Simple & Fast**: Token-based chunking for reliable performance
+    - 📊 **Minimal Context**: Previous chunk context for flow awareness
+    - 👥 **Speaker Support**: Automatic speaker detection and preservation
+    - ⏱️ **Timestamp Support**: Preserves original timing information
+    - 🔄 **Multi-format Export**: VTT, text, and JSON export options
     """)
 
-# File upload section
+# VTT-only file upload section
 uploaded_file = st.file_uploader(
-    "Choose a transcript file",
-    type=["txt", "vtt"],
-    help="Upload a meeting transcript in TXT or VTT format for AI processing",
+    "Choose a VTT transcript file",
+    type=["vtt"],
+    help="Upload a VTT meeting transcript from Zoom, Teams, Google Meet, or other meeting platforms",
 )
 
 if uploaded_file is not None:
@@ -298,48 +315,28 @@ if uploaded_file is not None:
         # Run async processing
         asyncio.run(process_document_with_status(uploaded_file))
 
-# Show processing overview
-st.subheader("🔬 Processing Pipeline Overview")
+# Removed redundant processing overview - details available in expander above
 
-col1, col2 = st.columns(2)
-with col1:
-    st.markdown("""
-    **Phase 1: Document Parsing**
-    - Content extraction and validation
-    - Smart segmentation (500 tokens/segment)
-    - Sentence boundary preservation
-    - VTT speaker detection
-    """)
+# Show recent transcript if available
+if "transcript" in st.session_state and st.session_state.transcript:
+    transcript = st.session_state.transcript
+    st.subheader("📋 Current Transcript")
 
-with col2:
-    st.markdown("""
-    **Phase 2: AI Processing**
-    - Parallel cleaning (CleaningAgent)
-    - Parallel review (ReviewAgent)
-    - Confidence categorization
-    - Progressive review workflow
-    """)
-
-# Show recent document if available
-if "document" in st.session_state and st.session_state.document:
-    document = st.session_state.document
-    st.subheader("📋 Current Document")
-
+    # Display transcript metrics
     current_metrics = [
-        ("Segments", len(document.segments), None),
-        ("Total Tokens", f"{document.total_tokens:,}", None),
-        (
-            "Status",
-            (
-                document.processing_status.status.value
-                if document.processing_status and document.processing_status.status
-                else "Processed"
-            ),
-            None,
-        ),
+        ("VTT Entries", len(transcript["entries"]), None),
+        ("Chunks", len(transcript["chunks"]), None),
+        ("Speakers", len(transcript["speakers"]), None),
+        ("Duration", f"{transcript['duration']:.1f}s", None),
     ]
     render_metrics_row(current_metrics)
 
-    # Show segment preview using shared component
-    with st.expander("📝 Segment Preview (First 3)", expanded=False):
-        render_document_preview(document.segments, max_segments=3)
+    # Show speaker list
+    if transcript["speakers"]:
+        st.markdown(f"**Speakers:** {', '.join(transcript['speakers'])}")
+
+    # Show VTT preview
+    with st.expander("📝 Transcript Preview (First 3 Chunks)", expanded=False):
+        for i, chunk in enumerate(transcript["chunks"][:3]):
+            st.markdown(f"**Chunk {i+1}** ({chunk.token_count} tokens):")
+            st.text(chunk.to_transcript_text()[:200] + "...")

@@ -1,5 +1,5 @@
 """
-Services layer for the transcript cleaning application.
+Services layer for VTT transcript processing.
 
 This module provides business logic services that separate the core AI processing
 from the UI layer, enabling better maintainability and testability.
