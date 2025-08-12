@@ -27,10 +27,10 @@ project_root = test_dir.parent
 sys.path.insert(0, str(project_root))
 
 # Import after setting up environment
-from core.ai_agents import TranscriptCleaner, TranscriptReviewer
-from core.vtt_processor import VTTProcessor
-from models.vtt import VTTChunk, VTTEntry
-from services.transcript_service import TranscriptService
+from core.ai_agents import TranscriptCleaner, TranscriptReviewer  # noqa: E402
+from core.vtt_processor import VTTProcessor  # noqa: E402
+from models.vtt import VTTChunk, VTTEntry  # noqa: E402
+from services.transcript_service import TranscriptService  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
