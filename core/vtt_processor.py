@@ -38,7 +38,7 @@ class VTTProcessor:
 
         entries: list[VTTEntry] = []
         # Normalize line endings to handle both Unix (\n) and Windows (\r\n) formats
-        normalized_content = content.replace('\r\n', '\n').replace('\r', '\n')
+        normalized_content = content.replace("\r\n", "\n").replace("\r", "\n")
         blocks = normalized_content.strip().split("\n\n")
 
         logger.debug(
@@ -130,7 +130,7 @@ class VTTProcessor:
 
             # Parse speaker and text (may be multi-line)
             text_lines = lines[2:]
-            full_text = ' '.join(text_lines)
+            full_text = " ".join(text_lines)
 
             speaker_match = re.search(self.SPEAKER_PATTERN, full_text)
             if speaker_match:
@@ -179,7 +179,7 @@ class VTTProcessor:
             skipped_blocks=skipped_blocks,
             invalid_timestamp_blocks=invalid_timestamp_blocks,
             missing_speaker_blocks=missing_speaker_blocks,
-            success_rate=f"{len(entries)/(len(blocks)-skipped_blocks)*100:.1f}%"
+            success_rate=f"{len(entries) / (len(blocks) - skipped_blocks) * 100:.1f}%"
             if len(blocks) > skipped_blocks
             else "0%",
         )

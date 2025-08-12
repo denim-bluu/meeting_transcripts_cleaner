@@ -7,6 +7,8 @@ This bypasses Streamlit to test the core functionality directly.
 import asyncio
 import time
 
+import pytest
+
 from config import Config, configure_structlog
 from services.transcript_service import TranscriptService
 
@@ -38,6 +40,7 @@ SAMPLE_VTT = """WEBVTT
 """
 
 
+@pytest.mark.asyncio
 async def test_complete_pipeline():
     """Test the complete processing pipeline."""
     print("🚀 Testing Complete Processing Pipeline")
@@ -93,7 +96,7 @@ async def test_complete_pipeline():
 
         print(f"   ✅ Processed chunks: {len(cleaned_chunks)}")
         print(
-            f"   ✅ Accepted chunks: {accepted_count} ({accepted_count/len(review_results)*100:.1f}%)"
+            f"   ✅ Accepted chunks: {accepted_count} ({accepted_count / len(review_results) * 100:.1f}%)"
         )
         print(f"   ✅ Average confidence: {avg_confidence:.2f}")
         print(f"   ✅ Average quality: {avg_quality:.2f}")

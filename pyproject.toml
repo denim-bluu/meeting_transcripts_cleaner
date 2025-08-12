@@ -200,4 +200,5 @@ dev-dependencies = [
     "ptpython>=3.0.30",
     "pyright>=1.1.403",
     "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
 ]

@@ -22,7 +22,7 @@ class TestTranscriptServiceSimple:
         assert service.processor is not None
         assert service.cleaner is not None
         assert service.reviewer is not None
-        assert service.semaphore._value == 3  # Default concurrency
+        assert service.semaphore._value == 10  # Default concurrency
 
     def test_process_vtt_basic(self):
         """Test basic VTT processing."""

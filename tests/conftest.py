@@ -184,28 +184,26 @@ def mock_openai_review_response():
 
 
 @pytest.fixture
-def mock_openai_client():
-    """Create a mock OpenAI client."""
-    client = MagicMock()
-    client.chat = MagicMock()
-    client.chat.completions = MagicMock()
-    client.chat.completions.create = AsyncMock()
-    return client
+def mock_pydantic_agent():
+    """Create a mock Pydantic AI agent."""
+    agent = MagicMock()
+    agent.run = AsyncMock()
+    return agent
 
 
 @pytest.fixture
-def transcript_cleaner(mock_openai_client) -> TranscriptCleaner:
-    """Create a TranscriptCleaner with mocked OpenAI client."""
+def transcript_cleaner(mock_pydantic_agent) -> TranscriptCleaner:
+    """Create a TranscriptCleaner with mocked Pydantic AI agent."""
     cleaner = TranscriptCleaner("test-api-key", "o3-mini")
-    cleaner.client = mock_openai_client
+    cleaner.agent = mock_pydantic_agent
     return cleaner
 
 
 @pytest.fixture
-def transcript_reviewer(mock_openai_client) -> TranscriptReviewer:
-    """Create a TranscriptReviewer with mocked OpenAI client."""
+def transcript_reviewer(mock_pydantic_agent) -> TranscriptReviewer:
+    """Create a TranscriptReviewer with mocked Pydantic AI agent."""
     reviewer = TranscriptReviewer("test-api-key", "o3-mini")
-    reviewer.client = mock_openai_client
+    reviewer.agent = mock_pydantic_agent
     return reviewer
 
 
@@ -232,7 +230,7 @@ class VTTTestUtils:
     @staticmethod
     def count_speakers(entries: list[VTTEntry]) -> int:
         """Count unique speakers in VTT entries."""
-        return len(set(entry.speaker for entry in entries))
+        return len({entry.speaker for entry in entries})
 
     @staticmethod
     def total_duration(entries: list[VTTEntry]) -> float:
@@ -282,12 +280,13 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "integration: mark test as integration test")
     config.addinivalue_line("markers", "unit: mark test as unit test")
     config.addinivalue_line("markers", "async_test: mark test as async test")
+    config.addinivalue_line("markers", "asyncio: mark test as asyncio test")
 
 
 # Event loop fixture for async tests
-@pytest.fixture
+@pytest.fixture(scope="session")
 def event_loop():
     """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
+    loop = asyncio.new_event_loop()
     yield loop
     loop.close()

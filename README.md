@@ -1,89 +1,79 @@
-# VTT Transcript Cleaner
+# Meeting Transcripts Cleaner
 
-## AI-Powered VTT Processing with Simplified 2-Layer Architecture
+## AI-Powered VTT Processing with Concurrent Architecture
 
-A streamlined transcript cleaning system that processes VTT (WebVTT) files through a simplified 2-layer architecture with dual AI agents. Built for performance and simplicity, achieving <2 second per chunk processing with enterprise-grade error handling.
+A streamlined transcript cleaning system that processes VTT (WebVTT) files through a concurrent dual-agent AI architecture. Built for enterprise-grade reliability with structured error handling and real-time progress reporting.
 
 ## Table of Contents
 
-- [Quick Start](#quick-start)
 - [Architecture Overview](#architecture-overview)
-- [Key Features](#key-features)
 - [System Design](#system-design)
+- [Core Features](#core-features)
 - [Technology Stack](#technology-stack)
 - [Installation](#installation)
 - [Usage](#usage)
 - [Configuration](#configuration)
-- [Performance](#performance)
-- [API Models](#api-models)
-- [Testing](#testing)
-- [License](#license)
-
-## Quick Start
-
-```bash
-# Clone and install
-git clone https://github.com/username/minutes-cleaner.git
-cd minutes-cleaner
-uv sync
-
-# Configure API key
-cp .env.example .env
-# Add your OpenAI API key to .env
-
-# Run application
-streamlit run streamlit_app.py
-```
+- [API Reference](#api-reference)
 
 ## Architecture Overview
 
-### Simplified 2-Layer Processing
+### Concurrent Processing Pipeline
 
 ```mermaid
-graph LR
-    A[VTT File] --> B[VTTEntry<br/>Parser]
-    B --> C[VTTChunk<br/>500 tokens]
-    C --> D[AI Cleaner<br/>o3-mini]
-    D --> E[AI Reviewer<br/>o3-mini]
-    E --> F[Export]
+graph TB
+    A[VTT File] --> B[VTTProcessor<br/>Regex Parser]
+    B --> C[VTTEntry<br/>cue_id, timestamps, speaker, text]
+    C --> D[VTTChunk<br/>500-token groups]
+    
+    D --> E[TranscriptService<br/>Concurrent Orchestration]
+    E --> F[Batch Processing<br/>10 chunks per batch]
+    
+    F --> G[TranscriptCleaner<br/>AI Agent - o3-mini]
+    F --> H[TranscriptReviewer<br/>AI Agent - o3-mini]
+    
+    G --> I[CleaningResult<br/>confidence + changes]
+    H --> J[ReviewResult<br/>quality + acceptance]
+    
+    I --> K[Export Pipeline]
+    J --> K
+    K --> L[VTT/TXT/JSON Output]
 
     style A fill:#e3f2fd
-    style C fill:#fff9c4
-    style D fill:#f3e5f5
-    style E fill:#f3e5f5
-    style F fill:#e8f5e9
+    style D fill:#fff9c4
+    style G fill:#f3e5f5
+    style H fill:#f3e5f5
+    style K fill:#e8f5e9
 ```
 
-### Key Improvements from Previous Architecture
+### System Responsibilities
 
-- **Removed Complexity**: Eliminated ConversationTurns, ProcessingSegments, EnrichedContext layers
-- **Direct Processing**: VTT entries parsed directly into token-based chunks
-- **Simplified Context**: Only uses previous 200 characters for context (no complex enrichment)
-- **Smaller Codebase**: <1000 lines total (down from 4000+)
-- **Faster Processing**: <2 seconds per chunk with concurrent API calls
+**VTTProcessor**: Regex-based parsing of VTT cue blocks into structured entries, token-based chunking
+**TranscriptService**: Concurrent orchestration with rate limiting, progress tracking, error resilience  
+**AI Agents**: Structured cleaning and quality review with confidence scoring
+**UI Layer**: Real-time progress reporting with batch metrics and throughput analysis
 
-## Key Features
+## Core Features
 
-### 🚀 Performance Optimized
+### 🚀 Concurrent Processing Architecture
 
-- **Concurrent Processing**: Async processing with rate limiting (20 req/min)
-- **Smart Chunking**: 500-token chunks with simple character-based estimation
-- **Minimal Context**: Only 200 chars from previous chunk for continuity
-- **Enterprise Error Handling**: Exponential backoff retry with tenacity
+- **Batch Processing**: 10-chunk batches with configurable concurrency (default: 10 for o3-mini stability)
+- **Rate Limiting**: Configurable throttling (default: 50 requests/minute) with exponential backoff
+- **Progress Reporting**: Real-time batch metrics with throughput analysis and ETA calculations
+- **Error Resilience**: Individual chunk failures isolated with structured error handling
 
 ### 🎯 VTT-Native Processing
 
-- **Direct VTT Parsing**: Regex-based parser for VTT cue blocks
-- **Speaker Preservation**: Maintains exact speaker labels throughout
-- **Timestamp Accuracy**: Preserves original timestamps for export
-- **Multi-line Support**: Handles multi-line text within `<v>` tags
+- **Direct Parsing**: Regex-based VTT cue block extraction with multi-line text support
+- **Speaker Preservation**: Exact `<v Speaker>` label maintenance throughout pipeline
+- **Timestamp Accuracy**: Original VTT timestamps preserved for export compatibility
+- **Token-Based Chunking**: 500-token chunks with character-based estimation (length ÷ 4)
 
 ### 🤖 Dual-Agent AI System
 
-- **Cleaning Agent**: Fixes grammar, removes fillers, maintains conversation flow
-- **Review Agent**: Validates quality, ensures speaker/meaning preservation
-- **Structured Output**: JSON responses with confidence scoring
-- **Model Flexibility**: Supports o3-mini (default) and GPT-4 models
+- **TranscriptCleaner**: Grammar correction, filler removal, conversation flow optimization
+- **TranscriptReviewer**: Quality validation with confidence scoring and acceptance thresholds
+- **Structured Output**: JSON responses with change tracking and quality metrics
+- **Context Preservation**: Previous 200 characters for conversation continuity
 
 ## System Design
 
@@ -92,23 +82,25 @@ graph LR
 ```mermaid
 graph TB
     subgraph "Data Models"
-        VE[VTTEntry<br/>cue_id, timestamps,<br/>speaker, text]
-        VC[VTTChunk<br/>chunk_id, entries,<br/>token_count]
+        VE[VTTEntry<br/>cue_id, start_time, end_time<br/>speaker, text]
+        VC[VTTChunk<br/>chunk_id, entries list<br/>token_count]
+        CR[CleaningResult<br/>cleaned_text, confidence<br/>changes_made list]
+        RR[ReviewResult<br/>quality_score, accept<br/>issues_found list]
     end
 
     subgraph "Core Processing"
-        VP[VTTProcessor<br/>parse_vtt<br/>create_chunks]
-        TC[TranscriptCleaner<br/>clean_chunk]
-        TR[TranscriptReviewer<br/>review_chunk]
+        VP[VTTProcessor<br/>• parse_vtt<br/>• create_chunks]
+        TC[TranscriptCleaner<br/>• clean_chunk<br/>• AI agent wrapper]
+        TR[TranscriptReviewer<br/>• review_chunk<br/>• Quality validation]
     end
 
-    subgraph "Service Layer"
-        TS[TranscriptService<br/>Orchestration<br/>Rate Limiting<br/>Progress Tracking]
+    subgraph "Service Orchestration"
+        TS[TranscriptService<br/>• Concurrent batch processing<br/>• Rate limiting & throttling<br/>• Progress callback system<br/>• Error handling & retries]
     end
 
     subgraph "UI Layer"
-        UP[Upload & Process<br/>Real-time Progress]
-        RP[Review Page<br/>Export Options]
+        UP[Upload & Process<br/>• Real-time progress display<br/>• 4-column metrics<br/>• Batch/throughput tracking]
+        RP[Review & Export<br/>• Results validation<br/>• Multi-format export]
     end
 
     VE --> VC
@@ -116,96 +108,85 @@ graph TB
     VP --> TS
     TC --> TS
     TR --> TS
+    CR --> TS
+    RR --> TS
     TS --> UP
     TS --> RP
-
-    style VE fill:#e1f5fe
-    style VC fill:#e1f5fe
-    style VP fill:#fff3e0
-    style TC fill:#f3e5f5
-    style TR fill:#f3e5f5
-    style TS fill:#e8f5e9
 ```
 
-### Processing Pipeline
+### Processing Flow
 
 ```mermaid
-flowchart LR
-    A[VTT Content] --> B[Parse Entries]
-    B --> C[Create Chunks<br/>500 tokens]
-    C --> D[Process Chunks<br/>Concurrently]
+sequenceDiagram
+    participant UI as Streamlit UI
+    participant TS as TranscriptService
+    participant VP as VTTProcessor
+    participant TC as TranscriptCleaner
+    participant TR as TranscriptReviewer
 
-    D --> E[Clean with AI]
-    E --> F[Review Quality]
-    F --> G{Accept?}
+    UI->>TS: process_vtt(content)
+    TS->>VP: parse_vtt()
+    VP->>TS: VTTEntry[]
+    TS->>VP: create_chunks()
+    VP->>TS: VTTChunk[]
 
-    G -->|Yes| H[Add to Results]
-    G -->|No| I[Flag for Review]
-
-    H --> J[Export Options]
-    I --> J
-
-    J --> K[VTT/TXT/JSON]
-
-    style A fill:#e3f2fd
-    style C fill:#fff9c4
-    style E fill:#f3e5f5
-    style F fill:#f3e5f5
-    style J fill:#e8f5e9
+    TS->>TS: Initialize batch processing
+    
+    loop For each batch (10 chunks)
+        TS->>UI: progress_callback(batch_info)
+        
+        par Concurrent processing
+            TS->>TC: clean_chunk()
+            TC->>TS: CleaningResult
+            TS->>TR: review_chunk()
+            TR->>TS: ReviewResult
+        end
+    end
+    
+    TS->>UI: Final results + export options
 ```
 
 ## Technology Stack
 
-| Component           | Technology                 | Purpose                                  |
+| Component           | Technology                 | Responsibility                           |
 | ------------------- | -------------------------- | ---------------------------------------- |
-| **Framework**       | Streamlit                  | Web UI and application framework         |
-| **AI Client**       | OpenAI AsyncAPI            | Async AI model interactions              |
-| **Models**          | o3-mini / GPT-4            | Text cleaning and review                 |
+| **Framework**       | Streamlit                  | UI components and real-time progress    |
+| **AI Processing**   | OpenAI AsyncAPI            | Concurrent API calls with rate limiting  |
+| **Models**          | o3-mini (default)          | Text cleaning and quality review         |
+| **Concurrency**     | asyncio + Semaphore        | Batch processing with controlled limits  |
+| **Rate Limiting**   | asyncio-throttle           | Request throttling and backoff           |
 | **Logging**         | structlog                  | Structured, contextual logging           |
-| **Async**           | asyncio + asyncio-throttle | Concurrent processing with rate limiting |
-| **Retry Logic**     | tenacity                   | Exponential backoff for API calls        |
-| **Package Manager** | uv                         | Fast Python package management           |
-| **Environment**     | python-dotenv              | Configuration management                 |
+| **Package Manager** | uv                         | Fast dependency management               |
 
 ## Installation
 
-### Prerequisites
-
-- Python 3.11+
-- OpenAI API key (with o3-mini or GPT-4 access)
-- 2GB RAM minimum
-
-### Detailed Setup
+### Setup
 
 1. **Clone repository**
 
 ```bash
-git clone https://github.com/username/minutes-cleaner.git
-cd minutes-cleaner
+git clone https://github.com/denim-bluu/meeting_transcripts_cleaner.git
+cd meeting_transcripts_cleaner
 ```
 
-2. **Install dependencies with uv**
+1. **Install dependencies**
 
 ```bash
-# Install uv if not already installed
-pip install uv
-
-# Sync dependencies
 uv sync
 ```
 
-3. **Configure environment**
+1. **Configure environment**
 
 ```bash
 # Create .env file
 cat > .env << EOF
 OPENAI_API_KEY=sk-your-api-key-here
-CLEANING_MODEL=o3-mini  # or gpt-4
-REVIEW_MODEL=o3-mini    # or gpt-4
+CLEANING_MODEL=o3-mini
+REVIEW_MODEL=o3-mini
 EOF
 ```
 
-4. **Run application**
+1. **Run application**
 
 ```bash
 streamlit run streamlit_app.py
@@ -213,23 +194,27 @@ streamlit run streamlit_app.py
 
 ## Usage
 
-### Processing Workflow
+### System Operation
 
-1. **Upload VTT File**: Drag and drop your VTT transcript
+1. **Upload VTT File**: Streamlit interface accepts WebVTT format files
 2. **Automatic Processing**:
-    - Parses VTT into entries
-    - Creates 500-token chunks
-    - Processes with AI agents
-3. **Review Results**: See processing metrics and quality scores
-4. **Export**: Choose format (VTT, TXT, JSON)
+   - VTTProcessor parses entries and creates 500-token chunks
+   - TranscriptService orchestrates concurrent batch processing
+   - Progress callbacks provide real-time feedback with batch metrics
+3. **AI Processing**: Dual-agent system (Cleaner → Reviewer) processes each chunk
+4. **Export Options**: Results available in VTT, TXT, or JSON formats
 
-### Example Code Usage
+### API Usage
 
 ```python
 from services.transcript_service import TranscriptService
 
-# Initialize service
-service = TranscriptService(api_key="your-api-key")
+# Initialize with concurrent processing
+service = TranscriptService(
+    api_key="your-openai-key",
+    max_concurrent=10,  # For o3-mini stability
+    rate_limit=50       # Requests per minute
+)
 
 # Process VTT content
 with open("meeting.vtt", "r") as f:
@@ -239,123 +224,63 @@ with open("meeting.vtt", "r") as f:
 transcript = service.process_vtt(content)
 print(f"Created {len(transcript['chunks'])} chunks")
 
-# Clean with AI
-import asyncio
-cleaned = asyncio.run(service.clean_transcript(transcript))
+# Clean with progress tracking
+def progress_callback(pct, status):
+    print(f"{pct:.1f}% - {status}")
 
-# Export results
-output = service.export(cleaned, format="txt")
+import asyncio
+cleaned = asyncio.run(
+    service.clean_transcript(transcript, progress_callback)
+)
+
+# Results contain CleaningResult and ReviewResult for each chunk
+for chunk in cleaned['results']:
+    print(f"Confidence: {chunk['cleaning'].confidence}")
+    print(f"Quality: {chunk['review'].quality_score}")
 ```
 
 ## Configuration
+
+### Service Parameters
+
+```python
+# TranscriptService configuration
+TranscriptService(
+    api_key="sk-...",
+    max_concurrent=10,    # Concurrent requests (10 optimal for o3-mini)
+    rate_limit=50         # Requests per minute (adjust for API tier)
+)
+```
 
 ### Environment Variables
 
 ```bash
 # Required
-OPENAI_API_KEY=sk-xxx        # Your OpenAI API key
+OPENAI_API_KEY=sk-xxx
 
-# Optional (defaults shown)
-CLEANING_MODEL=o3-mini        # Model for cleaning (o3-mini or gpt-4)
-REVIEW_MODEL=o3-mini          # Model for review (o3-mini or gpt-4)
+# Optional model selection  
+CLEANING_MODEL=o3-mini    # Text cleaning model
+REVIEW_MODEL=o3-mini      # Quality review model
 ```
 
-### Processing Settings (config.py)
+## API Reference
 
-```python
-TARGET_CHUNK_TOKENS = 500    # Tokens per chunk
-CONTEXT_CHARS = 200          # Context from previous chunk
-ACCEPT_THRESHOLD = 0.7       # Auto-accept if quality >= 0.7
-```
+### TranscriptService
 
-## Performance
+**`process_vtt(content: str) -> dict`**
 
-### Benchmarks
+- Parses VTT content into entries and chunks
+- Returns structured data with entries, chunks, speakers, duration
 
-| Metric             | Value          | Notes                          |
-| ------------------ | -------------- | ------------------------------ |
-| **Parsing Speed**  | <1 second      | 1300+ entries parsed instantly |
-| **Chunking Speed** | <0.5 seconds   | Token estimation: len/4        |
-| **API Processing** | 1-2 sec/chunk  | With o3-mini model             |
-| **Total Time**     | ~60-80 seconds | For 40 chunks (20,000 words)   |
-| **Concurrency**    | 3 parallel     | Rate limited to 20/min         |
-| **Memory Usage**   | <200MB         | Efficient streaming            |
+**`clean_transcript(transcript: dict, progress_callback=None) -> dict`**
 
-### Optimization Features
+- Processes chunks through AI agents concurrently
+- Returns results with CleaningResult and ReviewResult for each chunk
+- Progress callback receives (percentage, status_message)
 
-- **Async Processing**: Concurrent API calls with semaphore control
-- **Rate Limiting**: Throttler prevents API rate limit errors
-- **Retry Logic**: Exponential backoff (2, 4, 8 seconds)
-- **Progress Tracking**: Real-time updates via callbacks
-- **Error Resilience**: Individual chunk failures don't stop pipeline
+### Data Models
 
-## API Models
-
-### Supported Models
-
-| Model             | Use Case                 | Speed  | Quality    |
-| ----------------- | ------------------------ | ------ | ---------- |
-| **o3-mini**       | Default, fast processing | Fast   | Good       |
-| **gpt-4**         | Higher quality output    | Slower | Excellent  |
-| **gpt-3.5-turbo** | Budget option            | Fast   | Acceptable |
-
-### Model-Specific Handling
-
-The system automatically adjusts parameters based on model:
-
-- o3 models: No temperature/max_tokens parameters
-- GPT models: Temperature 0.2 for cleaning, 0.0 for review
-
-## Testing
-
-### Test Coverage
-
-```bash
-# Run all tests
-uv run pytest tests/ -v
-
-# Run specific test modules
-uv run pytest tests/test_vtt_processor.py -v
-uv run pytest tests/test_ai_agents.py -v
-uv run pytest tests/test_transcript_service.py -v
-
-# Run with coverage
-uv run pytest tests/ --cov=. --cov-report=html
-```
-
-### Test Structure
-
-```
-tests/
-├── conftest.py              # Shared fixtures
-├── test_vtt_processor.py    # VTT parsing and chunking
-├── test_ai_agents.py        # AI agent functionality
-└── test_transcript_service.py # Service orchestration
-```
-
-## Project Structure
-
-```
-minutes-cleaner/
-├── models/
-│   └── vtt.py              # VTTEntry, VTTChunk dataclasses
-├── core/
-│   ├── vtt_processor.py    # VTT parsing and chunking
-│   └── ai_agents.py        # TranscriptCleaner, TranscriptReviewer
-├── services/
-│   └── transcript_service.py # Orchestration and rate limiting
-├── pages/
-│   ├── 1_📤_Upload_Process.py # Upload and processing UI
-│   └── 2_👀_Review.py         # Review and export UI
-├── utils/
-│   ├── ui_components.py    # Reusable UI components
-│   └── diff_viewer.py      # Diff visualization
-├── tests/                  # Test suite
-├── config.py              # Configuration
-├── streamlit_app.py       # Main application entry
-└── pyproject.toml         # Dependencies
-```
-
-## License
-
-MIT License - See LICENSE file for details
+**VTTEntry**: `cue_id`, `start_time`, `end_time`, `speaker`, `text`  
+**VTTChunk**: `chunk_id`, `entries (list)`, `token_count`  
+**CleaningResult**: `cleaned_text`, `confidence`, `changes_made (list)`  
+**ReviewResult**: `quality_score`, `accept`, `issues_found (list)`
