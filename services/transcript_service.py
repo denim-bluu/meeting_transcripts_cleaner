@@ -5,7 +5,7 @@ from collections.abc import Callable
 import json
 import time
 
-from asyncio_throttle import Throttler
+from asyncio_throttle.throttler import Throttler
 import structlog
 from tenacity import (
     retry,
@@ -65,23 +65,25 @@ class TranscriptService:
         start_time = time.time()
         logger.info(
             "Starting VTT document processing",
-            content_size_bytes=len(content.encode('utf-8')),
-            content_lines=content.count('\n'),
-            content_preview=content[:200].replace('\n', ' ') + "..." if len(content) > 200 else content
+            content_size_bytes=len(content.encode("utf-8")),
+            content_lines=content.count("\n"),
+            content_preview=content[:200].replace("\n", " ") + "..."
+            if len(content) > 200
+            else content,
         )
-        
+
         entries = self.processor.parse_vtt(content)
         chunks = self.processor.create_chunks(entries)
 
         speakers = list(set(e.speaker for e in entries))
         duration = max(e.end_time for e in entries) if entries else 0
-        
+
         processing_time = time.time() - start_time
-        
+
         # Calculate additional analytics
         total_text_length = sum(len(entry.text) for entry in entries)
         avg_text_per_entry = total_text_length / len(entries) if entries else 0
-        
+
         logger.info(
             "VTT document processing completed",
             processing_time_ms=int(processing_time * 1000),
@@ -92,8 +94,14 @@ class TranscriptService:
             duration_seconds=round(duration, 2),
             total_text_chars=total_text_length,
             avg_text_per_entry=round(avg_text_per_entry, 1),
-            entries_per_minute=round(len(entries) / (duration / 60), 1) if duration > 0 else 0,
-            avg_chunk_size=round(sum(chunk.token_count for chunk in chunks) / len(chunks), 1) if chunks else 0
+            entries_per_minute=round(len(entries) / (duration / 60), 1)
+            if duration > 0
+            else 0,
+            avg_chunk_size=round(
+                sum(chunk.token_count for chunk in chunks) / len(chunks), 1
+            )
+            if chunks
+            else 0,
         )
 
         return {
@@ -126,7 +134,7 @@ class TranscriptService:
                 speakers=chunk_speakers,
                 has_previous_context=len(prev_text) > 0,
                 semaphore_available=self.semaphore._value,
-                throttler_active=True
+                throttler_active=True,
             )
 
             try:

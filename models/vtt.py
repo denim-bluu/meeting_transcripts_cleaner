@@ -10,7 +10,7 @@ class VTTEntry:
     cue_id: str  # e.g., "d700e97e-1c7f-4753-9597-54e5e43b4642/18-0"
     start_time: float  # seconds from 00:00:00.000
     end_time: float  # seconds from 00:00:00.000
-    speaker: str  # e.g., "Rian Campbell"
+    speaker: str  # e.g., "Joon Kang"
     text: str  # e.g., "OK. Yeah."
 
 

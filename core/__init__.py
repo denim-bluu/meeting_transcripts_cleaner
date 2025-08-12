@@ -5,6 +5,6 @@ from .vtt_processor import VTTProcessor
 
 __all__ = [
     "VTTProcessor",
-    "TranscriptCleaner", 
+    "TranscriptCleaner",
     "TranscriptReviewer",
 ]
