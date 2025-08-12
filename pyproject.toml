@@ -68,10 +68,6 @@ test = [
   "psutil>=7.0.0",
 ]
 
-[project.urls]
-Homepage = "https://github.com/username/meeting-transcript-cleaner"
-Repository = "https://github.com/username/meeting-transcript-cleaner"
-Issues = "https://github.com/username/meeting-transcript-cleaner/issues"
 
 [project.scripts]
 transcript-cleaner = "streamlit_app:main"

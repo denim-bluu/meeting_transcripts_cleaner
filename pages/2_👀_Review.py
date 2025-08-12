@@ -230,15 +230,3 @@ else:
     st.info(
         "No detailed results available. The transcript may not have been fully processed."
     )
-
-# Navigation
-st.divider()
-col1, col2 = st.columns(2)
-
-with col1:
-    if st.button("⬅️ Back to Upload & Process", use_container_width=True):
-        st.switch_page("pages/1_📤_Upload_Process.py")
-
-with col2:
-    if st.button("🏠 Home", use_container_width=True):
-        st.switch_page("streamlit_app.py")

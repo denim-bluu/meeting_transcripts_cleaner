@@ -9,7 +9,6 @@ from typing import Any
 from asyncio_throttle.throttler import Throttler
 import structlog
 
-from config import Config
 from core.ai_agents import TranscriptCleaner, TranscriptReviewer
 from core.vtt_processor import VTTProcessor
 from models.agents import CleaningResult, ReviewResult
@@ -21,30 +20,30 @@ logger = structlog.get_logger(__name__)
 class TranscriptService:
     """Orchestrate the complete VTT processing pipeline with concurrent processing and rate limiting."""
 
-    def __init__(self, api_key: str, max_concurrent: int = 30, rate_limit: int = 300):
+    def __init__(self, api_key: str, max_concurrent: int = 10, rate_limit: int = 50):
         """
-        Initialize transcript service with concurrency and rate limiting.
+        Initialize service with API key and rate limiting controls.
 
         Args:
-            api_key: OpenAI API key
-            max_concurrent: Maximum concurrent API calls (default: 30 for high throughput)
+            api_key: OpenAI API key for AI processing
+            max_concurrent: Maximum concurrent API calls (default: 10 for o3-mini stability)
             rate_limit: Maximum requests per minute (default: 300 for Tier 2-3 usage)
         """
-        self.processor = VTTProcessor()
-        self.cleaner = TranscriptCleaner(api_key, Config.CLEANING_MODEL)
-        self.reviewer = TranscriptReviewer(api_key, Config.REVIEW_MODEL)
-
-        # Concurrency and rate limiting
+        self.api_key = api_key
+        self.client = None
+        self.transcript_cleaner = None
+        self.transcript_reviewer = None
         self.semaphore = asyncio.Semaphore(max_concurrent)
-        self.throttler = Throttler(rate_limit=rate_limit, period=60)  # per minute
 
-        logger.info(
-            "TranscriptService initialized",
-            max_concurrent=max_concurrent,
-            rate_limit=rate_limit,
-            cleaning_model=Config.CLEANING_MODEL,
-            review_model=Config.REVIEW_MODEL,
-        )
+        # Initialize VTT processor
+        self.processor = VTTProcessor()
+
+        # Initialize throttler for rate limiting
+        self.throttler = Throttler(rate_limit=rate_limit, period=60)
+
+        # Initialize agents immediately
+        self.cleaner = TranscriptCleaner(api_key=self.api_key)
+        self.reviewer = TranscriptReviewer(api_key=self.api_key)
 
     def process_vtt(self, content: str) -> dict:
         """
@@ -67,7 +66,6 @@ class TranscriptService:
             if len(content) > 200
             else content,
         )
-
 
         entries = self.processor.parse_vtt(content)
         chunks = self.processor.create_chunks(entries)
@@ -187,23 +185,29 @@ class TranscriptService:
         start_time = time.time()
 
         # Process chunks concurrently in batches to maintain context flow
-        batch_size = min(
-            30, total_chunks  # Process up to 30 chunks at a time or all chunks if fewer
-        )
+        batch_size = min(10, total_chunks)  # Reduced for o3-mini stability
         cleaned_chunks: list[CleaningResult | None] = [
             None
         ] * total_chunks  # Pre-allocate for order preservation
         review_results: list[ReviewResult | None] = [None] * total_chunks
 
+        # Track progress
+        completed_chunks = 0
+
         for batch_start in range(0, total_chunks, batch_size):
             batch_end = min(batch_start + batch_size, total_chunks)
             batch_chunks = chunks[batch_start:batch_end]
+            current_batch = batch_start // batch_size + 1
+            total_batches = (total_chunks + batch_size - 1) // batch_size
 
             if progress_callback:
-                progress = batch_start / total_chunks
-                progress_callback(
-                    progress, f"Processing batch {batch_start // batch_size + 1}"
-                )
+                progress = completed_chunks / total_chunks
+                # Calculate active requests more accurately
+                active_requests = len(
+                    batch_chunks
+                )  # All chunks in current batch are active
+                status = f"Batch {current_batch}/{total_batches} • {len(batch_chunks)} chunks • {active_requests} active • Concurrency: {batch_size}"
+                progress_callback(progress, status)
             # Create tasks for concurrent processing
             tasks: list[
                 tuple[int, asyncio.Task[tuple[CleaningResult, ReviewResult]]]
@@ -223,7 +227,9 @@ class TranscriptService:
                 # Explicitly create an asyncio.Task so we can add type hints
                 task: asyncio.Task[tuple[CleaningResult, ReviewResult]] = (
                     asyncio.create_task(
-                        self._process_chunk_with_concurrency_control(chunk, chunk_index, prev_text)
+                        self._process_chunk_with_concurrency_control(
+                            chunk, chunk_index, prev_text
+                        )
                     )
                 )
 
@@ -242,6 +248,7 @@ class TranscriptService:
                 batch_results = await asyncio.gather(*task_list, return_exceptions=True)
 
                 # Process results and handle any exceptions
+                batch_completed_count = 0
                 for i, (chunk_index, _) in enumerate(tasks):
                     result = batch_results[i]
 
@@ -268,6 +275,26 @@ class TranscriptService:
                         cleaned_chunks[chunk_index] = clean_result
                         review_results[chunk_index] = review_result
 
+                    batch_completed_count += 1
+
+                    # Update progress more frequently - after each chunk in the batch
+                    if (
+                        progress_callback and batch_completed_count % 1 == 0
+                    ):  # Update after every chunk
+                        current_total_completed = batch_start + batch_completed_count
+                        progress = current_total_completed / total_chunks
+                        active_remaining = len(batch_chunks) - batch_completed_count
+
+                        elapsed_time = time.time() - start_time
+                        chunks_per_sec = (
+                            current_total_completed / elapsed_time
+                            if elapsed_time > 0
+                            else 0
+                        )
+
+                        status = f"Batch {current_batch}/{total_batches} • {batch_completed_count}/{len(batch_chunks)} done • {active_remaining} active • {chunks_per_sec:.1f}/sec"
+                        progress_callback(progress, status)
+
             except Exception as e:
                 logger.error(
                     "Batch execution failed",
@@ -288,6 +315,20 @@ class TranscriptService:
                         issues=[f"Batch error: {str(e)}"],
                         accept=False,
                     )
+
+            # Update progress after batch completion
+            completed_chunks = batch_end
+            if progress_callback:
+                progress = completed_chunks / total_chunks
+                elapsed_time = time.time() - start_time
+                chunks_per_sec = (
+                    completed_chunks / elapsed_time if elapsed_time > 0 else 0
+                )
+                remaining_chunks = total_chunks - completed_chunks
+                eta = remaining_chunks / chunks_per_sec if chunks_per_sec > 0 else 0
+
+                status = f"Completed batch {current_batch}/{total_batches} • {completed_chunks}/{total_chunks} chunks • {chunks_per_sec:.1f}/sec • ETA: {eta:.1f}s"
+                progress_callback(progress, status)
 
         # Final progress update
         if progress_callback:

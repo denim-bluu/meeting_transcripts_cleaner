@@ -97,19 +97,34 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
             processing_state["progress"] = progress
             processing_state["status"] = status
 
-            # Calculate ETA and processing rate
+            # Extract metrics from the detailed status message if available
+            if "/sec" in status:
+                try:
+                    # Try to extract chunks per second from status
+                    parts = status.split("•")
+                    for part in parts:
+                        if "/sec" in part:
+                            processing_state["tokens_per_sec"] = float(
+                                part.strip().split()[0]
+                            )
+                            break
+                except (ValueError, IndexError, AttributeError):
+                    # Fallback calculation if parsing fails
+                    if progress > 0:
+                        total_time = time.time() - start_time
+                        chunks_processed = int(progress * len(transcript["chunks"]))
+                        chunks_per_sec = (
+                            chunks_processed / total_time if total_time > 0 else 0
+                        )
+                        processing_state["tokens_per_sec"] = chunks_per_sec
+
+            # Calculate ETA based on current progress
             if progress > 0:
                 total_time = time.time() - start_time
                 eta = (total_time / progress) * (1 - progress)
-
-                # Calculate chunks per second
-                chunks_processed = int(progress * len(transcript["chunks"]))
-                chunks_per_sec = chunks_processed / total_time if total_time > 0 else 0
-                processing_state["tokens_per_sec"] = (
-                    chunks_per_sec  # Reuse field name for display
-                )
-
                 processing_state["eta"] = eta
+            else:
+                processing_state["eta"] = 0
 
         def run_ai_processing():
             """Run AI processing in background thread with proper async handling."""
@@ -168,32 +183,47 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
             progress_bar = st.progress(0)
             status_text = st.empty()
 
-            metrics_cols = st.columns(3)
+            # Enhanced metrics with more columns for better visibility
+            metrics_cols = st.columns(4)
 
             # Create metric placeholders once (prevents stacking)
             with metrics_cols[0]:
                 progress_placeholder = st.empty()
             with metrics_cols[1]:
-                eta_placeholder = st.empty()
+                throughput_placeholder = st.empty()
             with metrics_cols[2]:
-                tokens_placeholder = st.empty()
+                eta_placeholder = st.empty()
+            with metrics_cols[3]:
+                batch_placeholder = st.empty()
 
             while thread.is_alive() or not processing_state["completed"]:
                 # Update progress bar
                 progress_bar.progress(processing_state["progress"])
 
-                # Update status text
+                # Update status text (now includes batch info)
                 status_text.write(f"**{processing_state['status']}**")
 
-                # Update metrics using placeholders (prevents multiple lines)
+                # Update enhanced metrics using placeholders (prevents multiple lines)
                 progress_placeholder.metric(
                     "Progress", f"{processing_state['progress']:.1%}"
                 )
-                eta_placeholder.metric("ETA", f"{processing_state['eta']:.1f}s")
-                # Display processing rate metric
-                tokens_placeholder.metric(
-                    "Chunks/sec", f"{processing_state['tokens_per_sec']:.1f}"
+                throughput_placeholder.metric(
+                    "Throughput", f"{processing_state['tokens_per_sec']:.1f} chunks/sec"
                 )
+                eta_placeholder.metric("ETA", f"{processing_state['eta']:.1f}s")
+
+                # Extract batch info from status if available
+                batch_info = "Processing..."
+                if "Batch" in processing_state["status"]:
+                    # Try to extract batch info from status
+                    status = processing_state["status"]
+                    if "/" in status and "Batch" in status:
+                        try:
+                            batch_part = status.split("Batch ")[1].split(" ")[0]
+                            batch_info = f"Batch {batch_part}"
+                        except (IndexError, AttributeError):
+                            batch_info = "Processing..."
+                batch_placeholder.metric("Batch", batch_info)
 
                 # Check for completion or error
                 if processing_state["error"]:
@@ -231,7 +261,7 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
         # Show completion metrics using the result from processing_state
         cleaned_transcript = processing_state.get("result", {})
         review_results = cleaned_transcript.get("review_results", [])
-        accepted_count = sum(1 for r in review_results if r.accept)
+        accepted_count = sum(1 for r in review_results if r and r.accept)
 
         completion_metrics = [
             ("Total Chunks", len(cleaned_transcript.get("cleaned_chunks", [])), None),
@@ -239,7 +269,7 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
             ("Needs Review", len(review_results) - accepted_count, None),
             (
                 "Quality Score",
-                f"{sum(r.quality_score for r in review_results) / len(review_results):.2f}"
+                f"{sum(r.quality_score for r in review_results if r) / len(review_results):.2f}"
                 if review_results
                 else "N/A",
                 None,
@@ -247,7 +277,6 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
         ]
         render_metrics_row(completion_metrics)
 
-        st.balloons()
         st.info(
             "Navigate to the **Review** page to examine results and make any needed adjustments."
         )
