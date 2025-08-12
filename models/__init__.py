@@ -1,6 +1,6 @@
 """Simple VTT models package for Meeting Transcript Cleaner."""
 
-from .vtt import VTTEntry, VTTChunk
+from .vtt import VTTChunk, VTTEntry
 
 __all__ = [
     "VTTEntry",

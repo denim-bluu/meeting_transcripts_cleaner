@@ -3,8 +3,10 @@
 import re
 import time
 from typing import List
+
 import structlog
-from models.vtt import VTTEntry, VTTChunk
+
+from models.vtt import VTTChunk, VTTEntry
 
 logger = structlog.get_logger(__name__)
 

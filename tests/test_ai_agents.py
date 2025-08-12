@@ -4,9 +4,10 @@ Simple, focused tests for AI agents without over-engineering.
 Tests only essential functionality for the simplified 2-layer architecture.
 """
 
-import pytest
 import json
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from core.ai_agents import TranscriptCleaner, TranscriptReviewer
 from models.vtt import VTTChunk, VTTEntry

@@ -4,12 +4,13 @@ Simple, focused tests for TranscriptService.
 Tests only essential functionality for the simplified 2-layer architecture.
 """
 
-import pytest
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from models.vtt import VTTChunk, VTTEntry
 from services.transcript_service import TranscriptService
-from models.vtt import VTTEntry, VTTChunk
 
 
 class TestTranscriptServiceSimple:

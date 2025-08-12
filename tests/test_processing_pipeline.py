@@ -6,8 +6,9 @@ This bypasses Streamlit to test the core functionality directly.
 
 import asyncio
 import time
-from services.transcript_service import TranscriptService
+
 from config import Config, configure_structlog
+from services.transcript_service import TranscriptService
 
 # Configure logging
 configure_structlog()

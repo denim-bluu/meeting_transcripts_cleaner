@@ -3,9 +3,16 @@
 import json
 import time
 from typing import Dict, Optional
-import structlog
+
 from openai import AsyncOpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import structlog
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
 from models.vtt import VTTChunk
 
 logger = structlog.get_logger(__name__)

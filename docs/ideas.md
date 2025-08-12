@@ -60,32 +60,6 @@ An intelligent agent that identifies, extracts, and tracks action items across m
 - Ensures accountability and completion
 - Creates audit trail for commitments
 
-#### Technical Implementation (Pragmatic Approach)
-
-```python
-class ActionItem(BaseModel):
-    id: str
-    description: str
-    owner: str | None
-    deadline: datetime | None
-    status: ActionStatusEnum
-    confidence_score: float
-    
-    # Context tracking
-    context: str  # Surrounding discussion (500-1000 chars)
-    segment_ids: list[str]  # Tracks if item spans multiple segments
-    needs_review: bool  # Flag for ambiguous items requiring human review
-```
-
-**Core Technical Approach:**
-- **Enhanced Context Windows**: 1000 char lookback for comprehensive context
-- **Two-Pass Processing**: 
-  - Pass 1: Extract all potential action items with local context
-  - Pass 2: Validate and consolidate with full document awareness
-- **Simple Fuzzy Deduplication**: Levenshtein distance for 90% accuracy
-- **Confidence-Based Review**: Flag items below 0.8 confidence for manual review
-- **No Over-Engineering**: No embeddings, entity resolution, or complex state machines until proven necessary
-
 ---
 
 ### 2. Smart Meeting Summary Agent
@@ -94,7 +68,7 @@ class ActionItem(BaseModel):
 
 #### Description
 
-Generate intelligent, audience-appropriate summaries in multiple formats, eliminating hours of post-meeting documentation work.
+Generate intelligent, audience-appropriate summaries in multiple formats, eliminating hours of post-meeting documentation work. With preserving all the details, ensuring accuracy that the web-based ChatGPT with one-shot attempt often fails to capture nuances and context.
 
 #### Key Features
 
@@ -124,22 +98,6 @@ Generate intelligent, audience-appropriate summaries in multiple formats, elimin
 - Ensures consistent documentation
 - Improves communication to non-attendees
 - Creates searchable knowledge base
-
-#### Technical Implementation
-
-```python
-class MeetingSummary(BaseModel):
-    meeting_id: str
-    format_type: SummaryFormatEnum
-    audience_type: AudienceEnum
-    key_decisions: list[Decision]
-    discussions: list[Discussion]
-    action_items: list[str]  # References to action item IDs
-    risks_identified: list[Risk]
-    next_steps: list[NextStep]
-    executive_summary: str
-    detailed_content: str
-```
 
 ---
 
@@ -177,13 +135,6 @@ Natural language search across all transcripts with semantic understanding and c
 - Instant access to institutional knowledge
 - Supports decision-making with historical context
 - Reduces duplicate discussions
-
-#### Technical Implementation
-
-- Vector embeddings for semantic search
-- RAG (Retrieval-Augmented Generation) pipeline
-- Knowledge graph for entity relationships
-- Caching layer for frequent queries
 
 ---
 

@@ -8,13 +8,13 @@ This module provides:
 - OpenAI API mocking
 """
 
+import asyncio
+import json
 import os
 from pathlib import Path
 import sys
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
-import json
-import asyncio
 
 import pytest
 
@@ -27,11 +27,11 @@ project_root = test_dir.parent
 sys.path.insert(0, str(project_root))
 
 # Import after setting up environment
-from models.vtt import VTTEntry, VTTChunk
-from core.vtt_processor import VTTProcessor
-from core.ai_agents import TranscriptCleaner, TranscriptReviewer
-from services.transcript_service import TranscriptService
 from config import Config
+from core.ai_agents import TranscriptCleaner, TranscriptReviewer
+from core.vtt_processor import VTTProcessor
+from models.vtt import VTTChunk, VTTEntry
+from services.transcript_service import TranscriptService
 
 
 @pytest.fixture(autouse=True)

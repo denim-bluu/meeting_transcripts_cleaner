@@ -9,7 +9,8 @@ Tests the VTTEntry and VTTChunk dataclasses for:
 """
 
 import pytest
-from models.vtt import VTTEntry, VTTChunk
+
+from models.vtt import VTTChunk, VTTEntry
 
 
 class TestVTTEntry:
