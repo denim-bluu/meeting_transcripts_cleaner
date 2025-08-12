@@ -1,13 +1,10 @@
-"""Core processing modules for the Meeting Transcript Cleaner."""
+"""Core VTT processing modules for the Meeting Transcript Cleaner."""
 
-from .cleaning_agent import CleaningAgent
-from .confidence_categorizer import ConfidenceCategorizer
-from .document_processor import DocumentProcessor
-from .review_agent import ReviewAgent
+from .vtt_processor import VTTProcessor
+from .ai_agents import TranscriptCleaner, TranscriptReviewer
 
 __all__ = [
-    "CleaningAgent",
-    "ConfidenceCategorizer",
-    "DocumentProcessor",
-    "ReviewAgent",
+    "VTTProcessor",
+    "TranscriptCleaner", 
+    "TranscriptReviewer",
 ]

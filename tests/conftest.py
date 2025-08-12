@@ -1,19 +1,21 @@
 """
-Clean pytest configuration and fixtures for the Meeting Transcript Cleaner test suite.
+Pytest configuration and fixtures for the VTT transcript processing system.
 
 This module provides:
-- Essential fixtures for testing components
+- Essential fixtures for testing VTT processing components
 - Test configuration and setup
-- Mock data generators
+- Mock VTT data generators
+- OpenAI API mocking
 """
 
 import os
 from pathlib import Path
 import sys
 import tempfile
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+import json
+import asyncio
 
-from faker import Faker
 import pytest
 
 # Set test API key before importing config
@@ -25,45 +27,25 @@ project_root = test_dir.parent
 sys.path.insert(0, str(project_root))
 
 # Import after setting up environment
-from config import reset_config  # noqa: E402
-from core.cleaning_agent import CleaningAgent  # noqa: E402
-from core.confidence_categorizer import ConfidenceCategorizer  # noqa: E402
-from core.document_processor import DocumentProcessor  # noqa: E402
-from core.review_agent import ReviewAgent  # noqa: E402
-from models.schemas import (  # noqa: E402
-    CleaningResult,
-    DocumentSegment,
-    ReviewDecision,
-    ReviewDecisionEnum,
-)
-
-# Initialize Faker for test data generation
-fake = Faker()
-fake.seed_instance(42)  # Deterministic fake data
+from models.vtt import VTTEntry, VTTChunk
+from core.vtt_processor import VTTProcessor
+from core.ai_agents import TranscriptCleaner, TranscriptReviewer
+from services.transcript_service import TranscriptService
+from config import Config
 
 
 @pytest.fixture(autouse=True)
 def setup_test_environment():
-    """Set up test environment with mock API responses."""
-    # Reset configuration cache before each test
-    reset_config()
-
-    os.environ["USE_MOCK_RESPONSES"] = "true"
+    """Set up clean test environment."""
+    # Ensure test directories exist
+    Config.ensure_directories()
+    
+    # Set test-specific environment variables
     os.environ["OPENAI_API_KEY"] = "sk-test-key-for-testing-only"
-    os.environ["LOG_LEVEL"] = "WARNING"  # Reduce noise in tests
-    os.environ["PROCESSING__MIN_SEGMENT_TOKENS"] = "5"
-    os.environ["PROCESSING__MAX_SECTION_TOKENS"] = "500"
-    os.environ["PROCESSING__TOKEN_OVERLAP"] = "20"
-    os.environ["DEVELOPMENT__TEST_MODE"] = "true"
-
+    
     yield
-
-    # Cleanup after test
-    for key in ["USE_MOCK_RESPONSES", "PROCESSING__MIN_SEGMENT_TOKENS",
-                "PROCESSING__MAX_SECTION_TOKENS", "PROCESSING__TOKEN_OVERLAP",
-                "DEVELOPMENT__TEST_MODE"]:
-        os.environ.pop(key, None)
-    reset_config()
+    
+    # Cleanup after test if needed
 
 
 @pytest.fixture
@@ -74,148 +56,246 @@ def temp_dir():
 
 
 @pytest.fixture
-def sample_transcript_text() -> str:
-    """Generate sample transcript text with common issues."""
-    return """
-    John Smith: Um, so welcome everyone to, uh, the quarterly meeting. I know we're all, you know, really excited to get started on this new initiative.
+def sample_vtt_content() -> str:
+    """Generate realistic sample VTT content for testing."""
+    return """WEBVTT
 
-    Sarah Johnson: Thanks John. Yeah, I'm really, uh, looking forward to working on this project. We've been, um, preparing for this moment and I think we're ready to, you know, tackle the challenges ahead.
+d700e97e-1c7f-4753-9597-54e5e43b4642/1-0
+00:00:01.000 --> 00:00:05.000
+<v John Smith>Um, so welcome everyone to, uh, the quarterly meeting.</v>
 
-    Mike Davis: Absolutely. The requirements that we discussed last week are, um, they're pretty clear. We need to implement the new user authentication system and also, you know, improve the database performance significantly.
-    """.strip()
+d700e97e-1c7f-4753-9597-54e5e43b4642/2-0
+00:00:05.000 --> 00:00:10.000
+<v John Smith>I know we're all, you know, really excited to get started on this.</v>
+
+d700e97e-1c7f-4753-9597-54e5e43b4642/3-0
+00:00:10.000 --> 00:00:15.000
+<v Sarah Johnson>Thanks John. Yeah, I'm really, uh, looking forward to this project.</v>
+
+d700e97e-1c7f-4753-9597-54e5e43b4642/4-0
+00:00:15.000 --> 00:00:20.000
+<v Sarah Johnson>We've been, um, preparing for this moment and I think we're ready.</v>
+
+d700e97e-1c7f-4753-9597-54e5e43b4642/5-0
+00:00:20.000 --> 00:00:25.000
+<v Mike Davis>Absolutely. The requirements are, um, they're pretty clear.</v>
+
+d700e97e-1c7f-4753-9597-54e5e43b4642/6-0
+00:00:25.000 --> 00:00:30.000
+<v Mike Davis>We need to implement the new authentication system, you know.</v>"""
 
 
 @pytest.fixture
-def sample_clean_text() -> str:
-    """Generate sample cleaned text."""
-    return """
-    John Smith: Welcome everyone to the quarterly meeting. I know we're all really excited to get started on this new initiative.
+def simple_vtt_content() -> str:
+    """Generate minimal VTT content for basic testing."""
+    return """WEBVTT
 
-    Sarah Johnson: Thanks John. I'm really looking forward to working on this project. We've been preparing for this moment and I think we're ready to tackle the challenges ahead.
+1
+00:00:01.000 --> 00:00:05.000
+<v Speaker1>Hello world.</v>
 
-    Mike Davis: Absolutely. The requirements that we discussed last week are pretty clear. We need to implement the new user authentication system and also improve the database performance significantly.
-    """.strip()
+2
+00:00:05.000 --> 00:00:10.000
+<v Speaker2>How are you?</v>"""
 
 
 @pytest.fixture
-def sample_document_segment(sample_transcript_text: str) -> DocumentSegment:
-    """Create a sample document segment for testing."""
-    return DocumentSegment(
-        content=sample_transcript_text[:200],
-        token_count=50,
-        start_index=0,
-        end_index=200,
-        sequence_number=1,
+def sample_vtt_entry() -> VTTEntry:
+    """Create a sample VTT entry for testing."""
+    return VTTEntry(
+        cue_id="test-entry-1",
+        start_time=1.0,
+        end_time=5.0,
+        speaker="John Smith",
+        text="Um, so welcome everyone to, uh, the quarterly meeting."
     )
 
 
 @pytest.fixture
-def sample_cleaning_result(
-    sample_document_segment: DocumentSegment, sample_clean_text: str
-) -> CleaningResult:
-    """Create a sample cleaning result for testing."""
-    return CleaningResult(
-        segment_id=sample_document_segment.id,
-        cleaned_text=sample_clean_text[:200],
-        changes_made=[
-            "Removed filler words: 'Um', 'uh', 'you know'",
-            "Improved grammar",
-        ],
-        processing_time_ms=1250.5,
-        model_used="o3-mini",
+def sample_vtt_entries() -> list[VTTEntry]:
+    """Create a list of sample VTT entries for testing."""
+    return [
+        VTTEntry(
+            cue_id="1",
+            start_time=1.0,
+            end_time=5.0,
+            speaker="John Smith",
+            text="Welcome everyone to the quarterly meeting."
+        ),
+        VTTEntry(
+            cue_id="2",
+            start_time=5.0,
+            end_time=10.0,
+            speaker="John Smith",
+            text="I know we're all excited to get started."
+        ),
+        VTTEntry(
+            cue_id="3",
+            start_time=10.0,
+            end_time=15.0,
+            speaker="Sarah Johnson",
+            text="Thanks John. I'm looking forward to this project."
+        ),
+    ]
+
+
+@pytest.fixture
+def sample_vtt_chunk(sample_vtt_entries) -> VTTChunk:
+    """Create a sample VTT chunk for testing."""
+    return VTTChunk(
+        chunk_id=0,
+        entries=sample_vtt_entries,
+        token_count=150
     )
 
 
 @pytest.fixture
-def sample_review_decision(sample_document_segment: DocumentSegment) -> ReviewDecision:
-    """Create a sample review decision for testing."""
-    return ReviewDecision(
-        segment_id=sample_document_segment.id,
-        decision=ReviewDecisionEnum.ACCEPT,
-        confidence=0.95,
-        issues_found=[],
-        reasoning="Clean removal of filler words while preserving meaning and context.",
-        processing_time_ms=850.3,
-        model_used="o3-mini",
-    )
+def vtt_processor() -> VTTProcessor:
+    """Create a VTT processor instance."""
+    return VTTProcessor()
 
 
 @pytest.fixture
-def document_processor() -> DocumentProcessor:
-    """Create a document processor instance with test-friendly settings."""
-    processor = DocumentProcessor()
-    processor.min_tokens = 5
-    processor.max_tokens = 500
-    return processor
+def mock_openai_response():
+    """Mock successful OpenAI API response."""
+    return {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps({
+                        "cleaned_text": "Welcome everyone to the quarterly meeting. I know we're all excited to get started.",
+                        "confidence": 0.95,
+                        "changes_made": ["Removed filler words", "Fixed grammar"]
+                    })
+                }
+            }
+        ]
+    }
 
 
 @pytest.fixture
-def mock_cleaning_agent() -> MagicMock:
-    """Create a mock cleaning agent for testing."""
-    agent = MagicMock(spec=CleaningAgent)
-    agent.clean_segment = AsyncMock()
-    agent.model = "o3-mini"
-    agent.temperature = 0.2
-    agent.max_tokens = 4000
-    return agent
+def mock_openai_review_response():
+    """Mock successful OpenAI review response."""
+    return {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps({
+                        "quality_score": 0.85,
+                        "issues": [],
+                        "accept": True
+                    })
+                }
+            }
+        ]
+    }
 
 
 @pytest.fixture
-def mock_review_agent() -> MagicMock:
-    """Create a mock review agent for testing."""
-    agent = MagicMock(spec=ReviewAgent)
-    agent.review_cleaning = AsyncMock()
-    agent.model = "o3-mini"
-    agent.temperature = 0.0
-    agent.max_tokens = 4000
-    return agent
+def mock_openai_client():
+    """Create a mock OpenAI client."""
+    client = MagicMock()
+    client.chat = MagicMock()
+    client.chat.completions = MagicMock()
+    client.chat.completions.create = AsyncMock()
+    return client
 
 
 @pytest.fixture
-def confidence_categorizer() -> ConfidenceCategorizer:
-    """Create a confidence categorizer instance."""
-    return ConfidenceCategorizer()
+def transcript_cleaner(mock_openai_client) -> TranscriptCleaner:
+    """Create a TranscriptCleaner with mocked OpenAI client."""
+    cleaner = TranscriptCleaner("test-api-key", "o3-mini")
+    cleaner.client = mock_openai_client
+    return cleaner
 
 
-def pytest_configure(config):
-    """Configure pytest with custom markers."""
-    config.addinivalue_line("markers", "slow: mark test as slow")
-    config.addinivalue_line("markers", "integration: mark test as integration test")
+@pytest.fixture
+def transcript_reviewer(mock_openai_client) -> TranscriptReviewer:
+    """Create a TranscriptReviewer with mocked OpenAI client."""
+    reviewer = TranscriptReviewer("test-api-key", "o3-mini")
+    reviewer.client = mock_openai_client
+    return reviewer
 
 
-class TestMetrics:
-    """Utility class for calculating test metrics."""
+@pytest.fixture
+def transcript_service() -> TranscriptService:
+    """Create a TranscriptService instance."""
+    return TranscriptService("test-api-key", max_concurrent=2, rate_limit=10)
 
+
+@pytest.fixture
+def mock_transcript_service():
+    """Create a mock TranscriptService."""
+    service = MagicMock(spec=TranscriptService)
+    service.process_vtt = MagicMock()
+    service.clean_transcript = AsyncMock()
+    service.export = MagicMock()
+    return service
+
+
+# Test utilities
+class VTTTestUtils:
+    """Utility class for VTT testing helpers."""
+    
     @staticmethod
-    def calculate_similarity(text1: str, text2: str) -> float:
-        """Calculate semantic similarity between two texts."""
-        words1 = set(text1.lower().split())
-        words2 = set(text2.lower().split())
-
-        if not words1 and not words2:
-            return 1.0
-        if not words1 or not words2:
+    def count_speakers(entries: list[VTTEntry]) -> int:
+        """Count unique speakers in VTT entries."""
+        return len(set(entry.speaker for entry in entries))
+    
+    @staticmethod
+    def total_duration(entries: list[VTTEntry]) -> float:
+        """Calculate total duration from VTT entries."""
+        if not entries:
             return 0.0
-
-        intersection = words1.intersection(words2)
-        union = words1.union(words2)
-
-        return len(intersection) / len(union) if union else 0.0
-
+        return max(entry.end_time for entry in entries)
+    
     @staticmethod
     def count_filler_words(text: str) -> int:
         """Count common filler words in text."""
         filler_words = ["um", "uh", "er", "ah", "like", "you know", "so", "well"]
         text_lower = text.lower()
         count = 0
-
         for filler in filler_words:
             count += text_lower.count(filler)
-
         return count
+    
+    @staticmethod
+    def assert_vtt_entry_valid(entry: VTTEntry):
+        """Assert that a VTT entry is valid."""
+        assert entry.cue_id is not None
+        assert entry.start_time >= 0
+        assert entry.end_time > entry.start_time
+        assert entry.speaker is not None
+        assert entry.text is not None
+    
+    @staticmethod
+    def assert_chunk_valid(chunk: VTTChunk):
+        """Assert that a VTT chunk is valid."""
+        assert chunk.chunk_id >= 0
+        assert len(chunk.entries) > 0
+        assert chunk.token_count > 0
+        for entry in chunk.entries:
+            VTTTestUtils.assert_vtt_entry_valid(entry)
 
 
 @pytest.fixture
-def test_metrics() -> TestMetrics:
-    """Provide test metrics utility."""
-    return TestMetrics()
+def vtt_test_utils() -> VTTTestUtils:
+    """Provide VTT testing utilities."""
+    return VTTTestUtils()
+
+
+def pytest_configure(config):
+    """Configure pytest with custom markers."""
+    config.addinivalue_line("markers", "slow: mark test as slow")
+    config.addinivalue_line("markers", "integration: mark test as integration test")
+    config.addinivalue_line("markers", "unit: mark test as unit test")
+    config.addinivalue_line("markers", "async_test: mark test as async test")
+
+
+# Event loop fixture for async tests
+@pytest.fixture
+def event_loop():
+    """Create an instance of the default event loop for the test session."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
