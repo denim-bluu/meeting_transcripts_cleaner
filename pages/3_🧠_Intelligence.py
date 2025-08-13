@@ -7,7 +7,6 @@ executive summaries, action items, and export functionality.
 
 import asyncio
 from datetime import datetime
-import threading
 
 import streamlit as st
 import structlog
@@ -265,80 +264,123 @@ def render_processing_stats(intelligence: IntelligenceResult):
                 st.text(f"{key}: {value}")
 
 
-async def extract_intelligence_async():
-    """Extract intelligence from transcript in session state."""
+async def extract_intelligence_async(transcript_data):
+    """Extract intelligence from transcript data."""
     try:
         # Get API key
         api_key = Config.OPENAI_API_KEY
         if not api_key:
-            st.error("❌ OpenAI API key not found. Please configure it first.")
-            return False
+            return False, "OpenAI API key not found. Please configure it first."
 
         # Initialize service
         service = TranscriptService(api_key)
 
-        # Extract intelligence with progress updates
-        with st.status("Extracting meeting intelligence...", expanded=True) as status:
-            progress_placeholder = st.empty()
-
-            def progress_callback(progress: float, message: str):
-                progress_placeholder.progress(progress, text=message)
-
-            transcript = await service.extract_intelligence(
-                st.session_state.transcript,
-                # Note: progress_callback not supported in current implementation
-            )
-
-            progress_placeholder.progress(1.0, text="Intelligence extraction complete!")
-
-            # Update session state
-            st.session_state.transcript = transcript
-            st.session_state.intelligence_extracted = True
-
-            status.update(
-                label="✅ Intelligence extraction completed!", state="complete"
-            )
-
-        return True
+        # Extract intelligence
+        result_transcript = await service.extract_intelligence(transcript_data)
+        return True, result_transcript
 
     except Exception as e:
         logger.error("Intelligence extraction failed", error=str(e))
-        st.error(f"❌ Intelligence extraction failed: {str(e)}")
-        return False
+        return False, str(e)
 
 
 def run_intelligence_extraction():
-    """Run intelligence extraction in a thread to avoid blocking Streamlit."""
+    """Run intelligence extraction and update session state."""
+    # Check if transcript exists in session state
+    if "transcript" not in st.session_state:
+        st.error("❌ No transcript available for intelligence extraction.")
+        return
 
-    def run_async():
+    # Get the transcript data from session state
+    transcript_data = st.session_state.transcript.copy()
+
+    # Show progress and run extraction
+    with st.status("Extracting meeting intelligence...", expanded=True) as status:
+        progress_placeholder = st.empty()
+        progress_placeholder.progress(
+            0.1, text="Initializing intelligence extraction..."
+        )
+
+        # Run the async function in the current thread
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+
         try:
-            success = loop.run_until_complete(extract_intelligence_async())
+            progress_placeholder.progress(0.3, text="Processing transcript chunks...")
+            success, result = loop.run_until_complete(
+                extract_intelligence_async(transcript_data)
+            )
+
             if success:
+                progress_placeholder.progress(
+                    1.0, text="Intelligence extraction complete!"
+                )
+
+                # Update session state with the result
+                st.session_state.transcript = result
+                st.session_state.intelligence_extracted = True
+
+                status.update(
+                    label="✅ Intelligence extraction completed!", state="complete"
+                )
                 st.rerun()
+            else:
+                status.update(label="❌ Intelligence extraction failed", state="error")
+                st.error(f"❌ Intelligence extraction failed: {result}")
+
+        except Exception as e:
+            logger.error("Intelligence extraction failed", error=str(e))
+            status.update(label="❌ Intelligence extraction failed", state="error")
+            st.error(f"❌ Intelligence extraction failed: {str(e)}")
         finally:
             loop.close()
-
-    thread = threading.Thread(target=run_async)
-    thread.start()
-    thread.join()
 
 
 def main():
     """Main function for the Intelligence page."""
-    st.set_page_config(page_title="Meeting Intelligence", page_icon="📊", layout="wide")
+    st.set_page_config(page_title="Meeting Intelligence", page_icon="🧠", layout="wide")
 
-    st.title("📊 Meeting Intelligence")
+    st.title("🧠 Meeting Intelligence")
     st.markdown("Extract and view meeting summaries, action items, and key insights.")
 
-    # Check if we have a processed transcript
+    # Initialize session state if needed
     if "transcript" not in st.session_state:
+        st.session_state.transcript = None
+    if "intelligence_extracted" not in st.session_state:
+        st.session_state.intelligence_extracted = False
+
+    # Check if we have a processed transcript
+    if st.session_state.transcript is None or not st.session_state.transcript:
         st.warning(
             "⚠️ No transcript available. Please upload and process a VTT file first."
         )
-        if st.button("📤 Go to Upload & Process"):
-            st.switch_page("pages/1_📤_Upload_Process.py")
+
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            if st.button("📤 Go to Upload & Process", type="primary"):
+                st.switch_page("pages/1_📤_Upload_Process.py")
+        with col2:
+            st.markdown(
+                "*You need to upload and process a VTT file before extracting intelligence.*"
+            )
+
+        st.markdown("---")
+        st.markdown("### What you can do with Meeting Intelligence:")
+        st.markdown(
+            "• 📋 **Executive Summary** - Get a concise overview of your meeting"
+        )
+        st.markdown(
+            "• 🎯 **Action Items** - Automatically identify tasks with owners and deadlines"
+        )
+        st.markdown(
+            "• 🔍 **Key Decisions** - Extract important decisions made during the meeting"
+        )
+        st.markdown(
+            "• 💬 **Topics Discussed** - See all topics covered in the conversation"
+        )
+        st.markdown(
+            "• 📤 **Export Options** - Download results in JSON, Markdown, or CSV formats"
+        )
         return
 
     transcript = st.session_state.transcript
@@ -346,25 +388,6 @@ def main():
     # Check if intelligence has been extracted
     if "intelligence" not in transcript:
         st.info("🧠 Intelligence not yet extracted from this transcript.")
-
-        # Show transcript summary
-        if "chunks" in transcript:
-            st.markdown("### Current Transcript Status")
-            col1, col2, col3, col4 = st.columns(4)
-
-            with col1:
-                st.metric("Total Chunks", len(transcript["chunks"]))
-            with col2:
-                st.metric("Speakers", len(transcript.get("speakers", [])))
-            with col3:
-                duration_min = transcript.get("duration", 0) / 60
-                st.metric("Duration", f"{duration_min:.1f} min")
-            with col4:
-                if "processing_stats" in transcript:
-                    acceptance_rate = transcript["processing_stats"].get(
-                        "acceptance_rate", "N/A"
-                    )
-                    st.metric("Quality", acceptance_rate)
 
         st.markdown("---")
 

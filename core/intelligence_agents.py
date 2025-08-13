@@ -16,23 +16,36 @@ load_dotenv()
 logger = structlog.get_logger(__name__)
 
 # System prompts for intelligence extraction
-SUMMARY_PROMPT = """You are an expert meeting analyst specializing in extracting key information from meeting segments.
+SUMMARY_PROMPT = """You are an expert meeting analyst specializing in extracting detailed, specific information from meeting segments.
 
-Your task: Extract key information from this meeting segment.
+Your task: Extract comprehensive information from this meeting segment with rich details.
 
-Focus on:
-- Main points discussed
-- Decisions made
-- Topics covered
-- Speakers involved
+CRITICAL INSTRUCTIONS:
+- Capture SPECIFIC names, numbers, percentages, dates, and methodologies
+- Include technical terms, company names, product names exactly as mentioned
+- Extract quantitative data (percentages, amounts, timeframes, metrics)
+- Record key entities (people, organizations, technologies, products)
+- Write detailed narratives, not generic summaries
+- Preserve context and relationships between concepts
 
-Be concise and factual. Do not infer or add information not present in the text.
+EXAMPLE OF GOOD OUTPUT:
+- "Nathaniel Meixler explained that Starmine was founded in 1998 in San Francisco, based on the principle that sell-side analyst accuracy is measurable and persistent over time"
+- "The CAM score uses Smart Estimates with 70% accuracy when Predicted Surprise exceeds 2%"
+- "Intrinsic valuation model uses discounted dividend approach with 15% cap in year 15 for non-dividend payers"
+
+EXAMPLE OF BAD OUTPUT (too generic):
+- "Discussed platform overview"
+- "Talked about scoring methodology" 
+- "Reviewed model performance"
 
 Return JSON with exactly these fields:
-- "key_points": List of 1-5 main points (strings)
-- "decisions": List of decisions made (can be empty)
-- "topics": List of topics discussed (at least 1)
-- "speakers": List of speakers in this segment (at least 1)
+- "detailed_narrative": Rich paragraph (50-1000 chars) with specific names, numbers, and methodologies
+- "key_points": List of 1-8 detailed points with specifics, not abstractions
+- "decisions": Specific decisions with context and rationale
+- "topics": Specific topics/technologies/methodologies (not just "platform" or "model")
+- "speakers": List of speakers in this segment
+- "mentioned_entities": Names of people, companies, products, technologies mentioned
+- "quantitative_data": Numbers, percentages, metrics, dates mentioned
 - "confidence": Float 0.0-1.0 indicating extraction quality"""
 
 ACTION_PROMPT = """You are an expert meeting analyst specializing in identifying action items from meeting discussions.
@@ -61,25 +74,41 @@ For each action item, return:
 
 Return a list of action items (can be empty if none found)."""
 
-SYNTHESIS_PROMPT = """You are an expert meeting intelligence synthesizer specializing in creating comprehensive meeting summaries.
+SYNTHESIS_PROMPT = """You are an expert meeting intelligence synthesizer specializing in creating comprehensive, detailed meeting summaries with rich context.
 
-Your task: Synthesize all chunk-level extractions into cohesive meeting intelligence.
+Your task: Synthesize all chunk-level extractions into cohesive, detailed meeting intelligence that preserves specificity.
+
+CRITICAL SYNTHESIS PRINCIPLES:
+- PRESERVE all specific names, numbers, percentages, dates, and technical details
+- Create narrative flow that connects concepts and maintains context
+- Avoid generic language - keep technical terms and methodologies intact
+- Maintain the richness of detail from chunk summaries
+- Connect related concepts across different parts of the meeting
+- Preserve quantitative data and metrics exactly as discussed
+
+EXAMPLE OF GOOD SYNTHESIS:
+"Nathaniel Meixler provided a comprehensive overview of Starmine, founded in 1998 in San Francisco, explaining that their foundational insight is that sell-side analyst accuracy is measurable and persistent over time. The platform evaluates analysts on estimate accuracy—how close forecasts are to actuals and convergence speed, adjusted for stock volatility and estimate dispersion. These accuracy scores feed into Smart Estimates, a weighted consensus where more accurate analysts receive higher weighting. The CAM (Combined Alpha Model) is a linear combination of factor models including Analyst Revisions (ARM), Price Momentum, Relative and Intrinsic Valuation, Earnings Quality, Smart Holdings, and Insider Filings. When Predicted Surprise exceeds 2%, the model correctly predicts the direction of actual surprises 70% of the time."
+
+AVOID GENERIC SYNTHESIS LIKE:
+"The meeting covered platform capabilities and discussed various models and methodologies."
 
 Process:
-1. Deduplicate action items across chunks (merge similar items)
-2. Merge related summaries coherently
-3. Create executive summary (<500 characters)
-4. Generate bullet points (3-10 key points)
-5. Calculate overall confidence score
-6. Maintain traceability to source chunks
+1. Merge narratives while preserving ALL specific details
+2. Deduplicate action items but maintain context
+3. Create executive summary (up to 800 characters) with key specifics
+4. Generate detailed summary (up to 5000 characters) with comprehensive narrative
+5. Preserve all quantitative data and entity mentions
+6. Calculate overall confidence score
 
 Return JSON with exactly these fields:
-- "executive_summary": Concise overview (<500 chars)
-- "detailed_summary": Comprehensive summary (<2000 chars)
-- "bullet_points": List of 3-10 key takeaways
-- "action_items": Deduplicated list of action items
-- "key_decisions": List of important decisions made
-- "topics_discussed": List of main topics covered
+- "executive_summary": High-level overview with key specifics (<800 chars)
+- "detailed_summary": Comprehensive narrative with names, numbers, methodologies (<5000 chars)
+- "bullet_points": List of 3-15 key takeaways with specific details
+- "action_items": Deduplicated list with preserved context
+- "key_decisions": Decisions with context, rationale, and implications
+- "topics_discussed": Specific topics/technologies/methodologies (not generic terms)
+- "participants_mentioned": All people and organizations mentioned
+- "key_metrics": Important numbers, percentages, dates, quantitative data
 - "confidence_score": Overall confidence (0.0-1.0)
 - "processing_stats": Statistics about the processing"""
 
@@ -96,12 +125,12 @@ class SummaryExtractor:
 
     Expected behavior:
     - Returns ChunkSummary with 1-5 key points
-    - Uses GPT-4 with temperature=0.3 for consistency
+    - Uses o3-mini with temperature=0.3 for consistency
     - Logs all extractions with timing metrics
     - Raises on API errors after 3 retries
     """
 
-    def __init__(self, api_key: str | None = None, model: str = "gpt-4"):
+    def __init__(self, api_key: str | None = None, model: str = "o3-mini"):
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
 
@@ -138,14 +167,23 @@ class SummaryExtractor:
             model=self.model_name,
         )
 
-        user_prompt = f"""Analyze this meeting segment and extract key information:
+        user_prompt = f"""Analyze this meeting segment and extract detailed, specific information:
 
 Meeting segment:
 {full_context}
 
 Speakers in this segment: {', '.join(speakers)}
 
-Extract the key points, decisions, topics, and calculate your confidence in the extraction."""
+EXTRACT WITH SPECIFICITY:
+1. Write a detailed narrative paragraph (50-1000 chars) that captures names, numbers, percentages, dates, and methodologies mentioned
+2. List key points with specific details - avoid generic statements like "discussed models" 
+3. Identify any decisions with context and rationale
+4. List specific topics/technologies/methodologies (not just "platform" or "discussion")
+5. Extract all mentioned entities (people, companies, products, technologies)
+6. Capture quantitative data (numbers, percentages, metrics, dates)
+7. Assess your confidence in the extraction quality
+
+Remember: Preserve technical terms, exact names, and specific numbers exactly as mentioned."""
 
         try:
             # Use model settings for non-o3 models
@@ -198,11 +236,11 @@ class ActionItemExtractor:
     Expected behavior:
     - Returns List[ActionItem] (may be empty)
     - Detects implicit assignments ("someone should...")
-    - Uses GPT-4 with temperature=0.2 for precision
+    - Uses o3-mini with temperature=0.2 for precision
     - Validates each item before returning
     """
 
-    def __init__(self, api_key: str | None = None, model: str = "gpt-4"):
+    def __init__(self, api_key: str | None = None, model: str = "o3-mini"):
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
 
@@ -309,10 +347,10 @@ class IntelligenceSynthesizer:
     - Handles 40+ chunk summaries efficiently
     - Preserves source chunk references
     - Creates hierarchical summary structure
-    - Uses GPT-4 with temperature=0.5 for creativity
+    - Uses o3-mini with temperature=0.5 for creativity
     """
 
-    def __init__(self, api_key: str | None = None, model: str = "gpt-4"):
+    def __init__(self, api_key: str | None = None, model: str = "o3-mini"):
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
 
@@ -364,10 +402,13 @@ class IntelligenceSynthesizer:
         synthesis_data = {
             "chunk_summaries": [
                 {
+                    "detailed_narrative": summary.detailed_narrative,
                     "key_points": summary.key_points,
                     "decisions": summary.decisions,
                     "topics": summary.topics,
                     "speakers": summary.speakers,
+                    "mentioned_entities": summary.mentioned_entities,
+                    "quantitative_data": summary.quantitative_data,
                     "confidence": summary.confidence,
                 }
                 for summary in all_summaries
@@ -394,9 +435,9 @@ class IntelligenceSynthesizer:
             },
         }
 
-        user_prompt = f"""Synthesize the following meeting intelligence data into a comprehensive result:
+        user_prompt = f"""Synthesize the following meeting intelligence data into a comprehensive, detailed result that preserves specificity:
 
-CHUNK SUMMARIES:
+CHUNK SUMMARIES WITH DETAILED NARRATIVES:
 {synthesis_data['chunk_summaries']}
 
 ACTION ITEMS:
@@ -405,15 +446,19 @@ ACTION ITEMS:
 METADATA:
 {synthesis_data['metadata']}
 
-Create:
-1. Executive summary (<500 chars) - high-level overview
-2. Detailed summary (<2000 chars) - comprehensive narrative
-3. Bullet points (3-10) - key takeaways
-4. Deduplicated action items - merge similar items, preserve source chunks
-5. Key decisions - important choices made
-6. Topics discussed - main subjects covered
-7. Overall confidence score
-8. Processing statistics"""
+SYNTHESIS REQUIREMENTS:
+1. Executive summary (<800 chars) - overview with key names, numbers, and outcomes
+2. Detailed summary (<5000 chars) - comprehensive narrative preserving ALL specific details, names, percentages, methodologies, and technical terms
+3. Bullet points (3-15) - key takeaways with specific information, not generic statements
+4. Deduplicated action items - merge similar items while preserving context and source chunks
+5. Key decisions - specific choices with context, rationale, and implications  
+6. Topics discussed - specific technologies/methodologies/concepts (avoid generic terms)
+7. Participants mentioned - all people and organizations referenced
+8. Key metrics - important numbers, percentages, dates, quantitative data
+9. Overall confidence score
+10. Processing statistics
+
+CRITICAL: Preserve all specific names, numbers, percentages, dates, and technical details from the chunk summaries. Create narrative flow while maintaining specificity."""
 
         try:
             # Use model settings for non-o3 models
@@ -430,6 +475,14 @@ Create:
 
             # Add processing stats to the result
             intelligence_result = result.output
+            
+            # Collect all entities and metrics from chunk summaries
+            all_entities = set()
+            all_metrics = set()
+            for summary in all_summaries:
+                all_entities.update(summary.mentioned_entities)
+                all_metrics.update(summary.quantitative_data)
+            
             intelligence_result.processing_stats.update(
                 {
                     "total_processing_time_ms": int(processing_time * 1000),
@@ -444,6 +497,9 @@ Create:
                     if all_actions
                     else 0,
                     "speakers": list(all_speakers),
+                    "unique_entities_extracted": len(all_entities),
+                    "quantitative_data_points": len(all_metrics),
+                    "avg_narrative_length": sum(len(s.detailed_narrative) for s in all_summaries) / len(all_summaries) if all_summaries else 0,
                     "model_used": self.model_name,
                 }
             )

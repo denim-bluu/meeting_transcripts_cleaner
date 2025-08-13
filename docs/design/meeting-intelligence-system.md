@@ -335,7 +335,7 @@ This design explicitly does **not** address:
 
 ### Open Questions
 
-1. **Model Selection**: Should we use GPT-4 for all agents or mix GPT-3.5 for simple extractions?
+1. **Model Selection**: Should we use o3-mini for all agents or mix GPT-3.5 for simple extractions?
     - _Impact_: Cost vs quality tradeoff
     - _Decision needed by_: Before production deployment
 

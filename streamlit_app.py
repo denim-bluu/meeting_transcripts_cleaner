@@ -63,7 +63,7 @@ def main() -> None:
             ("VTT Entries", len(transcript["entries"]), None),
             ("Chunks", len(transcript["chunks"]), None),
             ("Speakers", len(transcript["speakers"]), None),
-            ("Duration", f"{transcript['duration']:.1f}s", None),
+            ("Duration", f"{transcript.get('duration', 0) / 60:.1f}m", None),
         ]
         render_metrics_row(homepage_metrics)
 

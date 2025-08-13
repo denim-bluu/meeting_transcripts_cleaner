@@ -25,27 +25,27 @@ graph TB
     A[VTT File] --> B[VTTProcessor<br/>Regex Parser]
     B --> C[VTTEntry<br/>cue_id, timestamps, speaker, text]
     C --> D[VTTChunk<br/>500-token groups]
-    
+
     D --> E[TranscriptService<br/>Concurrent Orchestration]
     E --> F[Batch Processing<br/>10 chunks per batch]
-    
-    F --> G[TranscriptCleaner<br/>AI Agent - GPT-4]
-    F --> H[TranscriptReviewer<br/>AI Agent - GPT-4]
-    
+
+    F --> G[TranscriptCleaner<br/>AI Agent - o3-mini]
+    F --> H[TranscriptReviewer<br/>AI Agent - o3-mini]
+
     G --> I[CleaningResult<br/>confidence + changes]
     H --> J[ReviewResult<br/>quality + acceptance]
-    
+
     I --> M[IntelligenceService<br/>Meeting Intelligence]
     J --> M
-    
+
     M --> N[Context Windows<br/>±200 char overlap]
     N --> O[Parallel Extraction]
-    O --> P[SummaryExtractor<br/>AI Agent - GPT-4]
-    O --> Q[ActionItemExtractor<br/>AI Agent - GPT-4]
-    
-    P --> R[Synthesis Agent<br/>GPT-4]
+    O --> P[SummaryExtractor<br/>AI Agent - o3-mini]
+    O --> Q[ActionItemExtractor<br/>AI Agent - o3-mini]
+
+    P --> R[Synthesis Agent<br/>o3-mini]
     Q --> R
-    
+
     R --> S[IntelligenceResult<br/>summaries + actions]
     S --> T[Export Pipeline]
     T --> U[VTT/TXT/JSON/MD/CSV Output]
@@ -64,7 +64,7 @@ graph TB
 ### System Responsibilities
 
 **VTTProcessor**: Regex-based parsing of VTT cue blocks into structured entries, token-based chunking
-**TranscriptService**: Concurrent orchestration with rate limiting, progress tracking, error resilience  
+**TranscriptService**: Concurrent orchestration with rate limiting, progress tracking, error resilience
 **AI Cleaning Agents**: Structured cleaning and quality review with confidence scoring
 **IntelligenceService**: Meeting intelligence extraction with parallel MapReduce processing
 **Intelligence Agents**: Summary extraction, action item identification, and synthesis
@@ -200,10 +200,10 @@ sequenceDiagram
     VP->>TS: VTTChunk[]
 
     TS->>TS: Initialize batch processing
-    
+
     loop For each batch (10 chunks)
         TS->>UI: progress_callback(batch_info)
-        
+
         par Concurrent processing
             TS->>TC: clean_chunk()
             TC->>TS: CleaningResult
@@ -211,21 +211,21 @@ sequenceDiagram
             TR->>TS: ReviewResult
         end
     end
-    
+
     TS->>UI: Final results + export options
 ```
 
 ## Technology Stack
 
-| Component           | Technology                 | Responsibility                           |
-| ------------------- | -------------------------- | ---------------------------------------- |
-| **Framework**       | Streamlit                  | UI components and real-time progress    |
-| **AI Processing**   | OpenAI AsyncAPI            | Concurrent API calls with rate limiting  |
-| **Models**          | o3-mini (default)          | Text cleaning and quality review         |
-| **Concurrency**     | asyncio + Semaphore        | Batch processing with controlled limits  |
-| **Rate Limiting**   | asyncio-throttle           | Request throttling and backoff           |
-| **Logging**         | structlog                  | Structured, contextual logging           |
-| **Package Manager** | uv                         | Fast dependency management               |
+| Component           | Technology          | Responsibility                          |
+| ------------------- | ------------------- | --------------------------------------- |
+| **Framework**       | Streamlit           | UI components and real-time progress    |
+| **AI Processing**   | OpenAI AsyncAPI     | Concurrent API calls with rate limiting |
+| **Models**          | o3-mini (default)   | Text cleaning and quality review        |
+| **Concurrency**     | asyncio + Semaphore | Batch processing with controlled limits |
+| **Rate Limiting**   | asyncio-throttle    | Request throttling and backoff          |
+| **Logging**         | structlog           | Structured, contextual logging          |
+| **Package Manager** | uv                  | Fast dependency management              |
 
 ## Installation
 
@@ -267,14 +267,14 @@ streamlit run streamlit_app.py
 
 1. **Upload VTT File**: Streamlit interface accepts WebVTT format files
 2. **Automatic Processing**:
-   - VTTProcessor parses entries and creates 500-token chunks
-   - TranscriptService orchestrates concurrent batch processing
-   - Progress callbacks provide real-time feedback with batch metrics
+    - VTTProcessor parses entries and creates 500-token chunks
+    - TranscriptService orchestrates concurrent batch processing
+    - Progress callbacks provide real-time feedback with batch metrics
 3. **AI Processing**: Dual-agent system (Cleaner → Reviewer) processes each chunk
-4. **Intelligence Extraction**: 
-   - IntelligenceService creates sliding context windows
-   - Parallel extraction of summaries and action items
-   - Synthesis into comprehensive meeting intelligence
+4. **Intelligence Extraction**:
+    - IntelligenceService creates sliding context windows
+    - Parallel extraction of summaries and action items
+    - Synthesis into comprehensive meeting intelligence
 5. **Review & Export**: Intelligence results with confidence scoring and multi-format export
 
 ### API Usage
@@ -350,7 +350,7 @@ TranscriptService(
 # Required
 OPENAI_API_KEY=sk-xxx
 
-# Optional model selection  
+# Optional model selection
 CLEANING_MODEL=o3-mini    # Text cleaning model
 REVIEW_MODEL=o3-mini      # Quality review model
 ```
@@ -385,7 +385,7 @@ REVIEW_MODEL=o3-mini      # Quality review model
 - Returns comprehensive meeting intelligence with confidence scoring
 
 **`export_json(result: IntelligenceResult) -> str`**
-**`export_markdown(result: IntelligenceResult) -> str`**  
+**`export_markdown(result: IntelligenceResult) -> str`**
 **`export_csv(result: IntelligenceResult) -> str`**
 
 - Export intelligence results in JSON, Markdown, or CSV formats
@@ -394,10 +394,10 @@ REVIEW_MODEL=o3-mini      # Quality review model
 
 ### Data Models
 
-**VTTEntry**: `cue_id`, `start_time`, `end_time`, `speaker`, `text`  
-**VTTChunk**: `chunk_id`, `entries (list)`, `token_count`  
-**CleaningResult**: `cleaned_text`, `confidence`, `changes_made (list)`  
-**ReviewResult**: `quality_score`, `accept`, `issues_found (list)`  
-**ActionItem**: `description`, `owner`, `deadline`, `confidence`, `needs_review`, `is_critical`  
-**ChunkSummary**: `key_points`, `decisions`, `topics`, `speakers`, `confidence`  
+**VTTEntry**: `cue_id`, `start_time`, `end_time`, `speaker`, `text`
+**VTTChunk**: `chunk_id`, `entries (list)`, `token_count`
+**CleaningResult**: `cleaned_text`, `confidence`, `changes_made (list)`
+**ReviewResult**: `quality_score`, `accept`, `issues_found (list)`
+**ActionItem**: `description`, `owner`, `deadline`, `confidence`, `needs_review`, `is_critical`
+**ChunkSummary**: `key_points`, `decisions`, `topics`, `speakers`, `confidence`
 **IntelligenceResult**: `executive_summary`, `detailed_summary`, `bullet_points`, `action_items`, `confidence_score`
