@@ -140,41 +140,82 @@ class IntelligenceService:
             progress_callback(0.1, "Starting parallel extraction...")
 
         # Phase 2: Parallel extraction phase
-        extraction_tasks = []
+        logger.info("Creating extraction tasks", total_windows=len(windows))
 
-        for i, window in enumerate(windows):
+        # Validate unique chunk IDs to prevent duplicates
+        chunk_ids = [w["chunk_id"] for w in windows]
+        unique_chunk_ids = set(chunk_ids)
+        if len(chunk_ids) != len(unique_chunk_ids):
+            logger.warning(
+                "Duplicate chunk IDs detected",
+                total_windows=len(windows),
+                unique_chunks=len(unique_chunk_ids),
+                duplicates=[id for id in chunk_ids if chunk_ids.count(id) > 1],
+            )
+            # Remove duplicates, keeping first occurrence
+            seen = set()
+            windows = [
+                w
+                for w in windows
+                if not (w["chunk_id"] in seen or seen.add(w["chunk_id"]))
+            ]
+            logger.info("Removed duplicate windows", final_windows=len(windows))
 
-            async def extract_with_semaphore(w=window, idx=i):
-                async with self.semaphore:
-                    try:
-                        result = await self._extract_from_window(w)
-                        if (
-                            progress_callback and (idx + 1) % 5 == 0
-                        ):  # Update every 5 chunks
-                            progress = 0.1 + 0.7 * (idx + 1) / total_chunks
-                            progress_callback(
-                                progress,
-                                f"Processed {idx + 1}/{total_chunks} chunks...",
-                            )
-                        return result
-                    except Exception as e:
-                        logger.error(
-                            "Window extraction failed",
-                            chunk_id=w["chunk_id"],
-                            error=str(e),
+        async def process_window(window: dict, index: int):
+            """Process a single window with proper error handling."""
+            async with self.semaphore:
+                try:
+                    logger.debug(
+                        "Starting extraction", chunk_id=window["chunk_id"], index=index
+                    )
+                    result = await self._extract_from_window(window)
+
+                    # Progress callback every 5 chunks
+                    if progress_callback and (index + 1) % 5 == 0:
+                        progress = 0.1 + 0.7 * (index + 1) / len(windows)
+                        progress_callback(
+                            progress,
+                            f"Processed {index + 1}/{len(windows)} chunks...",
                         )
-                        # Return empty results for failed extraction
-                        return {
-                            "summary": None,
-                            "actions": [],
-                            "chunk_id": w["chunk_id"],
-                            "error": str(e),
-                        }
 
-            extraction_tasks.append(extract_with_semaphore())
+                    logger.debug(
+                        "Extraction completed", chunk_id=window["chunk_id"], index=index
+                    )
+                    return result
+                except Exception as e:
+                    logger.error(
+                        "Window extraction failed",
+                        chunk_id=window["chunk_id"],
+                        index=index,
+                        error=str(e),
+                    )
+                    # Return empty results for failed extraction
+                    return {
+                        "summary": None,
+                        "actions": [],
+                        "chunk_id": window["chunk_id"],
+                        "error": str(e),
+                    }
 
-        # Execute all extractions in parallel
-        extractions = await asyncio.gather(*extraction_tasks, return_exceptions=True)
+        # Create tasks properly to avoid closure issues
+        extraction_tasks = [
+            process_window(window, i) for i, window in enumerate(windows)
+        ]
+
+        logger.info("Starting parallel extraction", total_tasks=len(extraction_tasks))
+
+        # Execute all extractions with timeout
+        try:
+            extractions = await asyncio.wait_for(
+                asyncio.gather(*extraction_tasks, return_exceptions=True),
+                timeout=600,  # 10 minute timeout for entire extraction phase
+            )
+            logger.info("Parallel extraction completed", results_count=len(extractions))
+        except TimeoutError:
+            logger.error("Extraction phase timed out after 10 minutes")
+            raise Exception(
+                "Extraction phase timed out - try reducing chunk count or increasing timeout"
+            )
 
         # Filter out failed extractions and log them
         successful_extractions = []
@@ -207,8 +248,25 @@ class IntelligenceService:
         if progress_callback:
             progress_callback(0.8, "Synthesizing results...")
 
-        # Phase 3: Synthesis phase
-        result = await self.synthesizer.synthesize(successful_extractions)
+        # Phase 3: Synthesis phase with error handling
+        try:
+            logger.info(
+                "Starting synthesis phase",
+                successful_extractions=len(successful_extractions),
+            )
+            result = await self.synthesizer.synthesize(successful_extractions)
+            logger.info(
+                "Synthesis phase completed successfully",
+                confidence=result.confidence_score,
+            )
+        except Exception as e:
+            logger.error(
+                "Synthesis phase failed",
+                error=str(e),
+                successful_extractions=len(successful_extractions),
+                error_type=type(e).__name__,
+            )
+            raise Exception(f"Intelligence synthesis failed: {str(e)}") from e
 
         if progress_callback:
             progress_callback(0.9, "Applying selective review...")
