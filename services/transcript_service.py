@@ -443,3 +443,38 @@ class TranscriptService:
             return {k: self._make_serializable(v) for k, v in obj.__dict__.items()}
         else:
             return obj
+
+    async def extract_intelligence(self, transcript: dict) -> dict:
+        """
+        Extract intelligence from cleaned transcript.
+        Call after clean_transcript completes.
+
+        Input: transcript dict with 'cleaned_chunks' or 'chunks' key
+        Output: transcript dict with added 'intelligence' key
+        """
+        from services.intelligence_service import IntelligenceService
+
+        logger.info(
+            "Starting intelligence extraction",
+            chunks_available=len(transcript.get("chunks", [])),
+            has_cleaned_chunks="cleaned_chunks" in transcript,
+        )
+
+        intelligence_service = IntelligenceService(self.api_key)
+
+        # Use cleaned chunks if available, otherwise use original chunks
+        chunks_to_process = transcript.get("chunks", [])
+        if not chunks_to_process:
+            raise ValueError("No chunks available for intelligence extraction")
+
+        result = await intelligence_service.extract_intelligence(chunks_to_process)
+        transcript["intelligence"] = result
+
+        logger.info(
+            "Intelligence extraction completed",
+            action_items_count=len(result.action_items),
+            confidence_score=result.confidence_score,
+            processing_time_ms=result.processing_stats.get("total_pipeline_time_ms", 0),
+        )
+
+        return transcript

@@ -75,6 +75,7 @@ def main() -> None:
     all_pages = [
         st.Page("pages/1_📤_Upload_Process.py", title="Upload & Process", icon="📤"),
         st.Page("pages/2_👀_Review.py", title="Review", icon="👀"),
+        st.Page("pages/3_🧠_Intelligence.py", title="Intelligence", icon="🧠"),
     ]
 
     # All pages are always available (Review page shows appropriate messaging if no data)
