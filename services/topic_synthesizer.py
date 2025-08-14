@@ -26,34 +26,152 @@ class TopicSynthesizer:
         self.agent = Agent(f"openai:{model}")
         logger.info("TopicSynthesizer initialized", model=model)
 
-    def extract_topics(self, chunk_results: list[dict]) -> list[str]:
-        """Extract unique topics from all chunks."""
+    async def extract_and_cluster_topics(self, chunk_results: list[dict]) -> list[str]:
+        """Extract topics and cluster them into 5-10 major themes."""
+        # First extract all topics
         all_topics = []
         for result in chunk_results:
             all_topics.extend(result.get("topics", []))
 
-        # Simple deduplication (could be improved with LLM)
         unique_topics = list(set(all_topics))
-        logger.info("Topics extracted", unique_topics=unique_topics)
-        return unique_topics
+        logger.info("Raw topics extracted", count=len(unique_topics))
+
+        # If we have too many topics, cluster them into major themes
+        if len(unique_topics) > 15:
+            logger.info(
+                "Clustering topics into major themes", original_count=len(unique_topics)
+            )
+            clustered_topics = await self._cluster_topics_into_themes(unique_topics)
+            logger.info("Topics clustered", clustered_count=len(clustered_topics))
+            return clustered_topics
+        else:
+            logger.info("Using original topics", count=len(unique_topics))
+            return unique_topics
+
+    def extract_topics(self, chunk_results: list[dict]) -> list[str]:
+        """Legacy method for backward compatibility - returns raw topics."""
+        all_topics = []
+        for result in chunk_results:
+            all_topics.extend(result.get("topics", []))
+        return list(set(all_topics))
+
+    async def _cluster_topics_into_themes(self, topics: list[str]) -> list[str]:
+        """Use LLM to cluster micro-topics into 5-10 major themes."""
+        prompt = f"""
+        You have {len(topics)} micro-topics from a meeting transcript. Cluster them into 5-8 major themes.
+
+        Micro-topics:
+        {chr(10).join(f"- {topic}" for topic in topics)}
+
+        Group these into major themes that represent the main discussion areas.
+        Return ONLY the major theme names, one per line, like:
+
+        Model Development and Architecture
+        Performance Analysis and Backtesting
+        Market Analysis and Regional Considerations
+        API Development and Customization
+        Data Quality and Methodology
+
+        Focus on:
+        - Grouping related technical concepts together
+        - Creating 5-8 broad themes (not more than 8)
+        - Using clear, descriptive theme names
+        - Covering all important micro-topics
+        """
+
+        result = await self.agent.run(prompt)
+
+        # Parse the result to get clean theme names
+        theme_lines = [
+            line.strip() for line in result.output.strip().split("\n") if line.strip()
+        ]
+        # Filter out any empty lines or formatting artifacts
+        themes = [
+            line
+            for line in theme_lines
+            if line and not line.startswith("-") and not line.startswith("*")
+        ]
+
+        logger.info("Generated major themes", themes=themes)
+        return themes[:8]  # Ensure we don't exceed 8 themes
 
     def group_by_topic(
         self, chunk_results: list[dict], topics: list[str]
     ) -> dict[str, list[dict]]:
-        """Group chunk results by topic."""
+        """Group chunk results by topic with improved matching."""
         topic_groups = defaultdict(list)
 
         for result in chunk_results:
             chunk_topics = result.get("topics", [])
-            for topic in topics:
-                # Simple matching - assign chunk to topic if any overlap
-                if any(
-                    topic.lower() in ct.lower() or ct.lower() in topic.lower()
-                    for ct in chunk_topics
-                ):
-                    topic_groups[topic].append(result)
+            for major_topic in topics:
+                # Improved matching - use keywords and semantic similarity
+                topic_matched = False
+
+                for chunk_topic in chunk_topics:
+                    # Check for exact or partial matches
+                    if (
+                        major_topic.lower() in chunk_topic.lower()
+                        or chunk_topic.lower() in major_topic.lower()
+                        or self._topics_are_related(major_topic, chunk_topic)
+                    ):
+                        topic_groups[major_topic].append(result)
+                        topic_matched = True
+                        break
+
+                # If no match found but chunk has high importance, check for keyword overlap
+                if not topic_matched and result.get("importance_score", 0) >= 7:
+                    if self._keywords_overlap(major_topic, chunk_topics):
+                        topic_groups[major_topic].append(result)
+
+        logger.info(
+            "Grouped chunks by topics",
+            topics_with_content=len(
+                [t for t, chunks in topic_groups.items() if chunks]
+            ),
+            total_chunks_grouped=sum(len(chunks) for chunks in topic_groups.values()),
+        )
 
         return dict(topic_groups)
+
+    def _topics_are_related(self, major_topic: str, chunk_topic: str) -> bool:
+        """Check if topics are semantically related using keyword overlap."""
+        # Convert to lowercase and split into words
+        major_words = set(major_topic.lower().split())
+        chunk_words = set(chunk_topic.lower().split())
+
+        # Remove common words
+        common_words = {
+            "and",
+            "the",
+            "of",
+            "in",
+            "for",
+            "with",
+            "on",
+            "to",
+            "from",
+            "by",
+            "at",
+        }
+        major_words -= common_words
+        chunk_words -= common_words
+
+        # Check for significant word overlap (at least 1 meaningful word)
+        overlap = major_words & chunk_words
+        return (
+            len(overlap) > 0
+            and len(overlap) / max(len(major_words), len(chunk_words)) > 0.2
+        )
+
+    def _keywords_overlap(self, major_topic: str, chunk_topics: list[str]) -> bool:
+        """Check if major topic keywords overlap with any chunk topics."""
+        major_keywords = set(major_topic.lower().split())
+
+        for chunk_topic in chunk_topics:
+            chunk_keywords = set(chunk_topic.lower().split())
+            if major_keywords & chunk_keywords:
+                return True
+        return False
 
     async def synthesize_topic(self, topic: str, relevant_chunks: list[dict]) -> str:
         """Synthesize all content for a specific topic."""

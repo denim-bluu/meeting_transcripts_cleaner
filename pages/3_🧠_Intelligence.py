@@ -12,7 +12,7 @@ import streamlit as st
 import structlog
 
 from config import Config, configure_structlog
-from models.simple_intelligence import MeetingIntelligence, ActionItem
+from models.simple_intelligence import ActionItem, MeetingIntelligence
 from services.transcript_service import TranscriptService
 
 # Configure structured logging
@@ -42,9 +42,7 @@ def render_action_items(action_items: list[ActionItem]):
         st.metric(
             "With Owner",
             has_owner,
-            delta=f"{has_owner/len(action_items)*100:.0f}%"
-            if action_items
-            else "0%",
+            delta=f"{has_owner/len(action_items)*100:.0f}%" if action_items else "0%",
         )
     with col3:
         st.metric(
@@ -115,29 +113,36 @@ def render_summary_section(intelligence: MeetingIntelligence):
 def render_processing_stats_section(intelligence: MeetingIntelligence):
     """Render processing statistics."""
     st.subheader("📊 Processing Statistics")
-    
+
     if intelligence.processing_stats:
         col1, col2, col3, col4 = st.columns(4)
-        
+
         with col1:
             if "vtt_chunks" in intelligence.processing_stats:
                 st.metric("VTT Chunks", intelligence.processing_stats["vtt_chunks"])
-        
+
         with col2:
             if "semantic_chunks" in intelligence.processing_stats:
-                st.metric("Semantic Chunks", intelligence.processing_stats["semantic_chunks"])
-        
+                st.metric(
+                    "Semantic Chunks", intelligence.processing_stats["semantic_chunks"]
+                )
+
         with col3:
             if "api_calls" in intelligence.processing_stats:
                 st.metric("API Calls", intelligence.processing_stats["api_calls"])
-        
+
         with col4:
             if "time_ms" in intelligence.processing_stats:
-                st.metric("Processing Time", f"{intelligence.processing_stats['time_ms']}ms")
-        
+                st.metric(
+                    "Processing Time", f"{intelligence.processing_stats['time_ms']}ms"
+                )
+
         # Additional stats
         if "avg_importance" in intelligence.processing_stats:
-            st.metric("Avg Importance", f"{intelligence.processing_stats['avg_importance']:.2f}")
+            st.metric(
+                "Avg Importance",
+                f"{intelligence.processing_stats['avg_importance']:.2f}",
+            )
     else:
         st.info("No processing statistics available.")
 
@@ -145,23 +150,29 @@ def render_processing_stats_section(intelligence: MeetingIntelligence):
 def render_export_section(intelligence: MeetingIntelligence):
     """Render export functionality for new intelligence format."""
     st.subheader("📤 Export Options")
-    
+
     import json
-    
+
     col1, col2, col3 = st.columns(3)
 
     with col1:
         # JSON export
-        json_data = json.dumps({
-            "summary": intelligence.summary,
-            "action_items": [{
-                "description": item.description,
-                "owner": item.owner,
-                "due_date": item.due_date
-            } for item in intelligence.action_items],
-            "processing_stats": intelligence.processing_stats
-        }, indent=2)
-        
+        json_data = json.dumps(
+            {
+                "summary": intelligence.summary,
+                "action_items": [
+                    {
+                        "description": item.description,
+                        "owner": item.owner,
+                        "due_date": item.due_date,
+                    }
+                    for item in intelligence.action_items
+                ],
+                "processing_stats": intelligence.processing_stats,
+            },
+            indent=2,
+        )
+
         st.download_button(
             label="📄 Download JSON",
             data=json_data,
@@ -180,7 +191,7 @@ def render_export_section(intelligence: MeetingIntelligence):
             if item.due_date:
                 markdown_data += f"   - Due: {item.due_date}\n"
             markdown_data += "\n"
-            
+
         st.download_button(
             label="📝 Download Markdown",
             data=markdown_data,
@@ -193,8 +204,10 @@ def render_export_section(intelligence: MeetingIntelligence):
         # CSV export for action items
         csv_data = "Description,Owner,Due Date\n"
         for item in intelligence.action_items:
-            csv_data += f'"{item.description}","{item.owner or ""}","{item.due_date or ""}"\n'
-            
+            csv_data += (
+                f'"{item.description}","{item.owner or ""}","{item.due_date or ""}"\n'
+            )
+
         st.download_button(
             label="📊 Download CSV",
             data=csv_data,
@@ -237,8 +250,6 @@ def render_export_section(intelligence: MeetingIntelligence):
                 )
             else:
                 st.info("No action items to export in CSV format.")
-
-
 
 
 async def extract_intelligence_async(transcript_data):
@@ -397,7 +408,7 @@ def main():
         has_due_date = sum(1 for item in intelligence.action_items if item.due_date)
         st.metric("With Due Date", has_due_date)
     with col4:
-        processing_time = intelligence.processing_stats.get('time_ms', 0)
+        processing_time = intelligence.processing_stats.get("time_ms", 0)
         st.metric("Processing Time", f"{processing_time}ms")
 
     st.markdown("---")

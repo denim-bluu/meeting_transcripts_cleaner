@@ -23,7 +23,10 @@ class VTTChunk:
     token_count: int  # Approximate tokens (len(text) / 4)
 
     def to_transcript_text(self) -> str:
-        """Format entries as 'Speaker: text' for AI processing."""
+        """Format entries as 'Speaker: text' for AI processing.
+        Example:
+            Joon Kang: OK. Yeah.
+        """
         lines = []
         for entry in self.entries:
             lines.append(f"{entry.speaker}: {entry.text}")
