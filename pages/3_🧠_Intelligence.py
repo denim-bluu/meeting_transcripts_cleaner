@@ -12,7 +12,7 @@ import streamlit as st
 import structlog
 
 from config import Config, configure_structlog
-from models.intelligence import IntelligenceResult
+from models.simple_intelligence import MeetingIntelligence, ActionItem
 from services.transcript_service import TranscriptService
 
 # Configure structured logging
@@ -23,7 +23,7 @@ logger = structlog.get_logger(__name__)
 logger.info("Intelligence page initialized", streamlit_page=True)
 
 
-def render_action_items(action_items):
+def render_action_items(action_items: list[ActionItem]):
     """Render action items with status indicators and details."""
     if not action_items:
         st.info("🎯 No action items identified in this meeting.")
@@ -31,26 +31,26 @@ def render_action_items(action_items):
 
     st.subheader(f"🎯 Action Items ({len(action_items)})")
 
-    # Show summary stats
-    needs_review = sum(1 for item in action_items if item.needs_review)
-    critical_items = sum(1 for item in action_items if item.is_critical)
+    # Show summary stats - simplified for new structure
+    has_owner = sum(1 for item in action_items if item.owner)
+    has_due_date = sum(1 for item in action_items if item.due_date)
 
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Total Items", len(action_items))
     with col2:
         st.metric(
-            "Needs Review",
-            needs_review,
-            delta=f"{needs_review/len(action_items)*100:.0f}%"
+            "With Owner",
+            has_owner,
+            delta=f"{has_owner/len(action_items)*100:.0f}%"
             if action_items
             else "0%",
         )
     with col3:
         st.metric(
-            "Critical",
-            critical_items,
-            delta=f"{critical_items/len(action_items)*100:.0f}%"
+            "With Due Date",
+            has_due_date,
+            delta=f"{has_due_date/len(action_items)*100:.0f}%"
             if action_items
             else "0%",
         )
@@ -59,13 +59,16 @@ def render_action_items(action_items):
 
     # Render each action item
     for i, item in enumerate(action_items, 1):
-        # Determine status icon
-        if item.needs_review:
-            status_icon = "🔴" if item.is_critical else "🟡"
-            status_text = "Critical Review" if item.is_critical else "Needs Review"
-        else:
+        # Determine status icon based on completeness
+        if item.owner and item.due_date:
             status_icon = "✅"
-            status_text = "Approved"
+            status_text = "Complete"
+        elif item.owner or item.due_date:
+            status_icon = "🟡"
+            status_text = "Partial"
+        else:
+            status_icon = "🔴"
+            status_text = "Needs Details"
 
         # Create expandable action item
         with st.expander(
@@ -83,90 +86,82 @@ def render_action_items(action_items):
                 else:
                     st.markdown("**👤 Owner:** *Not specified*")
 
-                if item.deadline:
-                    st.markdown(f"**📅 Deadline:** {item.deadline}")
+                if item.due_date:
+                    st.markdown(f"**📅 Due Date:** {item.due_date}")
                 else:
-                    st.markdown("**📅 Deadline:** *Not specified*")
+                    st.markdown("**📅 Due Date:** *Not specified*")
 
             with col2:
-                st.markdown(f"**🎯 Confidence:** {item.confidence:.2f}")
                 st.markdown(f"**📊 Status:** {status_text}")
 
-            # Dependencies and source chunks
-            if item.dependencies:
-                st.markdown(f"**🔗 Dependencies:** {', '.join(item.dependencies)}")
-
-            st.markdown(
-                f"**📄 Source Chunks:** {', '.join(map(str, item.source_chunks))}"
-            )
-
-            # Review controls for items that need review
-            if item.needs_review:
-                st.markdown("**Review Required:**")
-                review_col1, review_col2 = st.columns(2)
-                with review_col1:
-                    if st.button(f"✅ Approve Item {i}", key=f"approve_{i}"):
-                        st.success("Item approved! (Feature coming soon)")
-                with review_col2:
-                    if st.button(f"✏️ Edit Item {i}", key=f"edit_{i}"):
-                        st.info("Edit functionality coming soon!")
+            # Action controls
+            action_col1, action_col2 = st.columns(2)
+            with action_col1:
+                if st.button(f"📝 Edit Item {i}", key=f"edit_{i}"):
+                    st.info("Edit functionality coming soon!")
+            with action_col2:
+                if st.button(f"✅ Mark Complete {i}", key=f"complete_{i}"):
+                    st.success("Feature coming soon!")
 
 
-def render_summary_section(intelligence: IntelligenceResult):
-    """Render the summary section with executive and detailed summaries."""
+def render_summary_section(intelligence: MeetingIntelligence):
+    """Render the summary section with markdown summary."""
     st.subheader("📋 Meeting Summary")
 
-    # Executive summary in a highlighted box
-    st.markdown("### Executive Summary")
-    st.info(intelligence.executive_summary)
-
-    # Key takeaways as bullet points
-    st.markdown("### Key Takeaways")
-    for point in intelligence.bullet_points:
-        st.markdown(f"• {point}")
-
-    # Detailed summary in expandable section
-    with st.expander("📖 Detailed Summary", expanded=False):
-        st.markdown(intelligence.detailed_summary)
+    # Display the markdown summary
+    st.markdown(intelligence.summary)
 
 
-def render_decisions_and_topics(intelligence: IntelligenceResult):
-    """Render key decisions and topics discussed."""
-    col1, col2 = st.columns(2)
+def render_processing_stats_section(intelligence: MeetingIntelligence):
+    """Render processing statistics."""
+    st.subheader("📊 Processing Statistics")
+    
+    if intelligence.processing_stats:
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            if "vtt_chunks" in intelligence.processing_stats:
+                st.metric("VTT Chunks", intelligence.processing_stats["vtt_chunks"])
+        
+        with col2:
+            if "semantic_chunks" in intelligence.processing_stats:
+                st.metric("Semantic Chunks", intelligence.processing_stats["semantic_chunks"])
+        
+        with col3:
+            if "api_calls" in intelligence.processing_stats:
+                st.metric("API Calls", intelligence.processing_stats["api_calls"])
+        
+        with col4:
+            if "time_ms" in intelligence.processing_stats:
+                st.metric("Processing Time", f"{intelligence.processing_stats['time_ms']}ms")
+        
+        # Additional stats
+        if "avg_importance" in intelligence.processing_stats:
+            st.metric("Avg Importance", f"{intelligence.processing_stats['avg_importance']:.2f}")
+    else:
+        st.info("No processing statistics available.")
 
-    with col1:
-        st.subheader("🎯 Key Decisions")
-        if intelligence.key_decisions:
-            for decision in intelligence.key_decisions:
-                if isinstance(decision, dict):
-                    decision_text = decision.get("description", str(decision))
-                else:
-                    decision_text = str(decision)
-                st.markdown(f"• {decision_text}")
-        else:
-            st.info("No key decisions identified.")
 
-    with col2:
-        st.subheader("💬 Topics Discussed")
-        for topic in intelligence.topics_discussed:
-            st.markdown(f"• {topic}")
-
-
-def render_export_section(intelligence: IntelligenceResult):
-    """Render export functionality."""
+def render_export_section(intelligence: MeetingIntelligence):
+    """Render export functionality for new intelligence format."""
     st.subheader("📤 Export Options")
-
-    # Import the service to access export methods
-    from services.intelligence_service import IntelligenceService
-
-    # Create a temporary service instance for export methods
-    service = IntelligenceService(api_key="dummy")  # API key not needed for export
-
+    
+    import json
+    
     col1, col2, col3 = st.columns(3)
 
     with col1:
         # JSON export
-        json_data = service.export_json(intelligence)
+        json_data = json.dumps({
+            "summary": intelligence.summary,
+            "action_items": [{
+                "description": item.description,
+                "owner": item.owner,
+                "due_date": item.due_date
+            } for item in intelligence.action_items],
+            "processing_stats": intelligence.processing_stats
+        }, indent=2)
+        
         st.download_button(
             label="📄 Download JSON",
             data=json_data,
@@ -176,8 +171,16 @@ def render_export_section(intelligence: IntelligenceResult):
         )
 
     with col2:
-        # Markdown export
-        markdown_data = service.export_markdown(intelligence)
+        # Markdown export - use the summary directly
+        markdown_data = f"# Meeting Intelligence Report\n\n{intelligence.summary}\n\n## Action Items\n\n"
+        for i, item in enumerate(intelligence.action_items, 1):
+            markdown_data += f"{i}. **{item.description}**\n"
+            if item.owner:
+                markdown_data += f"   - Owner: {item.owner}\n"
+            if item.due_date:
+                markdown_data += f"   - Due: {item.due_date}\n"
+            markdown_data += "\n"
+            
         st.download_button(
             label="📝 Download Markdown",
             data=markdown_data,
@@ -188,7 +191,10 @@ def render_export_section(intelligence: IntelligenceResult):
 
     with col3:
         # CSV export for action items
-        csv_data = service.export_csv(intelligence)
+        csv_data = "Description,Owner,Due Date\n"
+        for item in intelligence.action_items:
+            csv_data += f'"{item.description}","{item.owner or ""}","{item.due_date or ""}"\n'
+            
         st.download_button(
             label="📊 Download CSV",
             data=csv_data,
@@ -233,35 +239,6 @@ def render_export_section(intelligence: IntelligenceResult):
                 st.info("No action items to export in CSV format.")
 
 
-def render_processing_stats(intelligence: IntelligenceResult):
-    """Render processing statistics and metadata."""
-    with st.expander("📊 Processing Statistics", expanded=False):
-        stats = intelligence.processing_stats
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.metric("Overall Confidence", f"{intelligence.confidence_score:.2f}")
-            if stats.get("total_pipeline_time_ms"):
-                st.metric("Processing Time", f"{stats['total_pipeline_time_ms']} ms")
-
-        with col2:
-            if stats.get("successful_chunks"):
-                st.metric("Chunks Processed", stats["successful_chunks"])
-            if stats.get("success_rate"):
-                st.metric("Success Rate", f"{stats['success_rate']:.1%}")
-
-        with col3:
-            if stats.get("review_level"):
-                st.metric("Review Level", stats["review_level"])
-            if stats.get("speakers"):
-                st.metric("Speakers", len(stats["speakers"]))
-
-        # Detailed stats
-        st.markdown("**Detailed Statistics:**")
-        for key, value in stats.items():
-            if key not in ["speakers"]:  # Skip large lists
-                st.text(f"{key}: {value}")
 
 
 async def extract_intelligence_async(transcript_data):
@@ -414,18 +391,20 @@ def main():
     with col1:
         st.metric("Action Items", len(intelligence.action_items))
     with col2:
-        needs_review = sum(1 for item in intelligence.action_items if item.needs_review)
-        st.metric("Needs Review", needs_review)
+        has_owner = sum(1 for item in intelligence.action_items if item.owner)
+        st.metric("With Owner", has_owner)
     with col3:
-        st.metric("Confidence", f"{intelligence.confidence_score:.2f}")
+        has_due_date = sum(1 for item in intelligence.action_items if item.due_date)
+        st.metric("With Due Date", has_due_date)
     with col4:
-        st.metric("Topics", len(intelligence.topics_discussed))
+        processing_time = intelligence.processing_stats.get('time_ms', 0)
+        st.metric("Processing Time", f"{processing_time}ms")
 
     st.markdown("---")
 
     # Main content in tabs
     tab1, tab2, tab3, tab4 = st.tabs(
-        ["📋 Summary", "🎯 Action Items", "🔍 Details", "📤 Export"]
+        ["📋 Summary", "🎯 Action Items", "📊 Statistics", "📤 Export"]
     )
 
     with tab1:
@@ -435,9 +414,7 @@ def main():
         render_action_items(intelligence.action_items)
 
     with tab3:
-        render_decisions_and_topics(intelligence)
-        st.markdown("---")
-        render_processing_stats(intelligence)
+        render_processing_stats_section(intelligence)
 
     with tab4:
         render_export_section(intelligence)

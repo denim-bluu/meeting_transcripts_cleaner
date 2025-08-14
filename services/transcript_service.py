@@ -446,35 +446,45 @@ class TranscriptService:
 
     async def extract_intelligence(self, transcript: dict) -> dict:
         """
-        Extract intelligence from cleaned transcript.
+        Extract intelligence from cleaned transcript using the new simple approach.
         Call after clean_transcript completes.
 
         Input: transcript dict with 'cleaned_chunks' or 'chunks' key
         Output: transcript dict with added 'intelligence' key
         """
-        from services.intelligence_service import IntelligenceService
-
         logger.info(
             "Starting intelligence extraction",
             chunks_available=len(transcript.get("chunks", [])),
             has_cleaned_chunks="cleaned_chunks" in transcript,
         )
 
-        intelligence_service = IntelligenceService(self.api_key)
-
         # Use cleaned chunks if available, otherwise use original chunks
         chunks_to_process = transcript.get("chunks", [])
         if not chunks_to_process:
             raise ValueError("No chunks available for intelligence extraction")
 
-        result = await intelligence_service.extract_intelligence(chunks_to_process)
+        # Use the new simple intelligence service
+        result = await self.extract_intelligence_simple(chunks_to_process)
         transcript["intelligence"] = result
 
         logger.info(
             "Intelligence extraction completed",
             action_items_count=len(result.action_items),
-            confidence_score=result.confidence_score,
-            processing_time_ms=result.processing_stats.get("total_pipeline_time_ms", 0),
+            summary_length=len(result.summary),
+            processing_time_ms=result.processing_stats.get("time_ms", 0),
         )
 
         return transcript
+
+    async def extract_intelligence_simple(self, cleaned_chunks: list[VTTChunk]):
+        """Extract intelligence using simple topic-based approach with structured output."""
+        import os
+
+        if not hasattr(self, "_simple_intelligence"):
+            from services.simple_intelligence_service import SimpleIntelligenceService
+
+            self._simple_intelligence = SimpleIntelligenceService(
+                api_key=os.getenv("OPENAI_API_KEY") or self.api_key, model="o3-mini"
+            )
+
+        return await self._simple_intelligence.process_meeting(cleaned_chunks)
