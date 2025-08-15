@@ -1,6 +1,7 @@
 """Business logic for transcript cleaning - uses pure Pydantic AI agents."""
 
 import time
+
 import structlog
 
 from agents.transcript.cleaner import cleaning_agent, get_model_settings
@@ -12,10 +13,10 @@ logger = structlog.get_logger(__name__)
 
 class TranscriptCleaningService:
     """Orchestrates transcript cleaning using pure Pydantic AI agents."""
-    
+
     def __init__(self, model: str = "o3-mini"):
         """Initialize service with model configuration.
-        
+
         Args:
             model: Model name to use (e.g., 'o3-mini', 'gpt-4')
         """
@@ -29,11 +30,11 @@ class TranscriptCleaningService:
 
     async def clean_chunk(self, chunk: VTTChunk, prev_text: str = "") -> CleaningResult:
         """Clean a transcript chunk using the pure cleaning agent.
-        
+
         Args:
             chunk: VTT chunk to clean
             prev_text: Previous context for flow preservation
-            
+
         Returns:
             CleaningResult with cleaned text, confidence, and changes
         """
@@ -86,16 +87,15 @@ Return JSON with cleaned_text, confidence, and changes_made."""
             )
 
             # Use the pure global agent with runtime model override if needed
+            context_deps = {"prev_text": context}
+            
             if self.model != "o3-mini":
                 # Override model using Pydantic AI's override method
-                with cleaning_agent.override(model=f"openai:{self.model}") as overridden_agent:
-                    result = await overridden_agent.run(
-                        user_prompt, 
-                        model_settings=settings
-                    )
+                with cleaning_agent.override(model=f"openai:{self.model}"):
+                    result = await cleaning_agent.run(user_prompt, deps=context_deps, model_settings=settings)
             else:
                 # Use default model
-                result = await cleaning_agent.run(user_prompt, model_settings=settings)
+                result = await cleaning_agent.run(user_prompt, deps=context_deps, model_settings=settings)
 
             api_call_time = time.time() - api_call_start
             processing_time = time.time() - start_time

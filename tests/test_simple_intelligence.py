@@ -88,7 +88,8 @@ class TestChunkExtractionAgent:
 
         with chunk_extraction_agent.override(model=test_model):
             result = await chunk_extraction_agent.run(
-                f"Extract comprehensive insights from this conversation segment:\\n\\n{chunk_text}"
+                f"Extract comprehensive insights from this conversation segment:\\n\\n{chunk_text}",
+                deps={"position": "middle", "chunk_index": 0, "total_chunks": 1}
             )
 
         # Verify result structure

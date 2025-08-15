@@ -12,17 +12,17 @@ class SemanticChunker:
 
     Responsibilities:
     - Convert VTTChunks to single transcript text
-    - Split into 3000-token semantic chunks with overlap
+    - Split into 2000-token semantic chunks with overlap
     - Respect speaker boundaries and sentence structure
     - Return chunks suitable for LLM processing
 
     Expected behavior:
-    - 60-min meeting: 35 VTTChunks -> 8-12 semantic chunks
+    - 60-min meeting: 35 VTTChunks -> 12-18 semantic chunks
     - Preserves speaker context across boundaries
     - No mid-sentence splits
     """
 
-    def __init__(self, chunk_size: int = 3000, chunk_overlap: int = 200):
+    def __init__(self, chunk_size: int = 2000, chunk_overlap: int = 200):
         # Convert token-based parameters to character-based for RecursiveCharacterTextSplitter
         # Assumption: 1 token ≈ 4 characters (standard GPT tokenizer approximation)
         char_chunk_size = chunk_size * 4

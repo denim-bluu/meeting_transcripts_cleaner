@@ -1,8 +1,6 @@
 """Pure transcript review agent - stateless and global following Pydantic AI best practices."""
 
-import os
 from dotenv import load_dotenv
-
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
@@ -36,11 +34,12 @@ Output format: JSON with exactly these fields:
 
 # Pure agent definition - stateless and global
 review_agent = Agent(
-    'openai:o3-mini',
+    "openai:o3-mini",
     output_type=ReviewResult,
     system_prompt=REVIEWER_SYSTEM_PROMPT,
     retries=3,  # Built-in retry on validation failure
 )
+
 
 # Model settings function for runtime configuration
 def get_model_settings(model: str) -> ModelSettings | None:

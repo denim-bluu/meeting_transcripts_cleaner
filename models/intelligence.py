@@ -12,7 +12,7 @@ class ChunkInsights(BaseModel):
     insights: list[str] = Field(
         ...,
         min_length=5,
-        max_length=12,
+        max_length=15,
         description="Important statements with speaker attribution and context",
     )
     importance: int = Field(
@@ -37,7 +37,7 @@ class ChunkInsights(BaseModel):
         """Validate that insights have speaker attribution and sufficient detail."""
         if not v:
             raise ModelRetry(
-                "No insights provided. Extract 5-12 important statements from the conversation."
+                "No insights provided. Extract 5-15 important statements from the conversation."
             )
 
         # Check for average insight length (should be substantial)

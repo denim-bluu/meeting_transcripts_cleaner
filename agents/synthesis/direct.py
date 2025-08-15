@@ -1,8 +1,6 @@
 """Pure direct synthesis agent - stateless and global following Pydantic AI best practices."""
 
-import os
 from dotenv import load_dotenv
-
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 
@@ -92,6 +90,6 @@ direct_synthesis_agent = Agent(
     retries=3,  # Built-in validation retries (increased for complex synthesis)
     model_settings=OpenAIResponsesModelSettings(
         openai_reasoning_effort="high",  # Enable thinking for complex reasoning
-        openai_reasoning_summary="detailed"  # Include detailed reasoning summaries
+        openai_reasoning_summary="detailed",  # Include detailed reasoning summaries
     ),
 )

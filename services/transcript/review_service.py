@@ -1,9 +1,10 @@
 """Business logic for transcript review - uses pure Pydantic AI agents."""
 
 import time
+
 import structlog
 
-from agents.transcript.reviewer import review_agent, get_model_settings
+from agents.transcript.reviewer import get_model_settings, review_agent
 from models.agents import ReviewResult
 from models.transcript import VTTChunk
 
@@ -12,10 +13,10 @@ logger = structlog.get_logger(__name__)
 
 class TranscriptReviewService:
     """Orchestrates transcript review using pure Pydantic AI agents."""
-    
+
     def __init__(self, model: str = "o3-mini"):
         """Initialize service with model configuration.
-        
+
         Args:
             model: Model name to use (e.g., 'o3-mini', 'gpt-4')
         """
@@ -24,11 +25,11 @@ class TranscriptReviewService:
 
     async def review_chunk(self, original: VTTChunk, cleaned: str) -> ReviewResult:
         """Review a cleaned transcript chunk using the pure review agent.
-        
+
         Args:
             original: Original VTT chunk
             cleaned: Cleaned transcript text
-            
+
         Returns:
             ReviewResult with quality assessment and acceptance decision
         """
@@ -58,11 +59,8 @@ Evaluate the cleaning quality and return JSON with quality_score, issues, and ac
             # Use the pure global agent with runtime model override if needed
             if self.model != "o3-mini":
                 # Override model using Pydantic AI's override method
-                with review_agent.override(model=f"openai:{self.model}") as overridden_agent:
-                    result = await overridden_agent.run(
-                        user_prompt, 
-                        model_settings=settings
-                    )
+                with review_agent.override(model=f"openai:{self.model}"):
+                    result = await review_agent.run(user_prompt, model_settings=settings)
             else:
                 # Use default model
                 result = await review_agent.run(user_prompt, model_settings=settings)

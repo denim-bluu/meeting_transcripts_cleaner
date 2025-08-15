@@ -12,21 +12,24 @@ load_dotenv()
 UNIVERSAL_EXTRACTION_INSTRUCTIONS = """
 Extract comprehensive insights from this conversation segment.
 
-Your goal: Capture EVERYTHING important - names, numbers, decisions, technical details,
-context, and relationships. This could be any type of meeting - technical, business,
-creative, or casual.
+Your goal: Capture EVERYTHING - major decisions AND contextual details, side discussions,
+technical specifics, numbers, relationships, and background information. Don't filter
+for importance - capture the full richness of the conversation.
 
 Extract:
-1. INSIGHTS: 8-15 important statements that preserve:
+1. INSIGHTS: 8-15 comprehensive statements that preserve:
    - WHO said it (speaker attribution)
-   - WHAT exactly (specific details, numbers, technical terms)
-   - WHY it matters (context and implications)
+   - WHAT exactly (specific details, numbers, technical terms, side comments)
+   - WHY it matters (context, implications, background discussions)
+   - Include minor details, clarifications, and contextual observations
    - Examples:
-     * "John proposed increasing the budget by 15% for Q3"
-     * "Sarah explained the API returns 70% accuracy when threshold > 2%"
-     * "Team agreed to use PostgreSQL over MongoDB for scaling reasons"
+     * "John proposed increasing the budget by 15% for Q3, citing infrastructure costs"
+     * "Sarah explained the API returns 70% accuracy when threshold > 2%, noting edge cases"
+     * "Team agreed to use PostgreSQL over MongoDB after Mike mentioned scaling bottlenecks"
+     * "Lisa asked about timeline considerations, which led to discussion of resource allocation"
 
 2. IMPORTANCE: Rate 1-10 based on decisions, commitments, or strategic value
+   - Don't be too strict - include contextual content (rate 2-4 for background discussions)
 
 3. THEMES: 1-3 broad themes (e.g., "Budget Planning", "Technical Architecture")
 

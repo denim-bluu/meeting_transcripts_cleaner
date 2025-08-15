@@ -31,7 +31,7 @@ class IntelligenceOrchestrator:
         self.model = model
         self.chunker = SemanticChunker()
 
-        self.MIN_IMPORTANCE = 3  # Include contextual content for richer summaries
+        self.MIN_IMPORTANCE = 2  # Include more contextual content for richer summaries
         self.CRITICAL_IMPORTANCE = 8  # Never exclude these
         self.CONTEXT_LIMIT = 50000  # Conservative token limit
         self.SEGMENT_MINUTES = 30  # Temporal segmentation
@@ -168,7 +168,7 @@ class IntelligenceOrchestrator:
         """
         Estimate tokens for synthesis based on insights content.
 
-        Conservative estimation (1 token ≈ 3 characters for safety).
+        Standard estimation (1 token ≈ 4 characters for GPT models).
         """
         total_chars = 0
 
@@ -185,8 +185,8 @@ class IntelligenceOrchestrator:
         # Add prompt overhead (synthesis instructions)
         total_chars += 2000
 
-        # Convert to tokens (conservative estimate)
-        estimated_tokens = total_chars // 3
+        # Convert to tokens (standard GPT estimate)
+        estimated_tokens = total_chars // 4
 
         logger.debug(
             "Token estimation completed",

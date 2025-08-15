@@ -46,7 +46,8 @@ class TestTranscriptCleaningAgent:
         
         with cleaning_agent.override(model=test_model):
             result = await cleaning_agent.run(
-                f"Clean this transcript:\\n{chunk.to_transcript_text()}"
+                f"Clean this transcript:\\n{chunk.to_transcript_text()}",
+                deps={"prev_text": ""}
             )
             
         assert isinstance(result.output, CleaningResult)
@@ -113,7 +114,8 @@ class TestTranscriptCleaningAgent:
         with cleaning_agent.override(model=test_model):
             with capture_run_messages() as captured_messages:
                 result = await cleaning_agent.run(
-                    f"Clean this transcript:\\n{chunk.to_transcript_text()}"
+                    f"Clean this transcript:\\n{chunk.to_transcript_text()}",
+                    deps={"prev_text": ""}
                 )
         
         # Verify message structure
@@ -270,7 +272,8 @@ class TestIntegrationScenarios:
         # Test cleaning
         with cleaning_agent.override(model=cleaning_model):
             clean_result = await cleaning_agent.run(
-                f"Clean this transcript:\\n{mock_vtt_chunk.to_transcript_text()}"
+                f"Clean this transcript:\\n{mock_vtt_chunk.to_transcript_text()}",
+                deps={"prev_text": ""}
             )
         
         # Test review

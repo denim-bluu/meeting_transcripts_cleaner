@@ -1,8 +1,6 @@
 """Pure transcript cleaning agent - stateless and global following Pydantic AI best practices."""
 
-import os
 from dotenv import load_dotenv
-
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.settings import ModelSettings
 
@@ -31,18 +29,20 @@ Output format: JSON with exactly these fields:
 
 # Pure agent definition - stateless and global
 cleaning_agent = Agent(
-    'openai:o3-mini',
+    "openai:o3-mini",
     output_type=CleaningResult,
     system_prompt=CLEANER_SYSTEM_PROMPT,
     deps_type=dict,  # Accept context dictionary for tools
     retries=3,  # Built-in retry on validation failure
 )
 
+
 # Add tools for dynamic context (following Pydantic AI patterns)
 @cleaning_agent.tool
 def provide_context_window(ctx: RunContext[dict], prev_text: str) -> str:
     """Provide context from previous chunk for better flow preservation."""
     return prev_text[-200:] if prev_text else ""
+
 
 # Model settings function for runtime configuration
 def get_model_settings(model: str) -> ModelSettings | None:
