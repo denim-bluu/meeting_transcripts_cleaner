@@ -108,7 +108,7 @@ Create a COMPREHENSIVE meeting summary from these temporal segment summaries tha
 
 CRITICAL: Include sufficient detail for someone who wasn't in the meeting to understand:
 - Not just WHAT was decided, but WHY
-- Not just WHO said something, but their REASONING  
+- Not just WHO said something, but their REASONING
 - Not just OUTCOMES, but the DISCUSSION that led there
 
 IMPORTANT: You must return BOTH a summary field and an action_items field.
