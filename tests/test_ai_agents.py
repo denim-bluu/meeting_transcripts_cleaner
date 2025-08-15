@@ -1,166 +1,284 @@
 """
-Simple, focused tests for AI agents using Pydantic AI.
+Modern tests for AI agents using Pydantic AI best practices.
 
-Tests essential functionality for the Pydantic AI-based architecture.
+Tests essential functionality using TestModel, Agent.override(), and proper mocking strategies.
 """
 
-from unittest.mock import AsyncMock, MagicMock
-
+import os
 import pytest
+from pydantic_ai import Agent, capture_run_messages
+from pydantic_ai.models.test import TestModel
 
-from core.ai_agents import TranscriptCleaner, TranscriptReviewer
+from agents.transcript.cleaner import cleaning_agent
+from agents.transcript.reviewer import review_agent
 from models.agents import CleaningResult, ReviewResult
 from models.transcript import VTTChunk, VTTEntry
 
+# Block real model requests during testing
+os.environ["ALLOW_MODEL_REQUESTS"] = "False"
 
-class TestTranscriptCleanerSimple:
-    """Essential tests for TranscriptCleaner with Pydantic AI."""
 
-    def test_cleaner_initialization(self):
-        """Test cleaner initializes correctly."""
-        cleaner = TranscriptCleaner("test-key", "o3-mini")
-        assert cleaner.model_name == "o3-mini"
-        assert cleaner.agent is not None
+class TestTranscriptCleaningAgent:
+    """Test transcript cleaning agent using Pydantic AI best practices."""
 
     @pytest.mark.asyncio
-    async def test_clean_chunk_basic(self):
-        """Test basic chunk cleaning works."""
-        cleaner = TranscriptCleaner("test-key", "o3-mini")
-
-        # Mock the agent run method to return a structured result
-        mock_result = MagicMock()
-        mock_result.output = CleaningResult(
-            cleaned_text="Hello world", confidence=0.9, changes_made=["Fixed grammar"]
+    async def test_cleaning_agent_basic(self):
+        """Test basic cleaning functionality with TestModel."""
+        # Create test data
+        entry = VTTEntry(
+            cue_id="test-1",
+            start_time=0.0,
+            end_time=5.0,
+            speaker="John",
+            text="Um, so like, we need to, uh, finalize the budget."
         )
-        cleaner.agent.run = AsyncMock(return_value=mock_result)
-
-        # Test chunk
-        chunk = VTTChunk(
-            chunk_id=0,
-            entries=[VTTEntry("1", 0.0, 5.0, "Speaker", "Hello world")],
-            token_count=10,
-        )
-
-        result = await cleaner.clean_chunk(chunk)
-
-        assert isinstance(result, CleaningResult)
-        assert result.cleaned_text == "Hello world"
-        assert result.confidence == 0.9
-        assert result.changes_made == ["Fixed grammar"]
-
-    @pytest.mark.asyncio
-    async def test_clean_chunk_handles_errors(self):
-        """Test cleaner handles API errors gracefully."""
-        cleaner = TranscriptCleaner("test-key", "o3-mini")
-
-        # Mock the agent to raise an exception
-        cleaner.agent.run = AsyncMock(side_effect=Exception("API Error"))
-
-        chunk = VTTChunk(
-            chunk_id=0,
-            entries=[VTTEntry("1", 0.0, 5.0, "Speaker", "Hello world")],
-            token_count=10,
-        )
-
-        with pytest.raises(Exception, match="API Error"):
-            await cleaner.clean_chunk(chunk)
-
-
-class TestTranscriptReviewerSimple:
-    """Essential tests for TranscriptReviewer with Pydantic AI."""
-
-    def test_reviewer_initialization(self):
-        """Test reviewer initializes correctly."""
-        reviewer = TranscriptReviewer("test-key", "o3-mini")
-        assert reviewer.model_name == "o3-mini"
-        assert reviewer.agent is not None
-
-    @pytest.mark.asyncio
-    async def test_review_chunk_basic(self):
-        """Test basic chunk review works."""
-        reviewer = TranscriptReviewer("test-key", "o3-mini")
-
-        # Mock the agent run method
-        mock_result = MagicMock()
-        mock_result.output = ReviewResult(quality_score=0.85, issues=[], accept=True)
-        reviewer.agent.run = AsyncMock(return_value=mock_result)
-
-        # Test data
-        chunk = VTTChunk(
-            chunk_id=0,
-            entries=[VTTEntry("1", 0.0, 5.0, "Speaker", "Hello world")],
-            token_count=10,
-        )
-        cleaned_text = "Hello world."
-
-        result = await reviewer.review_chunk(chunk, cleaned_text)
-
-        assert isinstance(result, ReviewResult)
-        assert result.quality_score == 0.85
-        assert result.accept == True
-        assert result.issues == []
-
-    @pytest.mark.asyncio
-    async def test_review_acceptance_threshold(self):
-        """Test review accepts/rejects based on quality score."""
-        reviewer = TranscriptReviewer("test-key", "o3-mini")
-
-        # Mock poor quality result
-        mock_result = MagicMock()
-        mock_result.output = ReviewResult(
-            quality_score=0.6, issues=["Grammar errors"], accept=False
-        )
-        reviewer.agent.run = AsyncMock(return_value=mock_result)
-
-        chunk = VTTChunk(
-            chunk_id=0,
-            entries=[VTTEntry("1", 0.0, 5.0, "Speaker", "Hello world")],
-            token_count=10,
-        )
-
-        result = await reviewer.review_chunk(chunk, "Poor quality text")
-
-        assert result.quality_score == 0.6
-        assert result.accept is False
-        assert "Grammar errors" in result.issues
-
-
-class TestAIAgentsIntegrationSimple:
-    """Integration tests for cleaner and reviewer working together."""
-
-    @pytest.mark.asyncio
-    async def test_cleaning_and_review_pipeline(self):
-        """Test complete cleaning and review pipeline."""
-        cleaner = TranscriptCleaner("test-key", "o3-mini")
-        reviewer = TranscriptReviewer("test-key", "o3-mini")
-
-        # Mock cleaner
-        clean_mock_result = MagicMock()
-        clean_mock_result.output = CleaningResult(
-            cleaned_text="Good morning, everyone.",
+        chunk = VTTChunk(chunk_id=0, entries=[entry], token_count=20)
+        
+        # Mock successful cleaning result
+        mock_result = CleaningResult(
+            cleaned_text="John: We need to finalize the budget.",
             confidence=0.95,
-            changes_made=["Added punctuation"],
+            changes_made=["Removed filler words", "Fixed punctuation"]
         )
-        cleaner.agent.run = AsyncMock(return_value=clean_mock_result)
+        
+        # Use TestModel for deterministic testing
+        test_model = TestModel(custom_output_args=mock_result)
+        
+        with cleaning_agent.override(model=test_model):
+            result = await cleaning_agent.run(
+                f"Clean this transcript:\\n{chunk.to_transcript_text()}"
+            )
+            
+        assert isinstance(result.output, CleaningResult)
+        assert result.output.confidence >= 0.8
+        assert len(result.output.changes_made) > 0
+        assert "John:" in result.output.cleaned_text
 
-        # Mock reviewer
-        review_mock_result = MagicMock()
-        review_mock_result.output = ReviewResult(
-            quality_score=0.9, issues=[], accept=True
+    @pytest.mark.asyncio
+    async def test_cleaning_agent_with_context(self):
+        """Test cleaning agent with dependency context."""
+        entry = VTTEntry(
+            cue_id="test-1",
+            start_time=0.0,
+            end_time=5.0,
+            speaker="Sarah",
+            text="The database migration is critical."
         )
-        reviewer.agent.run = AsyncMock(return_value=review_mock_result)
-
-        # Test chunk
-        chunk = VTTChunk(
-            chunk_id=0,
-            entries=[VTTEntry("1", 0.0, 5.0, "Speaker", "Good morning everyone")],
-            token_count=15,
+        chunk = VTTChunk(chunk_id=0, entries=[entry], token_count=15)
+        
+        # Test context for dynamic instructions
+        context = {
+            'position': 'start',
+            'meeting_type': 'technical',
+            'action_heavy': True
+        }
+        
+        mock_result = CleaningResult(
+            cleaned_text="Sarah: The database migration is critical.",
+            confidence=0.98,
+            changes_made=["Preserved technical terms"]
         )
+        
+        test_model = TestModel(custom_output_args=mock_result)
+        
+        with cleaning_agent.override(model=test_model):
+            result = await cleaning_agent.run(
+                f"Clean this transcript:\\n{chunk.to_transcript_text()}",
+                deps=context
+            )
+            
+        assert isinstance(result.output, CleaningResult)
+        assert "Sarah:" in result.output.cleaned_text
 
-        # Clean and review
-        cleaned = await cleaner.clean_chunk(chunk)
-        review = await reviewer.review_chunk(chunk, cleaned.cleaned_text)
+    @pytest.mark.asyncio
+    async def test_cleaning_agent_message_capture(self):
+        """Test agent messages are captured correctly."""
+        entry = VTTEntry(
+            cue_id="test-1",
+            start_time=0.0,
+            end_time=5.0,
+            speaker="Mike",
+            text="Let's review the quarterly report."
+        )
+        chunk = VTTChunk(chunk_id=0, entries=[entry], token_count=12)
+        
+        mock_result = CleaningResult(
+            cleaned_text="Mike: Let's review the quarterly report.",
+            confidence=0.92,
+            changes_made=["Minor formatting"]
+        )
+        
+        test_model = TestModel(custom_output_args=mock_result)
+        
+        with cleaning_agent.override(model=test_model):
+            with capture_run_messages() as captured_messages:
+                result = await cleaning_agent.run(
+                    f"Clean this transcript:\\n{chunk.to_transcript_text()}"
+                )
+        
+        # Verify message structure
+        assert len(captured_messages) >= 1
+        assert any("Clean this transcript" in str(msg) for msg in captured_messages)
+        assert isinstance(result.output, CleaningResult)
 
-        assert cleaned.confidence == 0.95
-        assert review.accept is True
-        assert review.quality_score == 0.9
+
+class TestTranscriptReviewAgent:
+    """Test transcript review agent using Pydantic AI best practices."""
+
+    @pytest.mark.asyncio
+    async def test_review_agent_basic(self):
+        """Test basic review functionality with TestModel."""
+        # Create test data
+        entry = VTTEntry(
+            cue_id="test-1",
+            start_time=0.0,
+            end_time=5.0,
+            speaker="John",
+            text="Um, so like, we need to, uh, finalize the budget."
+        )
+        chunk = VTTChunk(chunk_id=0, entries=[entry], token_count=20)
+        cleaned_text = "John: We need to finalize the budget."
+        
+        # Mock successful review result
+        mock_result = ReviewResult(
+            quality_score=0.85,
+            issues=["Minor grammatical improvements possible"],
+            accept=True
+        )
+        
+        # Use TestModel for deterministic testing
+        test_model = TestModel(custom_output_args=mock_result)
+        
+        with review_agent.override(model=test_model):
+            result = await review_agent.run(
+                f"Original: {chunk.to_transcript_text()}\\n\\nCleaned: {cleaned_text}"
+            )
+            
+        assert isinstance(result.output, ReviewResult)
+        assert result.output.quality_score >= 0.7
+        assert result.output.accept is True
+        assert isinstance(result.output.issues, list)
+
+    @pytest.mark.asyncio
+    async def test_review_agent_rejection(self):
+        """Test review agent rejecting poor quality cleaning."""
+        entry = VTTEntry(
+            cue_id="test-1",
+            start_time=0.0,
+            end_time=5.0,
+            speaker="John",
+            text="We need to finalize the budget."
+        )
+        chunk = VTTChunk(chunk_id=0, entries=[entry], token_count=15)
+        # Simulate poor cleaning
+        cleaned_text = "Budget finalize need we."
+        
+        mock_result = ReviewResult(
+            quality_score=0.45,
+            issues=["Speaker attribution lost", "Word order incorrect", "Meaning unclear"],
+            accept=False
+        )
+        
+        test_model = TestModel(custom_output_args=mock_result)
+        
+        with review_agent.override(model=test_model):
+            result = await review_agent.run(
+                f"Original: {chunk.to_transcript_text()}\\n\\nCleaned: {cleaned_text}"
+            )
+            
+        assert isinstance(result.output, ReviewResult)
+        assert result.output.quality_score < 0.7
+        assert result.output.accept is False
+        assert len(result.output.issues) > 0
+
+    @pytest.mark.asyncio
+    async def test_review_agent_edge_cases(self):
+        """Test review agent with edge cases."""
+        # Empty chunk
+        entry = VTTEntry(
+            cue_id="test-1",
+            start_time=0.0,
+            end_time=1.0,
+            speaker="Unknown",
+            text=""
+        )
+        chunk = VTTChunk(chunk_id=0, entries=[entry], token_count=1)
+        cleaned_text = ""
+        
+        mock_result = ReviewResult(
+            quality_score=0.3,
+            issues=["Empty content"],
+            accept=False
+        )
+        
+        test_model = TestModel(custom_output_args=mock_result)
+        
+        with review_agent.override(model=test_model):
+            result = await review_agent.run(
+                f"Original: {chunk.to_transcript_text()}\\n\\nCleaned: {cleaned_text}"
+            )
+            
+        assert isinstance(result.output, ReviewResult)
+        assert result.output.accept is False
+
+
+@pytest.fixture
+def mock_vtt_chunk():
+    """Fixture providing a standard VTT chunk for testing."""
+    entries = [
+        VTTEntry(
+            cue_id="test-1",
+            start_time=0.0,
+            end_time=5.0,
+            speaker="John",
+            text="Hello everyone, let's start the meeting."
+        ),
+        VTTEntry(
+            cue_id="test-2",
+            start_time=5.0,
+            end_time=10.0,
+            speaker="Sarah",
+            text="Good morning John, I'm ready."
+        )
+    ]
+    return VTTChunk(chunk_id=0, entries=entries, token_count=25)
+
+
+class TestIntegrationScenarios:
+    """Integration tests for realistic scenarios."""
+
+    @pytest.mark.asyncio
+    async def test_cleaning_and_review_pipeline(self, mock_vtt_chunk):
+        """Test complete cleaning -> review pipeline."""
+        # Mock cleaning result
+        cleaning_result = CleaningResult(
+            cleaned_text="John: Hello everyone, let's start the meeting.\\nSarah: Good morning John, I'm ready.",
+            confidence=0.93,
+            changes_made=["Improved punctuation", "Preserved speaker names"]
+        )
+        
+        # Mock review result
+        review_result = ReviewResult(
+            quality_score=0.88,
+            issues=[],
+            accept=True
+        )
+        
+        cleaning_model = TestModel(custom_output_args=cleaning_result)
+        review_model = TestModel(custom_output_args=review_result)
+        
+        # Test cleaning
+        with cleaning_agent.override(model=cleaning_model):
+            clean_result = await cleaning_agent.run(
+                f"Clean this transcript:\\n{mock_vtt_chunk.to_transcript_text()}"
+            )
+        
+        # Test review
+        with review_agent.override(model=review_model):
+            review_result = await review_agent.run(
+                f"Original: {mock_vtt_chunk.to_transcript_text()}\\n\\nCleaned: {clean_result.output.cleaned_text}"
+            )
+        
+        assert clean_result.output.confidence > 0.8
+        assert review_result.output.accept is True
+        assert review_result.output.quality_score > 0.8

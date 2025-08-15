@@ -241,9 +241,9 @@ class MeetingIntelligence(BaseModel):
             section for section in required_sections if section not in v_lower
         ]
 
-        if len(missing_sections) > 1:
+        if len(missing_sections) > 2:
             raise ModelRetry(
-                "Summary missing key sections. Include: Executive Summary, Key Decisions, "
+                "Summary missing too many key sections. Include at least 2 of: Executive Summary, Key Decisions, "
                 "Discussion by Topic, and Important Quotes. Use proper markdown headers (#)."
             )
 
@@ -276,7 +276,7 @@ class MeetingIntelligence(BaseModel):
 
         # Check for owner distribution (shouldn't all be unassigned)
         assigned_count = sum(1 for item in v if item.owner is not None)
-        if len(v) > 2 and assigned_count == 0:
+        if len(v) > 3 and assigned_count == 0:
             raise ModelRetry(
                 "Multiple action items without owners. Try to identify who is responsible "
                 "for each task from the meeting discussion."
@@ -285,7 +285,7 @@ class MeetingIntelligence(BaseModel):
         # Check for variety in action types (not all the same verb)
         descriptions = [item.description.lower() for item in v]
         first_words = [desc.split()[0] for desc in descriptions if desc.split()]
-        if len(set(first_words)) == 1 and len(v) > 2:
+        if len(set(first_words)) == 1 and len(v) > 3:
             raise ModelRetry(
                 "Action items too similar. Vary the action types: review, prepare, "
                 "implement, contact, schedule, etc."

@@ -1,24 +1,25 @@
 """
-Pytest configuration and fixtures for the VTT transcript processing system.
+Modern pytest configuration using Pydantic AI best practices.
 
 This module provides:
-- Essential fixtures for testing VTT processing components
-- Test configuration and setup
-- Mock VTT data generators
-- OpenAI API mocking
+- Clean test environment setup with ALLOW_MODEL_REQUESTS=False
+- Essential fixtures for VTT testing
+- Modern agent testing patterns with TestModel
+- Simplified mocking strategies
 """
 
 import asyncio
-import json
 import os
 from pathlib import Path
 import sys
 import tempfile
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-# Set test API key before importing config
+# Block real model requests during testing (Pydantic AI best practice)
+os.environ["ALLOW_MODEL_REQUESTS"] = "False"
+
+# Set test API key before importing any modules
 os.environ["OPENAI_API_KEY"] = "sk-test-key-for-testing-only-do-not-use-in-production"
 
 # Add project root to path for testing
@@ -27,20 +28,19 @@ project_root = test_dir.parent
 sys.path.insert(0, str(project_root))
 
 # Import after setting up environment
-from core.ai_agents import TranscriptCleaner, TranscriptReviewer  # noqa: E402
-from core.vtt_processor import VTTProcessor  # noqa: E402
 from models.transcript import VTTChunk, VTTEntry  # noqa: E402
 from services.transcript_service import TranscriptService  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def setup_test_environment():
-    """Set up clean test environment."""
-    # Set test-specific environment variables
+    """Set up clean test environment following Pydantic AI best practices."""
+    # Ensure model requests are blocked
+    os.environ["ALLOW_MODEL_REQUESTS"] = "False"
     os.environ["OPENAI_API_KEY"] = "sk-test-key-for-testing-only"
-
+    
     yield
-
+    
     # Cleanup after test if needed
 
 
@@ -142,90 +142,35 @@ def sample_vtt_chunk(sample_vtt_entries) -> VTTChunk:
 
 
 @pytest.fixture
-def vtt_processor() -> VTTProcessor:
-    """Create a VTT processor instance."""
-    return VTTProcessor()
-
-
-@pytest.fixture
-def mock_openai_response():
-    """Mock successful OpenAI API response."""
-    return {
-        "choices": [
-            {
-                "message": {
-                    "content": json.dumps(
-                        {
-                            "cleaned_text": "Welcome everyone to the quarterly meeting. I know we're all excited to get started.",
-                            "confidence": 0.95,
-                            "changes_made": ["Removed filler words", "Fixed grammar"],
-                        }
-                    )
-                }
-            }
-        ]
-    }
-
-
-@pytest.fixture
-def mock_openai_review_response():
-    """Mock successful OpenAI review response."""
-    return {
-        "choices": [
-            {
-                "message": {
-                    "content": json.dumps(
-                        {"quality_score": 0.85, "issues": [], "accept": True}
-                    )
-                }
-            }
-        ]
-    }
-
-
-@pytest.fixture
-def mock_pydantic_agent():
-    """Create a mock Pydantic AI agent."""
-    agent = MagicMock()
-    agent.run = AsyncMock()
-    return agent
-
-
-@pytest.fixture
-def transcript_cleaner(mock_pydantic_agent) -> TranscriptCleaner:
-    """Create a TranscriptCleaner with mocked Pydantic AI agent."""
-    cleaner = TranscriptCleaner("test-api-key", "o3-mini")
-    cleaner.agent = mock_pydantic_agent
-    return cleaner
-
-
-@pytest.fixture
-def transcript_reviewer(mock_pydantic_agent) -> TranscriptReviewer:
-    """Create a TranscriptReviewer with mocked Pydantic AI agent."""
-    reviewer = TranscriptReviewer("test-api-key", "o3-mini")
-    reviewer.agent = mock_pydantic_agent
-    return reviewer
+def clean_vtt_entries() -> list[VTTEntry]:
+    """Create pre-cleaned VTT entries for testing."""
+    return [
+        VTTEntry(
+            cue_id="1",
+            start_time=1.0,
+            end_time=5.0,
+            speaker="John Smith",
+            text="Welcome everyone to the quarterly meeting.",
+        ),
+        VTTEntry(
+            cue_id="2",
+            start_time=5.0,
+            end_time=10.0,
+            speaker="Sarah Johnson",
+            text="Thanks John. I'm looking forward to this project.",
+        ),
+    ]
 
 
 @pytest.fixture
 def transcript_service() -> TranscriptService:
-    """Create a TranscriptService instance."""
+    """Create a TranscriptService instance for testing."""
     return TranscriptService("test-api-key", max_concurrent=2, rate_limit=10)
 
 
-@pytest.fixture
-def mock_transcript_service():
-    """Create a mock TranscriptService."""
-    service = MagicMock(spec=TranscriptService)
-    service.process_vtt = MagicMock()
-    service.clean_transcript = AsyncMock()
-    service.export = MagicMock()
-    return service
-
-
-# Test utilities
+# Test utilities following modern patterns
 class VTTTestUtils:
-    """Utility class for VTT testing helpers."""
+    """Utility class for VTT testing helpers using modern patterns."""
 
     @staticmethod
     def count_speakers(entries: list[VTTEntry]) -> int:
@@ -266,6 +211,12 @@ class VTTTestUtils:
         assert chunk.token_count > 0
         for entry in chunk.entries:
             VTTTestUtils.assert_vtt_entry_valid(entry)
+
+    @staticmethod
+    def assert_agent_result_structure(result, expected_type):
+        """Assert that an agent result has the correct structure."""
+        assert hasattr(result, 'output'), "Result should have output attribute"
+        assert isinstance(result.output, expected_type), f"Output should be {expected_type}"
 
 
 @pytest.fixture

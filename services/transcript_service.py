@@ -7,11 +7,12 @@ import time
 from asyncio_throttle.throttler import Throttler
 import structlog
 
-from core.ai_agents import TranscriptCleaner, TranscriptReviewer
 from core.vtt_processor import VTTProcessor
 from models.agents import CleaningResult, ReviewResult
 from models.transcript import VTTChunk
 from services.orchestration import IntelligenceOrchestrator
+from services.transcript.cleaning_service import TranscriptCleaningService
+from services.transcript.review_service import TranscriptReviewService
 
 logger = structlog.get_logger(__name__)
 
@@ -40,9 +41,9 @@ class TranscriptService:
         # Initialize throttler for rate limiting
         self.throttler = Throttler(rate_limit=rate_limit, period=60)
 
-        # Initialize agents immediately
-        self.cleaner = TranscriptCleaner(api_key=self.api_key)
-        self.reviewer = TranscriptReviewer(api_key=self.api_key)
+        # Initialize services using pure agents
+        self.cleaner = TranscriptCleaningService(model="o3-mini")
+        self.reviewer = TranscriptReviewService(model="o3-mini")
         self._intelligence_orchestrator = IntelligenceOrchestrator(model="o3-mini")
 
     def process_vtt(self, content: str) -> dict:
