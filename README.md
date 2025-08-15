@@ -70,12 +70,12 @@ graph TB
 ### System Responsibilities
 
 **VTTProcessor**: Regex-based parsing of VTT cue blocks into structured entries, token-based chunking
-**TranscriptService**: Concurrent orchestration with rate limiting, progress tracking, error resilience  
+**TranscriptService**: Concurrent orchestration with rate limiting, progress tracking, error resilience
 **AI Cleaning Agents**: Structured cleaning and quality review with confidence scoring
 **IntelligenceOrchestrator**: Production-grade 3-phase pipeline with importance gating (threshold: 3)
 **SemanticChunker**: LangChain-based semantic chunking (3000 tokens = 12,000 characters)
 **ChunkExtractor**: Universal extraction with enhanced density (8-15 insights per chunk)
-**IntelligenceSynthesizer**: Smart synthesis selection with Microsoft Teams Premium prompts
+**IntelligenceSynthesizer**: Smart synthesis selection with comprehensive meeting prompts
 **UI Layer**: Real-time progress reporting with batch metrics and intelligence visualization
 
 ## Core Features
@@ -105,12 +105,12 @@ graph TB
 
 ### 🧠 Production-Grade Hierarchical Map-Reduce Architecture
 
-- **Industry-Standard Approach**: Battle-tested hierarchical map-reduce pattern used by OpenAI, Microsoft Teams Premium, and Zoom
-- **Adaptive Detail Control**: Three-lever optimization (threshold: 3, density: 8-15, enhanced prompts) for rich contextual summaries
-- **Smart Synthesis Selection**: Automatic direct (95% of cases) vs hierarchical (5% edge cases) based on 50K token estimation
-- **Context Preservation**: Enhanced prompts capture WHY, REASONING, and DISCUSSION flow for comprehensive non-attendee understanding
+- **Production-Grade Approach**: Battle-tested hierarchical map-reduce pattern for scalable meeting intelligence
+- Three-lever optimization (threshold: 3, density: 8-15, enhanced prompts) for rich contextual summaries
+- Automatic direct (95% of cases) vs hierarchical (5% edge cases) based on 50K token estimation
+- Enhanced prompts capture WHY, REASONING, and DISCUSSION flow for comprehensive non-attendee understanding
 
-### 📋 Microsoft Teams Premium Style Summary Generation
+### 📋 Summary Generation
 
 - **Executive Summary**: 3-4 sentences with complete meeting context, participants, topics, and outcomes
 - **Key Decisions**: Decision + rationale + trade-offs + who decided + concerns + impact analysis
@@ -230,18 +230,18 @@ sequenceDiagram
     end
 
     TS->>IO: process_meeting(cleaned_chunks)
-    
+
     Note over IO: Phase 1: Semantic Chunking
     IO->>SC: create_chunks()
     SC->>IO: semantic_chunks[]
-    
+
     Note over IO: Phase 2: Parallel Extraction
     IO->>CE: extract_all_insights(semantic_chunks)
     CE->>IO: ChunkInsights[]
-    
+
     Note over IO: Phase 3: Smart Synthesis
     IO->>IO: _estimate_tokens(insights)
-    
+
     alt Token count < 50K (95% of cases)
         IO->>IS: synthesize_intelligence_direct()
         IS->>IO: MeetingIntelligence
@@ -249,25 +249,25 @@ sequenceDiagram
         IO->>IS: synthesize_intelligence_hierarchical()
         IS->>IO: MeetingIntelligence
     end
-    
+
     IO->>TS: MeetingIntelligence with processing_stats
     TS->>UI: Complete results + intelligence + export options
 ```
 
 ## Technology Stack
 
-| Component              | Technology            | Responsibility                                    |
-| ---------------------- | --------------------- | ------------------------------------------------- |
-| **Framework**          | Streamlit             | UI components and real-time progress             |
-| **AI Processing**      | OpenAI AsyncAPI       | Concurrent API calls with rate limiting          |
-| **Models**             | o3-mini (default)     | Text cleaning, quality review, and intelligence  |
-| **Structured Output**  | Pydantic AI           | Type-safe AI responses with validation           |
-| **Semantic Chunking**  | LangChain             | Industry-standard text splitting (3000 tokens)  |
-| **Retry Logic**        | Tenacity              | Exponential backoff and error resilience         |
-| **Concurrency**        | asyncio + Semaphore   | Batch processing with controlled limits          |
-| **Rate Limiting**      | asyncio-throttle      | Request throttling and backoff                   |
-| **Logging**            | structlog             | Structured, contextual logging                   |
-| **Package Manager**    | uv                    | Fast dependency management                       |
+| Component             | Technology          | Responsibility                                  |
+| --------------------- | ------------------- | ----------------------------------------------- |
+| **Framework**         | Streamlit           | UI components and real-time progress            |
+| **AI Processing**     | OpenAI AsyncAPI     | Concurrent API calls with rate limiting         |
+| **Models**            | o3-mini (default)   | Text cleaning, quality review, and intelligence |
+| **Structured Output** | Pydantic AI         | Type-safe AI responses with validation          |
+| **Semantic Chunking** | LangChain           | Industry-standard text splitting (3000 tokens)  |
+| **Retry Logic**       | Tenacity            | Exponential backoff and error resilience        |
+| **Concurrency**       | asyncio + Semaphore | Batch processing with controlled limits         |
+| **Rate Limiting**     | asyncio-throttle    | Request throttling and backoff                  |
+| **Logging**           | structlog           | Structured, contextual logging                  |
+| **Package Manager**   | uv                  | Fast dependency management                      |
 
 ## Installation
 
@@ -442,12 +442,12 @@ REVIEW_MODEL=o3-mini      # Quality review model
 **`synthesize_intelligence_direct(insights_list: List[ChunkInsights]) -> MeetingIntelligence`**
 
 - Direct synthesis for most meetings (95% of cases)
-- Single API call with Microsoft Teams Premium style prompts
-- Enhanced context preservation with adaptive detail control
+- Single API call with comprehensive context-preserving prompts
+- Enhanced detail control with adaptive thresholds
 
 **`synthesize_intelligence_hierarchical(insights_list: List[ChunkInsights], segment_minutes: int) -> MeetingIntelligence`**
 
-- Hierarchical synthesis for long meetings (5% edge cases)  
+- Hierarchical synthesis for long meetings (5% edge cases)
 - Multiple API calls with temporal segmentation (30-minute segments)
 - Map-reduce pattern with final synthesis across segments
 
