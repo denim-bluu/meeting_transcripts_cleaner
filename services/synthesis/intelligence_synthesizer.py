@@ -3,15 +3,24 @@
 import asyncio
 
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import (
+    OpenAIResponsesModel,
+    OpenAIResponsesModelSettings,
+)
 import structlog
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from models.intelligence import ChunkInsights, MeetingIntelligence
 
 logger = structlog.get_logger(__name__)
 
-# Adaptive Detail Control - Context Preservation Synthesis
-PRODUCTION_SYNTHESIS_PROMPT = """
+# Adaptive Detail Control - Context Preservation Synthesis Instructions
+PRODUCTION_SYNTHESIS_INSTRUCTIONS = """
 Create a COMPREHENSIVE meeting intelligence that preserves important context and details.
 
 CRITICAL: Include sufficient detail for someone who wasn't in the meeting to understand:
@@ -72,20 +81,14 @@ Guidelines:
 - Extract ALL actionable items from the raw actions and insights
 - DO NOT include action items in the summary markdown - they go in the separate action_items field
 - Focus on making the summary self-contained and informative for non-attendees
-
-Meeting insights:
-{insights}
-
-Raw action items found:
-{actions}
 """
 
-# Hierarchical segment synthesis prompt
-SEGMENT_SYNTHESIS_PROMPT = """
-Summarize this 30-minute meeting segment focusing on key decisions and outcomes.
+# Hierarchical segment synthesis instructions
+SEGMENT_SYNTHESIS_INSTRUCTIONS = """
+Summarize this meeting segment focusing on key decisions and outcomes.
 
 Format as:
-## Segment Summary ({start_time} - {end_time})
+## Segment Summary
 ### Key Decisions
 - Decision with context
 
@@ -97,14 +100,11 @@ Format as:
 - Action (Owner: Name, Due: Date if mentioned)
 
 Keep this concise but comprehensive. Focus on decisions, commitments, and important technical details.
-
-Segment insights:
-{insights}
 """
 
-# Final hierarchical synthesis prompt
-FINAL_HIERARCHICAL_PROMPT = """
-Create a COMPREHENSIVE meeting summary from these temporal segment summaries that preserves important context and details.
+# Final hierarchical synthesis instructions
+FINAL_HIERARCHICAL_INSTRUCTIONS = """
+Create a COMPREHENSIVE meeting summary from temporal segment summaries that preserves important context and details.
 
 CRITICAL: Include sufficient detail for someone who wasn't in the meeting to understand:
 - Not just WHAT was decided, but WHY
@@ -164,9 +164,6 @@ Guidelines:
 - Capture the "why" behind decisions and discussions
 - Extract ALL action items mentioned across segments
 - Focus on making the summary self-contained and informative for non-attendees
-
-Segment summaries:
-{segments}
 """
 
 
@@ -174,17 +171,60 @@ class IntelligenceSynthesizer:
     """Production-grade meeting intelligence synthesis using hierarchical map-reduce."""
 
     def __init__(self, model: str = "o3-mini"):
+        self.model_name = model
+
+        # Configure thinking for complex synthesis using proper OpenAIResponsesModel
+        if model.startswith("o3"):
+            # For o3 models, use OpenAIResponsesModel with thinking
+            model_instance = OpenAIResponsesModel(model)
+            model_settings = OpenAIResponsesModelSettings(
+                openai_reasoning_effort="high",  # Enable thinking for complex reasoning
+                openai_reasoning_summary="detailed",  # Include detailed reasoning summaries
+            )
+            thinking_enabled = True
+        else:
+            # For other models, use standard approach
+            model_instance = f"openai:{model}"
+            model_settings = None
+            thinking_enabled = False
+
         self.agent = Agent(
-            f"openai:{model}",
+            model_instance,
             output_type=MeetingIntelligence,
+            instructions=PRODUCTION_SYNTHESIS_INSTRUCTIONS,
             retries=2,  # Built-in validation retries
+            model_settings=model_settings,
         )
+
         # For hierarchical synthesis, we need a text agent for segments
-        self.text_agent = Agent(f"openai:{model}", retries=1)
-        logger.info("IntelligenceSynthesizer initialized", model=model)
+        # Also enable thinking for segment synthesis
+        self.text_agent = Agent(
+            model_instance,
+            instructions=SEGMENT_SYNTHESIS_INSTRUCTIONS,
+            retries=1,
+            model_settings=model_settings,
+        )
+
+        # For final hierarchical synthesis, we need another agent with different instructions
+        self.hierarchical_agent = Agent(
+            model_instance,
+            output_type=MeetingIntelligence,
+            instructions=FINAL_HIERARCHICAL_INSTRUCTIONS,
+            retries=2,
+            model_settings=model_settings,
+        )
+
+        logger.info(
+            "IntelligenceSynthesizer initialized",
+            model=model,
+            thinking_enabled=thinking_enabled,
+            uses_responses_model=model.startswith("o3"),
+        )
 
     @retry(
-        stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=10)
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((ConnectionError, TimeoutError, OSError)),
     )
     async def synthesize_intelligence_direct(
         self, insights_list: list[ChunkInsights]
@@ -193,6 +233,7 @@ class IntelligenceSynthesizer:
         Direct synthesis for most meetings (95% of cases).
 
         Single API call with all important insights.
+        Network errors retried via tenacity, validation errors handled by Pydantic AI.
         """
         logger.info(
             "Starting direct synthesis",
@@ -208,11 +249,12 @@ class IntelligenceSynthesizer:
         # Format insights for synthesis
         formatted_insights = self._format_insights_for_synthesis(insights_list)
 
-        # Create synthesis prompt
-        prompt = PRODUCTION_SYNTHESIS_PROMPT.format(
-            insights=formatted_insights,
-            actions=chr(10).join(f"- {action}" for action in raw_actions),
-        )
+        # Create user message with meeting data
+        user_message = f"""Meeting insights:
+{formatted_insights}
+
+Raw action items found:
+{chr(10).join(f"- {action}" for action in raw_actions)}"""
 
         logger.info(
             "Formatted content for direct synthesis",
@@ -220,7 +262,7 @@ class IntelligenceSynthesizer:
             raw_actions=len(raw_actions),
         )
 
-        result = await self.agent.run(prompt)
+        result = await self.agent.run(user_message)
         intelligence = result.output
 
         logger.info(
@@ -233,15 +275,21 @@ class IntelligenceSynthesizer:
         return intelligence
 
     @retry(
-        stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=10)
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((ConnectionError, TimeoutError, OSError)),
     )
     async def synthesize_intelligence_hierarchical(
         self, insights_list: list[ChunkInsights], segment_minutes: int = 30
     ) -> MeetingIntelligence:
         """
-        Hierarchical synthesis for long meetings (5% of cases).
+                Hierarchical synthesis for long meetings (5% of cases).
 
-        Multiple API calls: N segments + 1 final synthesis.
+                Multiple API calls: N segments + 1 final synthesis.
+        <<<<<<< Updated upstream
+        =======
+                Network errors retried via tenacity, validation errors handled by Pydantic AI.
+        >>>>>>> Stashed changes
         """
         logger.info(
             "Starting hierarchical synthesis",
@@ -270,9 +318,11 @@ class IntelligenceSynthesizer:
 
         # Step 3: Final synthesis of all segments
         segments_text = "\n\n".join(segment_summaries)
-        final_prompt = FINAL_HIERARCHICAL_PROMPT.format(segments=segments_text)
 
-        result = await self.agent.run(final_prompt)
+        # Use dedicated hierarchical agent with appropriate instructions
+        result = await self.hierarchical_agent.run(
+            f"Segment summaries:\n\n{segments_text}"
+        )
         intelligence = result.output
 
         logger.info(
@@ -294,13 +344,13 @@ class IntelligenceSynthesizer:
         # Format insights for this segment
         formatted_insights = self._format_insights_for_synthesis(segment)
 
-        prompt = SEGMENT_SYNTHESIS_PROMPT.format(
-            start_time=start_time,
-            end_time=end_time,
-            insights=formatted_insights,
-        )
+        # Create user message with segment data
+        user_message = f"""Time range: {start_time} - {end_time}
 
-        result = await self.text_agent.run(prompt)
+Segment insights:
+{formatted_insights}"""
+
+        result = await self.text_agent.run(user_message)
         return result.output
 
     def _create_temporal_segments(
