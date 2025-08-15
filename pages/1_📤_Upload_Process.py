@@ -241,8 +241,10 @@ async def process_document_with_status(uploaded_file: UploadedFile) -> None:
 
         # Store the cleaned transcript result in session state (main thread)
         if processing_state.get("result"):
-            st.session_state.cleaned_transcript = processing_state["result"]
+            cleaned_transcript = processing_state["result"]
+            st.session_state.cleaned_transcript = cleaned_transcript
             logger.info("Cleaned transcript stored in session state")
+
 
         # Set up for Review page
         st.session_state.categories = []

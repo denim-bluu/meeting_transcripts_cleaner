@@ -84,7 +84,7 @@ Guidelines:
 # Pure agent definition - stateless and global
 # Using OpenAIResponsesModel for o3 models to enable thinking
 hierarchical_synthesis_agent = Agent(
-    OpenAIResponsesModel("o3-mini"),
+    OpenAIResponsesModel("o3"),
     output_type=MeetingIntelligence,
     instructions=FINAL_HIERARCHICAL_INSTRUCTIONS,
     retries=3,  # Built-in validation retries (increased for complex synthesis)

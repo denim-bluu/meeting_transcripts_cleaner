@@ -442,12 +442,15 @@ class TranscriptService:
         secs = seconds % 60
         return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
 
-    async def extract_intelligence(self, transcript: dict) -> dict:
+    async def extract_intelligence(self, transcript: dict, detail_level: str = "comprehensive") -> dict:
         """
-        Extract intelligence from cleaned transcript using the new simple approach.
+        Extract intelligence from cleaned transcript using industry-standard approach.
         Call after clean_transcript completes.
 
-        Input: transcript dict with 'cleaned_chunks' or 'chunks' key
+        Args:
+            transcript: transcript dict with 'cleaned_chunks' or 'chunks' key
+            detail_level: "standard", "comprehensive", or "technical_focus"
+
         Output: transcript dict with added 'intelligence' key
         """
         logger.info(
@@ -462,7 +465,7 @@ class TranscriptService:
             raise ValueError("No chunks available for intelligence extraction")
 
         result = await self._intelligence_orchestrator.process_meeting(
-            chunks_to_process
+            chunks_to_process, detail_level=detail_level, progress_callback=None
         )
         transcript["intelligence"] = result
 

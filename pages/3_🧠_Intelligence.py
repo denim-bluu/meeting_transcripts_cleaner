@@ -203,7 +203,7 @@ def render_export_section(intelligence: MeetingIntelligence):
                 st.info("No action items to export in CSV format.")
 
 
-async def extract_intelligence_async(transcript_data):
+async def extract_intelligence_async(transcript_data, detail_level: str = "comprehensive"):
     """Extract intelligence from transcript data."""
     try:
         # Get API key
@@ -214,8 +214,8 @@ async def extract_intelligence_async(transcript_data):
         # Initialize service
         service = TranscriptService(api_key)
 
-        # Extract intelligence
-        result_transcript = await service.extract_intelligence(transcript_data)
+        # Extract intelligence with user's selected detail level
+        result_transcript = await service.extract_intelligence(transcript_data, detail_level=detail_level)
         return True, result_transcript
 
     except Exception as e:
@@ -223,7 +223,7 @@ async def extract_intelligence_async(transcript_data):
         return False, str(e)
 
 
-def run_intelligence_extraction():
+def run_intelligence_extraction(detail_level: str = "comprehensive"):
     """Run intelligence extraction and update session state."""
     # Check if transcript exists in session state
     if "transcript" not in st.session_state:
@@ -235,6 +235,8 @@ def run_intelligence_extraction():
 
     # Show progress and run extraction
     with st.status("Extracting meeting intelligence...", expanded=True) as status:
+        status.write(f"📊 Using **{detail_level.replace('_', ' ').title()}** detail level")
+        
         progress_placeholder = st.empty()
         progress_placeholder.progress(
             0.1, text="Initializing intelligence extraction..."
@@ -245,10 +247,19 @@ def run_intelligence_extraction():
         asyncio.set_event_loop(loop)
 
         try:
-            progress_placeholder.progress(0.3, text="Processing transcript chunks...")
+            progress_placeholder.progress(0.2, text="Semantic chunking...")
+            import time
+            time.sleep(0.5)  # Small delay to show progress
+            
+            progress_placeholder.progress(0.4, text="Starting concurrent insight extraction...")
+            time.sleep(0.3)
+            
+            progress_placeholder.progress(0.6, text="Extracting insights from all chunks...")
             success, result = loop.run_until_complete(
-                extract_intelligence_async(transcript_data)
+                extract_intelligence_async(transcript_data, detail_level)
             )
+            
+            progress_placeholder.progress(0.9, text="Finalizing intelligence report...")
 
             if success:
                 progress_placeholder.progress(
@@ -330,11 +341,23 @@ def main():
 
         st.markdown("---")
 
+        # Industry-standard detail level selector (like Zoom's templates)
+        detail_level = st.selectbox(
+            "📊 Summary Detail Level",
+            ["Comprehensive", "Standard", "Technical Focus"],
+            index=0,  # Default to Comprehensive (industry standard)
+            help="""
+            • **Comprehensive**: Rich summaries with full context (recommended for most meetings)
+            • **Standard**: Key decisions and action items with basic context  
+            • **Technical Focus**: Preserves ALL technical details, numbers, and specifications verbatim
+            """
+        )
+
         # Extract intelligence button
         if st.button(
             "🧠 Extract Meeting Intelligence", type="primary", use_container_width=True
         ):
-            run_intelligence_extraction()
+            run_intelligence_extraction(detail_level.lower().replace(" ", "_"))
 
         st.markdown("**This will:**")
         st.markdown("• 📋 Generate executive and detailed summaries")
@@ -383,19 +406,35 @@ def main():
 
     # Footer with regeneration option
     st.markdown("---")
-    col1, col2 = st.columns([3, 1])
-
-    with col1:
-        st.markdown(
-            "*Intelligence extracted from processed transcript. Results are AI-generated and may need review.*"
-        )
-
-    with col2:
-        if st.button("🔄 Re-extract Intelligence"):
-            # Clear existing intelligence and re-extract
-            if "intelligence" in st.session_state.transcript:
-                del st.session_state.transcript["intelligence"]
-            st.rerun()
+    
+    # Re-extraction section
+    with st.expander("🔄 Re-extract Intelligence with Different Detail Level"):
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            # Detail level selector for re-extraction
+            re_detail_level = st.selectbox(
+                "📊 New Detail Level",
+                ["Comprehensive", "Standard", "Technical Focus"],
+                index=0,  # Default to Comprehensive
+                key="re_extract_detail_level",
+                help="""
+                • **Comprehensive**: Rich summaries with full context (recommended for most meetings)
+                • **Standard**: Key decisions and action items with basic context  
+                • **Technical Focus**: Preserves ALL technical details, numbers, and specifications verbatim
+                """
+            )
+        
+        with col2:
+            if st.button("🔄 Re-extract Intelligence", type="secondary", use_container_width=True):
+                # Clear existing intelligence and re-extract with new detail level
+                if "intelligence" in st.session_state.transcript:
+                    del st.session_state.transcript["intelligence"]
+                run_intelligence_extraction(re_detail_level.lower().replace(" ", "_"))
+    
+    st.markdown(
+        "*Intelligence extracted from processed transcript. Results are AI-generated and may need review.*"
+    )
 
 
 if __name__ == "__main__":
