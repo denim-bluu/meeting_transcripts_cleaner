@@ -3,7 +3,7 @@ import time
 
 import structlog
 
-from models.vtt import VTTChunk, VTTEntry
+from models.transcript import VTTChunk, VTTEntry
 
 logger = structlog.get_logger(__name__)
 

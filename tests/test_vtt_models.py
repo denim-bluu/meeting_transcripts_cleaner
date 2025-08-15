@@ -8,7 +8,7 @@ Tests the VTTEntry and VTTChunk dataclasses for:
 - Edge cases and error conditions
 """
 
-from models.vtt import VTTChunk, VTTEntry
+from models.transcript import VTTChunk, VTTEntry
 
 
 class TestVTTEntry:

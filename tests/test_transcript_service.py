@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from models.vtt import VTTChunk, VTTEntry
+from models.transcript import VTTChunk, VTTEntry
 from services.transcript_service import TranscriptService
 
 

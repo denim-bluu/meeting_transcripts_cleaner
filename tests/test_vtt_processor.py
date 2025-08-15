@@ -5,7 +5,7 @@ Tests only essential functionality for the simplified 2-layer architecture.
 """
 
 from core.vtt_processor import VTTProcessor
-from models.vtt import VTTChunk, VTTEntry
+from models.transcript import VTTChunk, VTTEntry
 
 
 class TestVTTProcessorSimple:

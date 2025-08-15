@@ -1,7 +1,7 @@
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import structlog
 
-from models.vtt import VTTChunk
+from models.transcript import VTTChunk
 
 logger = structlog.get_logger(__name__)
 
@@ -23,14 +23,23 @@ class SemanticChunker:
     """
 
     def __init__(self, chunk_size: int = 3000, chunk_overlap: int = 200):
+        # Convert token-based parameters to character-based for RecursiveCharacterTextSplitter
+        # Assumption: 1 token ≈ 4 characters (standard GPT tokenizer approximation)
+        char_chunk_size = chunk_size * 4
+        char_overlap = chunk_overlap * 4
+
         self.splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
+            chunk_size=char_chunk_size,
+            chunk_overlap=char_overlap,
             separators=["\n\n", "\n", ". ", " "],
             length_function=len,
         )
         logger.info(
-            "SemanticChunker initialized", chunk_size=chunk_size, overlap=chunk_overlap
+            "SemanticChunker initialized",
+            token_chunk_size=chunk_size,
+            token_overlap=chunk_overlap,
+            char_chunk_size=char_chunk_size,
+            char_overlap=char_overlap,
         )
 
     def create_chunks(self, vtt_chunks: list[VTTChunk]) -> list[str]:

@@ -10,7 +10,7 @@ import pytest
 
 from core.ai_agents import TranscriptCleaner, TranscriptReviewer
 from models.agents import CleaningResult, ReviewResult
-from models.vtt import VTTChunk, VTTEntry
+from models.transcript import VTTChunk, VTTEntry
 
 
 class TestTranscriptCleanerSimple:

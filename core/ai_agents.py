@@ -9,7 +9,7 @@ from pydantic_ai.models.openai import OpenAIModelSettings
 import structlog
 
 from models.agents import CleaningResult, ReviewResult
-from models.vtt import VTTChunk
+from models.transcript import VTTChunk
 
 # Load environment variables from .env file
 load_dotenv()

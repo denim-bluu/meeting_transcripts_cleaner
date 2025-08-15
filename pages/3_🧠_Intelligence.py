@@ -12,7 +12,7 @@ import streamlit as st
 import structlog
 
 from config import Config, configure_structlog
-from models.simple_intelligence import ActionItem, MeetingIntelligence
+from models.intelligence import ActionItem, MeetingIntelligence
 from services.transcript_service import TranscriptService
 
 # Configure structured logging
@@ -92,15 +92,6 @@ def render_action_items(action_items: list[ActionItem]):
             with col2:
                 st.markdown(f"**📊 Status:** {status_text}")
 
-            # Action controls
-            action_col1, action_col2 = st.columns(2)
-            with action_col1:
-                if st.button(f"📝 Edit Item {i}", key=f"edit_{i}"):
-                    st.info("Edit functionality coming soon!")
-            with action_col2:
-                if st.button(f"✅ Mark Complete {i}", key=f"complete_{i}"):
-                    st.success("Feature coming soon!")
-
 
 def render_summary_section(intelligence: MeetingIntelligence):
     """Render the summary section with markdown summary."""
@@ -133,9 +124,8 @@ def render_processing_stats_section(intelligence: MeetingIntelligence):
 
         with col4:
             if "time_ms" in intelligence.processing_stats:
-                st.metric(
-                    "Processing Time", f"{intelligence.processing_stats['time_ms']}ms"
-                )
+                seconds = intelligence.processing_stats["time_ms"] / 1000
+                st.metric("Processing Time", f"{seconds:.1f}s")
 
         # Additional stats
         if "avg_importance" in intelligence.processing_stats:
@@ -151,37 +141,8 @@ def render_export_section(intelligence: MeetingIntelligence):
     """Render export functionality for new intelligence format."""
     st.subheader("📤 Export Options")
 
-    import json
-
-    col1, col2, col3 = st.columns(3)
-
+    col1, col2 = st.columns(2)
     with col1:
-        # JSON export
-        json_data = json.dumps(
-            {
-                "summary": intelligence.summary,
-                "action_items": [
-                    {
-                        "description": item.description,
-                        "owner": item.owner,
-                        "due_date": item.due_date,
-                    }
-                    for item in intelligence.action_items
-                ],
-                "processing_stats": intelligence.processing_stats,
-            },
-            indent=2,
-        )
-
-        st.download_button(
-            label="📄 Download JSON",
-            data=json_data,
-            file_name=f"meeting_intelligence_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-            mime="application/json",
-            help="Export complete intelligence data as JSON",
-        )
-
-    with col2:
         # Markdown export - use the summary directly
         markdown_data = f"# Meeting Intelligence Report\n\n{intelligence.summary}\n\n## Action Items\n\n"
         for i, item in enumerate(intelligence.action_items, 1):
@@ -200,7 +161,7 @@ def render_export_section(intelligence: MeetingIntelligence):
             help="Export as formatted Markdown report",
         )
 
-    with col3:
+    with col2:
         # CSV export for action items
         csv_data = "Description,Owner,Due Date\n"
         for item in intelligence.action_items:
@@ -218,19 +179,9 @@ def render_export_section(intelligence: MeetingIntelligence):
 
     # Preview section
     st.markdown("### Export Preview")
-    preview_tab1, preview_tab2, preview_tab3 = st.tabs(
-        ["JSON Preview", "Markdown Preview", "CSV Preview"]
-    )
+    preview_tab1, preview_tab2 = st.tabs(["Markdown Preview", "CSV Preview"])
 
     with preview_tab1:
-        with st.expander("🔍 JSON Structure Preview"):
-            # Show truncated JSON for preview
-            json_preview = (
-                json_data[:1000] + "..." if len(json_data) > 1000 else json_data
-            )
-            st.code(json_preview, language="json")
-
-    with preview_tab2:
         with st.expander("🔍 Markdown Preview"):
             # Show first part of markdown
             markdown_preview = (
@@ -240,7 +191,7 @@ def render_export_section(intelligence: MeetingIntelligence):
             )
             st.markdown(markdown_preview)
 
-    with preview_tab3:
+    with preview_tab2:
         with st.expander("🔍 CSV Preview"):
             if intelligence.action_items:
                 # Show CSV as table
@@ -408,8 +359,8 @@ def main():
         has_due_date = sum(1 for item in intelligence.action_items if item.due_date)
         st.metric("With Due Date", has_due_date)
     with col4:
-        processing_time = intelligence.processing_stats.get("time_ms", 0)
-        st.metric("Processing Time", f"{processing_time}ms")
+        processing_time = intelligence.processing_stats.get("time_ms", 0) / 1000
+        st.metric("Processing Time", f"{processing_time:.1f}s")
 
     st.markdown("---")
 
