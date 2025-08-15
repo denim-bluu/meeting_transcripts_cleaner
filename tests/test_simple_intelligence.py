@@ -83,8 +83,11 @@ class TestIntelligenceOrchestrator:
         service = IntelligenceOrchestrator("o3-mini")
         assert service.chunker is not None
         assert service.extractor is not None
-        assert service.clusterer is not None
         assert service.synthesizer is not None
+        # Production thresholds set correctly
+        assert service.MIN_IMPORTANCE == 4
+        assert service.CRITICAL_IMPORTANCE == 8
+        assert service.CONTEXT_LIMIT == 50000
 
     @pytest.mark.asyncio
     async def test_process_meeting(self, sample_vtt_chunks):
@@ -126,25 +129,32 @@ class TestIntelligenceOrchestrator:
             with patch.object(service.extractor, 'extract_all_insights', new_callable=AsyncMock) as mock_extract:
                 mock_extract.return_value = mock_insights
                 
-                # Mock synthesis
-                with patch.object(service.synthesizer, 'synthesize_intelligence', new_callable=AsyncMock) as mock_synth:
-                    mock_result = MeetingIntelligence(
-                        summary="# Budget\n- Budget discussion details\n\n# Planning\n- Timeline considerations",
-                        action_items=[
-                            ActionItem(description="Review budget by Friday", owner="John", due_date="Friday")
-                        ],
-                        processing_stats={}
-                    )
-                    mock_synth.return_value = mock_result
+                # Mock token estimation (should use direct synthesis for small content)
+                with patch.object(service, '_estimate_tokens') as mock_estimate:
+                    mock_estimate.return_value = 10000  # Small enough for direct synthesis
                     
-                    result = await service.process_meeting(sample_vtt_chunks)
+                    # Mock direct synthesis
+                    with patch.object(service.synthesizer, 'synthesize_intelligence_direct', new_callable=AsyncMock) as mock_synth:
+                        mock_result = MeetingIntelligence(
+                            summary="# Executive Summary\nBudget and planning meeting with key decisions.\n\n# Key Decisions\n- Budget increase approved\n\n# Discussion by Topic\n## Budget Planning\n- John proposed 15% budget increase for Q3\n- Resource allocation planning discussed\n\n## Timeline Management\n- Q3 implementation deadlines reviewed\n- Action item assignments clarified\n\n# Action Items\n- Action: Review budget by Friday\n  Owner: John\n  Due: Friday\n  Context: Budget approval process",
+                            action_items=[
+                                ActionItem(description="Review budget by Friday", owner="John", due_date="Friday")
+                            ],
+                            processing_stats={}
+                        )
+                        mock_synth.return_value = mock_result
+                        
+                        result = await service.process_meeting(sample_vtt_chunks)
                     
                     # Check that result is MeetingIntelligence
                     assert isinstance(result, MeetingIntelligence)
                     
-                    # Check summary format
-                    assert result.summary.startswith("# Budget")
-                    assert "Budget discussion details" in result.summary
+                    # Check Microsoft Teams Premium style format
+                    assert result.summary.startswith("# Executive Summary")
+                    assert "# Key Decisions" in result.summary
+                    assert "# Discussion by Topic" in result.summary
+                    assert "# Action Items" in result.summary
+                    assert "Budget Planning" in result.summary
                     
                     # Check structured action items
                     assert len(result.action_items) == 1
@@ -152,6 +162,50 @@ class TestIntelligenceOrchestrator:
                     assert result.action_items[0].description == "Review budget by Friday"
                     assert result.action_items[0].owner == "John"
                     assert result.action_items[0].due_date == "Friday"
+
+    @pytest.mark.asyncio
+    async def test_hierarchical_synthesis_fallback(self, sample_vtt_chunks):
+        """Test hierarchical synthesis for large content."""
+        service = IntelligenceOrchestrator("o3-mini")
+        
+        # Mock the semantic chunker
+        with patch.object(service.chunker, 'create_chunks') as mock_chunk:
+            mock_chunk.return_value = ["semantic chunk 1", "semantic chunk 2"]
+            
+            # Mock chunk extraction with large content
+            mock_insights = [
+                ChunkInsights(
+                    insights=[f"Insight {i} with detailed content" for i in range(10)],
+                    importance=8,
+                    themes=["Budget", "Planning"],
+                    actions=["Action item"]
+                ) for _ in range(20)  # Many insights to trigger hierarchical
+            ]
+            
+            with patch.object(service.extractor, 'extract_all_insights', new_callable=AsyncMock) as mock_extract:
+                mock_extract.return_value = mock_insights
+                
+                # Mock token estimation (large enough for hierarchical synthesis)
+                with patch.object(service, '_estimate_tokens') as mock_estimate:
+                    mock_estimate.return_value = 60000  # Large enough for hierarchical
+                    
+                    # Mock hierarchical synthesis
+                    with patch.object(service.synthesizer, 'synthesize_intelligence_hierarchical', new_callable=AsyncMock) as mock_synth:
+                        mock_result = MeetingIntelligence(
+                            summary="# Executive Summary\nLong meeting with comprehensive coverage.\n\n# Key Decisions\n- Multiple decisions across segments",
+                            action_items=[
+                                ActionItem(description="Follow up on long meeting outcomes", owner="Team")
+                            ],
+                            processing_stats={}
+                        )
+                        mock_synth.return_value = mock_result
+                        
+                        result = await service.process_meeting(sample_vtt_chunks)
+                        
+                        # Verify hierarchical synthesis was called
+                        mock_synth.assert_called_once()
+                        assert isinstance(result, MeetingIntelligence)
+                        assert "Long meeting" in result.summary
 
 class TestIntelligenceModels:
     """Test the structured intelligence models."""
