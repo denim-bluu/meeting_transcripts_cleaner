@@ -1,6 +1,8 @@
-"""Simple VTT data models for transcript processing."""
+"""Transcript processing models - VTT parsing, cleaning, and review."""
 
 from dataclasses import dataclass
+
+from pydantic import BaseModel, Field
 
 
 @dataclass
@@ -23,8 +25,27 @@ class VTTChunk:
     token_count: int  # Approximate tokens (len(text) / 4)
 
     def to_transcript_text(self) -> str:
-        """Format entries as 'Speaker: text' for AI processing."""
+        """Format entries as 'Speaker: text' for AI processing.
+        Example:
+            Joon Kang: OK. Yeah.
+        """
         lines = []
         for entry in self.entries:
             lines.append(f"{entry.speaker}: {entry.text}")
         return "\n".join(lines)
+
+
+class CleaningResult(BaseModel):
+    """Structured output from transcript cleaning."""
+
+    cleaned_text: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    changes_made: list[str]
+
+
+class ReviewResult(BaseModel):
+    """Structured output from quality review."""
+
+    quality_score: float = Field(ge=0.0, le=1.0)
+    issues: list[str]
+    accept: bool  # True if quality_score >= 0.7

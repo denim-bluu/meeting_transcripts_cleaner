@@ -2,9 +2,7 @@
 
 import asyncio
 from collections.abc import Callable
-import json
 import time
-from typing import Any
 
 from asyncio_throttle.throttler import Throttler
 import structlog
@@ -12,7 +10,8 @@ import structlog
 from core.ai_agents import TranscriptCleaner, TranscriptReviewer
 from core.vtt_processor import VTTProcessor
 from models.agents import CleaningResult, ReviewResult
-from models.vtt import VTTChunk
+from models.transcript import VTTChunk
+from services.orchestration import IntelligenceOrchestrator
 
 logger = structlog.get_logger(__name__)
 
@@ -44,6 +43,7 @@ class TranscriptService:
         # Initialize agents immediately
         self.cleaner = TranscriptCleaner(api_key=self.api_key)
         self.reviewer = TranscriptReviewer(api_key=self.api_key)
+        self._intelligence_orchestrator = IntelligenceOrchestrator(model="o3-mini")
 
     def process_vtt(self, content: str) -> dict:
         """
@@ -241,7 +241,7 @@ class TranscriptService:
             )
 
             # Extract just the tasks for concurrent execution
-            task_list = [task for chunk_index, task in tasks]
+            task_list = [task for _, task in tasks]
 
             try:
                 # Execute all tasks in this batch concurrently
@@ -418,10 +418,19 @@ class TranscriptService:
                 return ""
 
         elif format == "json":
-            # Convert VTTEntry and VTTChunk objects to dicts for JSON serialization
-            serializable_transcript = self._make_serializable(transcript)
+            import json
+            # Convert the transcript dict to JSON, handling Pydantic models
+            serializable_transcript = {}
+            for key, value in transcript.items():
+                if hasattr(value, 'model_dump'):
+                    # Pydantic model
+                    serializable_transcript[key] = value.model_dump()
+                elif isinstance(value, list) and value and hasattr(value[0], 'model_dump'):
+                    # List of Pydantic models
+                    serializable_transcript[key] = [item.model_dump() for item in value]
+                else:
+                    serializable_transcript[key] = value
             return json.dumps(serializable_transcript, indent=2, default=str)
-
         else:
             raise ValueError(f"Unsupported format: {format}")
 
@@ -432,14 +441,35 @@ class TranscriptService:
         secs = seconds % 60
         return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
 
-    def _make_serializable(self, obj: Any) -> Any:
-        """Convert objects to serializable format for JSON export."""
-        if isinstance(obj, dict):
-            return {k: self._make_serializable(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self._make_serializable(item) for item in obj]
-        elif hasattr(obj, "__dict__"):
-            # Convert dataclass or object to dict
-            return {k: self._make_serializable(v) for k, v in obj.__dict__.items()}
-        else:
-            return obj
+    async def extract_intelligence(self, transcript: dict) -> dict:
+        """
+        Extract intelligence from cleaned transcript using the new simple approach.
+        Call after clean_transcript completes.
+
+        Input: transcript dict with 'cleaned_chunks' or 'chunks' key
+        Output: transcript dict with added 'intelligence' key
+        """
+        logger.info(
+            "Starting intelligence extraction",
+            chunks_available=len(transcript.get("chunks", [])),
+            has_cleaned_chunks="cleaned_chunks" in transcript,
+        )
+
+        # Use cleaned chunks if available, otherwise use original chunks
+        chunks_to_process = transcript.get("chunks", [])
+        if not chunks_to_process:
+            raise ValueError("No chunks available for intelligence extraction")
+
+        result = await self._intelligence_orchestrator.process_meeting(
+            chunks_to_process
+        )
+        transcript["intelligence"] = result
+
+        logger.info(
+            "Intelligence extraction completed",
+            action_items_count=len(result.action_items),
+            summary_length=len(result.summary),
+            processing_time_ms=result.processing_stats.get("time_ms", 0),
+        )
+
+        return transcript

@@ -43,9 +43,6 @@ SAMPLE_VTT = """WEBVTT
 @pytest.mark.asyncio
 async def test_complete_pipeline():
     """Test the complete processing pipeline."""
-    print("🚀 Testing Complete Processing Pipeline")
-    print("=" * 50)
-
     # Initialize service
     print("1. Initializing TranscriptService...")
     service = TranscriptService(Config.OPENAI_API_KEY, max_concurrent=2, rate_limit=10)
@@ -54,12 +51,12 @@ async def test_complete_pipeline():
     print("\n2. Parsing VTT content...")
     transcript = service.process_vtt(SAMPLE_VTT)
 
-    print(f"   ✅ Parsed {len(transcript['entries'])} VTT entries")
-    print(f"   ✅ Created {len(transcript['chunks'])} chunks")
+    print(f"✅ Parsed {len(transcript['entries'])} VTT entries")
+    print(f"✅ Created {len(transcript['chunks'])} chunks")
     print(
-        f"   ✅ Found {len(transcript['speakers'])} speakers: {', '.join(transcript['speakers'])}"
+        f"✅ Found {len(transcript['speakers'])} speakers: {', '.join(transcript['speakers'])}"
     )
-    print(f"   ✅ Duration: {transcript['duration']:.1f} seconds")
+    print(f"✅ Duration: {transcript['duration']:.1f} seconds")
 
     # Phase 2: AI Processing with progress tracking
     print("\n3. Running AI processing pipeline...")
@@ -68,7 +65,7 @@ async def test_complete_pipeline():
 
     def track_progress(progress: float, status: str):
         progress_updates.append((progress, status))
-        print(f"   📊 {progress:.1%} - {status}")
+        print(f"📊 {progress:.1%} - {status}")
 
     start_time = time.time()
 
@@ -79,8 +76,8 @@ async def test_complete_pipeline():
 
     # Results analysis
     print("\n4. Processing Results:")
-    print(f"   ⏱️  Processing time: {processing_time:.2f} seconds")
-    print(f"   📈 Progress updates: {len(progress_updates)}")
+    print(f"⏱️  Processing time: {processing_time:.2f} seconds")
+    print(f"📈 Progress updates: {len(progress_updates)}")
 
     cleaned_chunks = cleaned_transcript.get("cleaned_chunks", [])
     review_results = cleaned_transcript.get("review_results", [])
@@ -94,12 +91,12 @@ async def test_complete_pipeline():
             review_results
         )
 
-        print(f"   ✅ Processed chunks: {len(cleaned_chunks)}")
+        print(f"✅ Processed chunks: {len(cleaned_chunks)}")
         print(
-            f"   ✅ Accepted chunks: {accepted_count} ({accepted_count / len(review_results) * 100:.1f}%)"
+            f"✅ Accepted chunks: {accepted_count} ({accepted_count / len(review_results) * 100:.1f}%)"
         )
-        print(f"   ✅ Average confidence: {avg_confidence:.2f}")
-        print(f"   ✅ Average quality: {avg_quality:.2f}")
+        print(f"✅ Average confidence: {avg_confidence:.2f}")
+        print(f"✅ Average quality: {avg_quality:.2f}")
 
         # Test export functionality
         print("\n5. Testing export functionality...")
@@ -109,12 +106,12 @@ async def test_complete_pipeline():
             txt_export = service.export(cleaned_transcript, "txt")
             json_export = service.export(cleaned_transcript, "json")
 
-            print(f"   ✅ VTT export: {len(vtt_export)} characters")
-            print(f"   ✅ TXT export: {len(txt_export)} characters")
-            print(f"   ✅ JSON export: {len(json_export)} characters")
+            print(f"✅ VTT export: {len(vtt_export)} characters")
+            print(f"✅ TXT export: {len(txt_export)} characters")
+            print(f"✅ JSON export: {len(json_export)} characters")
 
         except Exception as e:
-            print(f"   ❌ Export failed: {e}")
+            print(f"❌ Export failed: {e}")
 
         print("\n🎉 Pipeline test completed successfully!")
 
@@ -130,7 +127,7 @@ async def test_complete_pipeline():
             )
 
     else:
-        print("   ❌ No cleaning results found")
+        print("❌ No cleaning results found")
         return False
 
     return True

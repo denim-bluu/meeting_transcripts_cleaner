@@ -63,7 +63,7 @@ def main() -> None:
             ("VTT Entries", len(transcript["entries"]), None),
             ("Chunks", len(transcript["chunks"]), None),
             ("Speakers", len(transcript["speakers"]), None),
-            ("Duration", f"{transcript['duration']:.1f}s", None),
+            ("Duration", f"{transcript.get('duration', 0) / 60:.1f}m", None),
         ]
         render_metrics_row(homepage_metrics)
 
@@ -75,6 +75,7 @@ def main() -> None:
     all_pages = [
         st.Page("pages/1_📤_Upload_Process.py", title="Upload & Process", icon="📤"),
         st.Page("pages/2_👀_Review.py", title="Review", icon="👀"),
+        st.Page("pages/3_🧠_Intelligence.py", title="Intelligence", icon="🧠"),
     ]
 
     # All pages are always available (Review page shows appropriate messaging if no data)
