@@ -84,8 +84,8 @@ class TestIntelligenceOrchestrator:
         assert service.chunker is not None
         assert service.extractor is not None
         assert service.synthesizer is not None
-        # Production thresholds set correctly
-        assert service.MIN_IMPORTANCE == 4
+        # Adaptive detail control thresholds set correctly
+        assert service.MIN_IMPORTANCE == 3  # Lowered for richer summaries
         assert service.CRITICAL_IMPORTANCE == 8
         assert service.CONTEXT_LIMIT == 50000
 

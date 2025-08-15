@@ -24,7 +24,7 @@ context, and relationships. This could be any type of meeting - technical, busin
 creative, or casual.
 
 Extract:
-1. INSIGHTS: 5-12 important statements that preserve:
+1. INSIGHTS: 8-15 important statements that preserve:
    - WHO said it (speaker attribution)
    - WHAT exactly (specific details, numbers, technical terms)
    - WHY it matters (context and implications)

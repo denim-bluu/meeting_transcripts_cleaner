@@ -10,48 +10,68 @@ from models.intelligence import ChunkInsights, MeetingIntelligence
 
 logger = structlog.get_logger(__name__)
 
-# Microsoft Teams Premium-style synthesis prompt
+# Adaptive Detail Control - Context Preservation Synthesis
 PRODUCTION_SYNTHESIS_PROMPT = """
-Create a comprehensive meeting summary and extract structured action items.
+Create a COMPREHENSIVE meeting intelligence that preserves important context and details.
+
+CRITICAL: Include sufficient detail for someone who wasn't in the meeting to understand:
+- Not just WHAT was decided, but WHY
+- Not just WHO said something, but their REASONING
+- Not just OUTCOMES, but the DISCUSSION that led there
 
 IMPORTANT: You must return BOTH a summary field and an action_items field.
 
-For the summary field, create markdown content with this structure:
+For the summary field, create detailed markdown with:
 
 # Executive Summary
-2-3 sentences capturing the meeting's purpose and main outcomes.
+3-4 sentences providing complete context of the meeting's purpose, key participants, main topics discussed, and primary outcomes.
 
 # Key Decisions
-- Decision with brief rationale
-- Include who made it and context
+For each decision include:
+- The decision made with full context
+- The rationale and trade-offs discussed
+- Who made it and who was consulted or provided input
+- Any concerns, alternatives, or dissenting views considered
+- Impact or implications mentioned
 
 # Discussion by Topic
-## [Auto-detected Topic 1]
-### Main Points
-- Point with context and speaker attribution when relevant
-- Supporting details as sub-bullets
-  - Data, numbers, or evidence mentioned
-  - Technical details preserved
+## [Topic Name]
+### Context
+Brief background on why this topic was discussed and its importance
 
-## [Auto-detected Topic 2]
-[Same structure - let content naturally organize into topics]
+### Main Discussion Points
+- Detailed point with full context and speaker attribution
+- Include specific numbers, dates, technical details, and reasoning mentioned
+- Preserve important quotes or specific phrasing when impactful
+- Capture the flow of discussion and different perspectives
+  - Supporting evidence, data, or examples cited
+  - Counterarguments, concerns, or challenges raised
+  - Technical details or specifications discussed
+  - Timeline considerations or dependencies mentioned
+
+### Outcomes
+What was concluded, decided, or left open for this topic, including next steps
+
+[Continue for all major topics discussed...]
 
 # Important Quotes
-Include 2-3 impactful direct quotes only if they add significant value.
+Include 3-4 impactful direct quotes that provide valuable context or capture key insights.
 
 For the action_items field, extract ALL actionable items as a list of structured objects.
 Each action item should have:
-- description: What needs to be done (minimum 10 characters)
+- description: What needs to be done with sufficient context (minimum 10 characters)
 - owner: Person responsible (null if not mentioned)
 - due_date: When it's due (null if not mentioned)
 
 Guidelines:
-- Organize summary content by naturally emerging topics
-- Preserve specific details: names, numbers, technical terms, decisions
-- Include speaker attribution for key statements
-- Use professional but accessible tone
+- Prioritize comprehensiveness while maintaining clear organization
+- Preserve specific details: names, numbers, technical terms, decisions, reasoning
+- Include speaker attribution for key statements and reasoning
+- Capture the "why" behind decisions and discussions
+- Use professional but accessible tone with rich context
 - Extract ALL actionable items from the raw actions and insights
 - DO NOT include action items in the summary markdown - they go in the separate action_items field
+- Focus on making the summary self-contained and informative for non-attendees
 
 Meeting insights:
 {insights}
@@ -84,24 +104,66 @@ Segment insights:
 
 # Final hierarchical synthesis prompt
 FINAL_HIERARCHICAL_PROMPT = """
-Create a comprehensive meeting summary from these temporal segment summaries and extract structured action items.
+Create a COMPREHENSIVE meeting summary from these temporal segment summaries that preserves important context and details.
+
+CRITICAL: Include sufficient detail for someone who wasn't in the meeting to understand:
+- Not just WHAT was decided, but WHY
+- Not just WHO said something, but their REASONING  
+- Not just OUTCOMES, but the DISCUSSION that led there
 
 IMPORTANT: You must return BOTH a summary field and an action_items field.
 
-For the summary field, create markdown content with this structure:
+For the summary field, create detailed markdown with this structure:
+
 # Executive Summary
+3-4 sentences providing complete context of the meeting's purpose, key participants, main topics discussed, and primary outcomes across all segments.
+
 # Key Decisions
+For each decision include:
+- The decision made with full context from across segments
+- The rationale and trade-offs discussed over time
+- Who made it and who was consulted throughout the meeting
+- Any concerns, alternatives, or evolving perspectives
+- Impact or implications mentioned
+
 # Discussion by Topic
-# Important Quotes (if valuable)
+## [Topic Name]
+### Context
+Background on why this topic was important and how it evolved during the meeting
+
+### Discussion Flow
+- Detailed progression of the discussion with speaker attribution
+- Include specific numbers, dates, technical details, and reasoning mentioned
+- Capture how perspectives evolved or changed during the meeting
+- Preserve important quotes or specific phrasing when impactful
+  - Supporting evidence, data, or examples cited across segments
+  - Counterarguments, concerns, or challenges that emerged
+  - Technical details or specifications discussed
+  - Timeline considerations or dependencies mentioned
+
+### Outcomes
+What was concluded, decided, or left open for this topic, including next steps
+
+[Continue for all major topics discussed...]
+
+# Important Quotes
+Include 3-4 impactful direct quotes that provide valuable context or capture key insights from across the meeting.
 
 For the action_items field, extract ALL actionable items as a list of structured objects.
 Each action item should have:
-- description: What needs to be done (minimum 10 characters)
+- description: What needs to be done with sufficient context (minimum 10 characters)
 - owner: Person responsible (null if not mentioned)
 - due_date: When it's due (null if not mentioned)
 
-Synthesize across all segments to create a cohesive narrative. Look for patterns,
-recurring themes, and overall meeting arc. Extract ALL action items mentioned across segments.
+Guidelines:
+- Synthesize across all segments to create a cohesive, comprehensive narrative
+- Look for patterns, recurring themes, and overall meeting arc
+- Prioritize comprehensiveness while maintaining clear organization
+- Preserve specific details: names, numbers, technical terms, decisions, reasoning
+- Include speaker attribution for key statements and reasoning
+- Capture the "why" behind decisions and discussions
+- Extract ALL action items mentioned across segments
+- Focus on making the summary self-contained and informative for non-attendees
 
 Segment summaries:
 {segments}

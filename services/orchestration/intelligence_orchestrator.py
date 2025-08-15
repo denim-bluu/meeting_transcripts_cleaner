@@ -29,8 +29,8 @@ class IntelligenceOrchestrator:
         self.extractor = ChunkExtractor(model)
         self.synthesizer = IntelligenceSynthesizer(model)
 
-        # Production thresholds (battle-tested by OpenAI/Microsoft)
-        self.MIN_IMPORTANCE = 4  # Include most content
+        # Production thresholds (adaptive detail control)
+        self.MIN_IMPORTANCE = 3  # Include contextual content for richer summaries
         self.CRITICAL_IMPORTANCE = 8  # Never exclude these
         self.CONTEXT_LIMIT = 50000  # Conservative token limit
         self.SEGMENT_MINUTES = 30  # Temporal segmentation
