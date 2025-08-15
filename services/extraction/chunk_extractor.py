@@ -48,12 +48,7 @@ class ChunkExtractor:
     """Universal chunk extraction with structured output and retry logic."""
 
     def __init__(self, model: str = "o3-mini"):
-        # Use Pydantic AI structured output with built-in validation retries
-        self.agent = Agent(
-            f"openai:{model}",
-            output_type=ChunkInsights,
-            retries=2,  # Automatic retry on validation failure
-        )
+        self.agent = Agent(f"openai:{model}", output_type=ChunkInsights, retries=2)
         logger.info("ChunkExtractor initialized", model=model)
 
     @retry(

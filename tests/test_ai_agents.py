@@ -121,7 +121,7 @@ class TestTranscriptReviewerSimple:
         result = await reviewer.review_chunk(chunk, "Poor quality text")
 
         assert result.quality_score == 0.6
-        assert result.accept == False
+        assert result.accept is False
         assert "Grammar errors" in result.issues
 
 
@@ -162,5 +162,5 @@ class TestAIAgentsIntegrationSimple:
         review = await reviewer.review_chunk(chunk, cleaned.cleaned_text)
 
         assert cleaned.confidence == 0.95
-        assert review.accept == True
+        assert review.accept is True
         assert review.quality_score == 0.9

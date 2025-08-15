@@ -126,14 +126,6 @@ graph TB
 - **Pydantic AI Integration**: Built-in validation and automatic retries for reliable structured output
 - **Separation of Concerns**: Action items extracted to dedicated field, not embedded in summary markdown
 
-### 📊 Advanced Processing Features
-
-- **Semantic Chunking**: LangChain-based 3000-token chunks (12,000 characters) with overlap for context preservation
-- **Temporal Segmentation**: 30-minute segments for hierarchical processing of long meetings
-- **Importance Gating**: Filters insights by importance (≥3 for inclusion, ≥8 for critical preservation)
-- **Tenacity Retry Logic**: Built-in exponential backoff and error handling for production reliability
-- **Processing Statistics**: Comprehensive metrics including synthesis method, token estimation, and phase timing
-
 ## System Design
 
 ### Component Architecture
@@ -254,21 +246,6 @@ sequenceDiagram
     TS->>UI: Complete results + intelligence + export options
 ```
 
-## Technology Stack
-
-| Component             | Technology          | Responsibility                                  |
-| --------------------- | ------------------- | ----------------------------------------------- |
-| **Framework**         | Streamlit           | UI components and real-time progress            |
-| **AI Processing**     | OpenAI AsyncAPI     | Concurrent API calls with rate limiting         |
-| **Models**            | o3-mini (default)   | Text cleaning, quality review, and intelligence |
-| **Structured Output** | Pydantic AI         | Type-safe AI responses with validation          |
-| **Semantic Chunking** | LangChain           | Industry-standard text splitting (3000 tokens)  |
-| **Retry Logic**       | Tenacity            | Exponential backoff and error resilience        |
-| **Concurrency**       | asyncio + Semaphore | Batch processing with controlled limits         |
-| **Rate Limiting**     | asyncio-throttle    | Request throttling and backoff                  |
-| **Logging**           | structlog           | Structured, contextual logging                  |
-| **Package Manager**   | uv                  | Fast dependency management                      |
-
 ## Installation
 
 ### Setup
@@ -320,82 +297,6 @@ streamlit run streamlit_app.py
     - Phase 3: IntelligenceSynthesizer uses smart direct/hierarchical selection
 5. **Review & Export**: MeetingIntelligence with Microsoft Teams Premium format and structured ActionItems
 
-### API Usage
-
-```python
-from services.transcript_service import TranscriptService
-
-# Initialize with concurrent processing
-service = TranscriptService(
-    api_key="your-openai-key",
-    max_concurrent=10,  # For o3-mini stability
-    rate_limit=50       # Requests per minute
-)
-
-# Process VTT content
-with open("meeting.vtt", "r") as f:
-    content = f.read()
-
-# Parse and chunk
-transcript = service.process_vtt(content)
-print(f"Created {len(transcript['chunks'])} chunks")
-
-# Clean with progress tracking
-def progress_callback(pct, status):
-    print(f"{pct:.1f}% - {status}")
-
-import asyncio
-cleaned = asyncio.run(
-    service.clean_transcript(transcript, progress_callback)
-)
-
-# Results contain CleaningResult and ReviewResult for each chunk
-for chunk in cleaned['results']:
-    print(f"Confidence: {chunk['cleaning'].confidence}")
-    print(f"Quality: {chunk['review'].quality_score}")
-
-# Extract meeting intelligence using production-grade pipeline
-intelligence = asyncio.run(
-    service.extract_intelligence_simple(cleaned['chunks'])
-)
-
-# Access intelligence results (MeetingIntelligence with hybrid structured output)
-result = intelligence
-print(f"Summary Preview: {result.summary[:100]}...")
-print(f"Action Items: {len(result.action_items)}")
-print(f"Processing Method: {result.processing_stats['synthesis_method']}")
-print(f"API Calls Used: {result.processing_stats['api_calls']}")
-print(f"Processing Time: {result.processing_stats['time_ms']}ms")
-
-# Access structured action items for workflow integration
-for action in result.action_items:
-    print(f"Task: {action.description}")
-    print(f"Owner: {action.owner or 'Unassigned'}")
-    print(f"Due: {action.due_date or 'No deadline'}")
-
-# Export intelligence in different formats
-from services.orchestration.intelligence_orchestrator import IntelligenceOrchestrator
-
-orchestrator = IntelligenceOrchestrator("o3-mini")
-# Export functionality built into MeetingIntelligence model
-markdown_summary = result.summary  # Already formatted markdown
-json_data = result.model_dump()    # Pydantic serialization
-action_items_list = [ai.model_dump() for ai in result.action_items]
-```
-
-## Configuration
-
-### Service Parameters
-
-```python
-# TranscriptService configuration
-TranscriptService(
-    api_key="sk-...",
-    max_concurrent=10,    # Concurrent requests (10 optimal for o3-mini)
-    rate_limit=50         # Requests per minute (adjust for API tier)
-)
-```
-
 ### Environment Variables
 
 ```bash
@@ -406,65 +307,3 @@ OPENAI_API_KEY=sk-xxx
 CLEANING_MODEL=o3-mini    # Text cleaning model
 REVIEW_MODEL=o3-mini      # Quality review model
 ```
-
-## API Reference
-
-### TranscriptService
-
-**`process_vtt(content: str) -> dict`**
-
-- Parses VTT content into entries and chunks
-- Returns structured data with entries, chunks, speakers, duration
-
-**`clean_transcript(transcript: dict, progress_callback=None) -> dict`**
-
-- Processes chunks through AI agents concurrently
-- Returns results with CleaningResult and ReviewResult for each chunk
-- Progress callback receives (percentage, status_message)
-
-**`extract_intelligence_simple(chunks: List[VTTChunk]) -> MeetingIntelligence`**
-
-- Extracts meeting intelligence using production-grade hierarchical map-reduce
-- Returns MeetingIntelligence with hybrid structured output
-- Uses IntelligenceOrchestrator with 3-phase pipeline and adaptive detail control
-
-### IntelligenceOrchestrator
-
-**`process_meeting(cleaned_chunks: List[VTTChunk]) -> MeetingIntelligence`**
-
-- Main orchestration method for production-grade intelligence extraction
-- Implements 3-phase pipeline: Semantic Chunking → Extraction → Smart Synthesis
-- Automatic direct/hierarchical selection based on 50K token threshold
-- Returns comprehensive meeting intelligence with processing statistics
-
-### IntelligenceSynthesizer
-
-**`synthesize_intelligence_direct(insights_list: List[ChunkInsights]) -> MeetingIntelligence`**
-
-- Direct synthesis for most meetings (95% of cases)
-- Single API call with comprehensive context-preserving prompts
-- Enhanced detail control with adaptive thresholds
-
-**`synthesize_intelligence_hierarchical(insights_list: List[ChunkInsights], segment_minutes: int) -> MeetingIntelligence`**
-
-- Hierarchical synthesis for long meetings (5% edge cases)
-- Multiple API calls with temporal segmentation (30-minute segments)
-- Map-reduce pattern with final synthesis across segments
-
-### ChunkExtractor
-
-**`extract_all_insights(semantic_chunks: List[str]) -> List[ChunkInsights]`**
-
-- Universal extraction with enhanced density (8-15 insights per chunk)
-- Parallel processing with tenacity retry logic and error handling
-- Returns structured insights with importance gating (≥3 threshold)
-
-### Data Models
-
-**VTTEntry**: `cue_id`, `start_time`, `end_time`, `speaker`, `text`
-**VTTChunk**: `chunk_id`, `entries (list)`, `token_count`
-**CleaningResult**: `cleaned_text`, `confidence`, `changes_made (list)`
-**ReviewResult**: `quality_score`, `accept`, `issues_found (list)`
-**ChunkInsights**: `insights (list)`, `importance (1-10)`, `themes (list)`, `actions (list)`
-**ActionItem**: `description (min 10 chars)`, `owner (optional)`, `due_date (optional)`
-**MeetingIntelligence**: `summary (markdown)`, `action_items (structured list)`, `processing_stats (dict)`
