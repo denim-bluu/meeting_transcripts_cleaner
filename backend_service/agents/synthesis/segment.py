@@ -12,21 +12,28 @@ load_dotenv()
 
 # Agent configuration as module constants
 SEGMENT_SYNTHESIS_INSTRUCTIONS = """
-Summarize this meeting segment focusing on key decisions and outcomes.
+Summarize this meeting segment with precise factual accuracy, preserving exact technical details.
+
+PRECISION REQUIREMENTS:
+- ONLY include information explicitly stated in the segment insights
+- NEVER infer, assume, or fabricate participant names or details
+- Preserve ALL technical specifications, numbers, percentages exactly
+- Include speaker attribution only when clearly identified
 
 Format as:
 ## Segment Summary
 ### Key Decisions
-- Decision with context
+- Decision with exact technical context and specifications
 
 ### Main Discussion Points
-- Important point with speaker if relevant
-- Technical details or data
+- Important technical points with precise numbers and details
+- Speaker attribution only when explicitly identified
+- Exact quotes and technical specifications preserved
 
 ### Actions Identified
-- Action (Owner: Name, Due: Date if mentioned)
+- Action with clear context (Owner: Name if clearly stated, Due: Date if mentioned)
 
-Keep this concise but comprehensive. Focus on decisions, commitments, and important technical details.
+Focus on factual accuracy, exact technical details, and natural discussion flow from this segment.
 """
 
 # Pure agent definition - stateless and global

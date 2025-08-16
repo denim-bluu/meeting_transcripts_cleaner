@@ -11,74 +11,78 @@ load_dotenv()
 
 # Agent configuration as module constants
 FINAL_HIERARCHICAL_INSTRUCTIONS = """
-Create a COMPREHENSIVE meeting summary from temporal segment summaries that preserves important context and details.
+Create a PRECISE technical meeting summary from temporal segment summaries that preserves exact technical details and natural discussion flow.
 
-CRITICAL: Include sufficient detail for someone who wasn't in the meeting to understand:
-- Not just WHAT was decided, but WHY
-- Not just WHO said something, but their REASONING
-- Not just OUTCOMES, but the DISCUSSION that led there
+ABSOLUTE FACTUAL ACCURACY:
+- NEVER infer, assume, or fabricate participant names, roles, or details not in segments
+- ONLY synthesize information explicitly present across segment summaries
+- If participant information is incomplete, do NOT complete it - use only confirmed names
+- When details are unclear across segments, OMIT rather than guess
+
+TECHNICAL PRESERVATION ACROSS SEGMENTS:
+- Preserve ALL technical specifications, numbers, percentages, and exact terminology from all segments
+- Maintain natural chronological flow of how technical topics were actually presented
+- Include specific speaker attributions only when clearly identified across segments
+- Capture how technical concepts were introduced and explained throughout the meeting
+- Preserve exact technical quotes and specifications verbatim
+
+NATURAL SYNTHESIS REQUIREMENTS:
+- Follow the meeting's natural progression as it evolved across time segments
+- Show how technical discussions built upon each other chronologically
+- Preserve the actual flow of technical presentations and Q&A sessions
+- Include supporting evidence and examples as they were actually cited
+- Maintain factual accuracy while synthesizing across temporal boundaries
 
 IMPORTANT: You must return BOTH a summary field and an action_items field.
 
-For the summary field, create detailed markdown with this structure:
+For the summary field, create clean markdown following this EXACT structure (match stakeholder preference):
 
-# Executive Summary
-3-4 sentences providing complete context of the meeting's purpose, key participants, main topics discussed, and primary outcomes across all segments.
+### **[Topic Name Based on Natural Meeting Flow Across Segments]**
 
-# Key Decisions
-For each decision include:
-- The decision made with full context from across segments
-- The rationale and trade-offs discussed over time
-- Who made it and who was consulted throughout the meeting
-- Any concerns, alternatives, or evolving perspectives
-- Impact or implications mentioned
+- **[Speaker Name]** [action verb] by [specific technical details with exact numbers]
+- [Key technical points with precise specifications and terminology]
+- [Technical mechanisms, formulas, or implementation details mentioned across segments]
+- [Important technical insights or methodology explanations that evolved over time]
 
-# Discussion by Topic
-## [Topic Name]
-### Context
-Background on why this topic was important and how it evolved during the meeting
+---
 
-### Discussion Flow
-- Detailed progression of the discussion with speaker attribution
-- Include specific numbers, dates, technical details, and reasoning mentioned
-- Capture how perspectives evolved or changed during the meeting
-- Preserve important quotes or specific phrasing when impactful
-  - Supporting evidence, data, or examples cited across segments
-  - Counterarguments, concerns, or challenges that emerged
-  - Technical details or specifications discussed
-  - Timeline considerations or dependencies mentioned
+### **[Next Topic Following Meeting Progression Across Time]**
 
-### Outcomes
-What was concluded, decided, or left open for this topic, including next steps
+- [Continue with natural flow of technical presentation as it developed]
+- [Preserve exact technical details, percentages, and specifications from all segments]
+- [Include specific examples and use cases mentioned throughout the meeting]
+- [Show how technical understanding evolved across meeting timeline]
 
-[Continue for all major topics discussed...]
+---
 
-# Important Quotes
-Include 3-4 impactful direct quotes that provide valuable context or capture key insights from across the meeting.
+[Continue for all major technical topics discussed in their natural chronological order]
 
-For the action_items field, extract ALL actionable items as a list of structured objects.
-Each action item should have:
-- description: What needs to be done with sufficient context (minimum 10 characters)
-- owner: Person responsible (null if not mentioned)
-- due_date: When it's due (null if not mentioned)
+For the action_items field, extract ALL actionable items from across all meeting segments as structured objects:
+- description: What needs to be done with clear context (minimum 15 characters)
+- owner: Person responsible (use exact names mentioned across segments, null if unclear)
+- due_date: When it's due (preserve exact timeframes, null if not mentioned)
 
-CRITICAL VALIDATION REQUIREMENTS:
-- Summary MUST be at least 100 characters long with rich, detailed content
-- Summary MUST include proper markdown headers (# Executive Summary, # Key Decisions, # Discussion by Topic, # Important Quotes)
-- Summary MUST contain speaker attribution words like: 'said', 'mentioned', 'explained', 'proposed', 'suggested', 'agreed', 'noted'
-- Action items (if any) should have varied descriptions and include owners when mentioned
-- Use comprehensive, detailed language - avoid brief or superficial summaries
+PRECISION-FIRST HIERARCHICAL VALIDATION:
+- Summary MUST use clean ### **Topic** structure following natural meeting progression across segments
+- Summary MUST preserve ALL technical specifications, numbers, dates verbatim from all segments
+- Summary MUST contain ONLY factually verified information synthesized from segments
+- Summary MUST use simple bullet points, no complex nested formatting
+- Summary MUST include speaker attribution only when clearly identified across segments
+- NEVER fabricate, infer, or complete participant lists or details not present in segments
+- Focus on technical accuracy and natural chronological discussion progression
+- Preserve exact technical terminology, system names, version numbers from all segments
+- Use clean, readable structure matching stakeholder preference
+- DO NOT include action items in summary markdown - use separate action_items field
 
-Guidelines:
-- Synthesize across all segments to create a cohesive, comprehensive narrative
-- Look for patterns, recurring themes, and overall meeting arc
-- Prioritize comprehensiveness while maintaining clear organization
-- Preserve specific details: names, numbers, technical terms, decisions, reasoning
-- Include speaker attribution for key statements and reasoning using specific attribution verbs
-- Capture the "why" behind decisions and discussions
-- Extract ALL action items mentioned across segments
-- Focus on making the summary self-contained and informative for non-attendees
-- Ensure summary contains at least 100 characters of meaningful content
+HIERARCHICAL SYNTHESIS GUIDELINES:
+- Synthesize chronologically across temporal segments maintaining natural flow
+- Identify patterns and technical themes as they actually emerged over time
+- Preserve ALL specific technical details: numbers, specifications, exact quotes
+- Show how technical concepts evolved through actual meeting progression
+- Include speaker attribution only when factually verified across segments
+- Extract ALL action items mentioned throughout meeting with accurate context
+- Create factually accurate technical narrative without inference or elaboration
+- Ensure precision and accuracy over comprehensiveness
 """
 
 # Pure agent definition - stateless and global
