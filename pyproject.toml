@@ -36,6 +36,10 @@ dependencies = [
   "streamlit>=1.39.0",
   "requests>=2.31.0",
   
+  # Database and storage
+  "aiosqlite>=0.20.0",
+  "duckdb>=1.1.0",
+  
   # Utilities
   "aiofiles>=24.1.0",
   "asyncio-throttle>=1.0.2",

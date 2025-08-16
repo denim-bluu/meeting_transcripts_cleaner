@@ -149,7 +149,8 @@ docker-shell service:
 # Health and monitoring
 [group('monitor')]
 health:
-    curl -f http://localhost:8000/health || echo "❌ Backend service is not healthy"
+    #!/usr/bin/env bash
+    curl -s http://localhost:8000/api/v1/health | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin), indent=2))" 2>/dev/null || echo "❌ Backend service is not healthy"
 
 [group('monitor')]
 status:
@@ -157,7 +158,7 @@ status:
     echo "🔍 Checking service status..."
     echo ""
     echo "Backend (http://localhost:8000):"
-    curl -s http://localhost:8000/health | jq '.' 2>/dev/null || echo "❌ Backend not responding"
+    curl -s http://localhost:8000/api/v1/health | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin), indent=2))" 2>/dev/null || echo "❌ Backend not responding"
     echo ""
     echo "Frontend (http://localhost:8501):"
     curl -s http://localhost:8501/_stcore/health >/dev/null && echo "✅ Frontend healthy" || echo "❌ Frontend not responding"

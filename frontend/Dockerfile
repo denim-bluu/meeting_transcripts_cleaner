@@ -52,6 +52,7 @@ RUN echo '[server]\n\
 headless = true\n\
 port = 8501\n\
 address = "0.0.0.0"\n\
+enableStaticServing = false\n\
 \n\
 [browser]\n\
 gatherUsageStats = false\n\
