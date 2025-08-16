@@ -1,8 +1,9 @@
 """Pure chunk extraction agent - stateless and global following Pydantic AI best practices."""
 
 from dotenv import load_dotenv
-from backend_service.models.intelligence import ChunkInsights
 from pydantic_ai import Agent, RunContext
+
+from backend_service.models.intelligence import ChunkInsights
 
 # Ensure environment is loaded for API key
 load_dotenv()

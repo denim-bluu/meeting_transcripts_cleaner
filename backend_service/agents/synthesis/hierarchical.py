@@ -1,9 +1,10 @@
 """Pure hierarchical synthesis agent - stateless and global following Pydantic AI best practices."""
 
 from dotenv import load_dotenv
-from backend_service.models.intelligence import MeetingIntelligence
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
+
+from backend_service.models.intelligence import MeetingIntelligence
 
 # Ensure environment is loaded for API key
 load_dotenv()

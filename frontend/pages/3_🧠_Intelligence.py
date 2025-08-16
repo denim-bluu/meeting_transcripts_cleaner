@@ -5,14 +5,13 @@ This page uses the FastAPI backend to extract meeting intelligence from processe
 transcripts, with simple polling for progress updates.
 """
 
-import time
 from datetime import datetime
-
-import streamlit as st
-import structlog
+import time
 
 from api_client import api_client
 from config import configure_structlog
+import streamlit as st
+import structlog
 
 # Configure structured logging
 configure_structlog()
@@ -67,7 +66,7 @@ def render_action_items(action_items: list[dict]):
             status_text = "Needs Details"
 
         description = item.get("description", "No description")
-        
+
         # Create expandable action item
         with st.expander(
             f"{status_icon} **Action {i}**: {description[:80]}{'...' if len(description) > 80 else ''}"
@@ -107,7 +106,7 @@ def render_processing_stats_section(intelligence_data: dict):
     st.subheader("📊 Processing Statistics")
 
     processing_stats = intelligence_data.get("processing_stats", {})
-    
+
     if processing_stats:
         col1, col2, col3, col4 = st.columns(4)
 
@@ -148,7 +147,9 @@ def render_export_section(intelligence_data: dict):
     col1, col2 = st.columns(2)
     with col1:
         # Markdown export
-        markdown_data = f"# Meeting Intelligence Report\n\n{summary}\n\n## Action Items\n\n"
+        markdown_data = (
+            f"# Meeting Intelligence Report\n\n{summary}\n\n## Action Items\n\n"
+        )
         for i, item in enumerate(action_items, 1):
             description = item.get("description", "No description")
             markdown_data += f"{i}. **{description}**\n"
@@ -170,9 +171,9 @@ def render_export_section(intelligence_data: dict):
         # CSV export for action items
         csv_data = "Description,Owner,Due Date\n"
         for item in action_items:
-            description = item.get("description", "").replace('"', '""')
-            owner = item.get("owner", "").replace('"', '""')
-            due_date = item.get("due_date", "").replace('"', '""')
+            description = (item.get("description") or "").replace('"', '""')
+            owner = (item.get("owner") or "").replace('"', '""')
+            due_date = (item.get("due_date") or "").replace('"', '""')
             csv_data += f'"{description}","{owner}","{due_date}"\n'
 
         st.download_button(
@@ -209,32 +210,41 @@ def render_export_section(intelligence_data: dict):
                 st.info("No action items to export in CSV format.")
 
 
-def extract_intelligence_with_api(transcript_id: str, detail_level: str = "comprehensive"):
+def extract_intelligence_with_api(
+    transcript_id: str, detail_level: str = "comprehensive"
+):
     """Extract intelligence using the backend API with polling."""
-    
-    logger.info("Starting intelligence extraction via API", 
-                transcript_id=transcript_id, detail_level=detail_level)
-    
+
+    logger.info(
+        "Starting intelligence extraction via API",
+        transcript_id=transcript_id,
+        detail_level=detail_level,
+    )
+
     # Start intelligence extraction
-    with st.status("Starting intelligence extraction...", expanded=True) as extract_status:
+    with st.status(
+        "Starting intelligence extraction...", expanded=True
+    ) as extract_status:
         success, task_id_or_error, message = api_client.extract_intelligence(
             transcript_id, detail_level
         )
-        
+
         if not success:
             extract_status.update(label="❌ Extraction failed", state="error")
             st.error(task_id_or_error)
             return None
-        
+
         task_id = task_id_or_error
         extract_status.update(label="✅ Extraction started", state="complete")
         st.info(f"Task ID: {task_id}")
-    
+
     # Poll for completion with progress updates
-    with st.status("Extracting meeting intelligence...", expanded=True) as process_status:
+    with st.status(
+        "Extracting meeting intelligence...", expanded=True
+    ) as process_status:
         progress_bar = st.progress(0.0)
         status_text = st.empty()
-        
+
         # Metrics for live updates
         metrics_cols = st.columns(4)
         with metrics_cols[0]:
@@ -245,47 +255,51 @@ def extract_intelligence_with_api(transcript_id: str, detail_level: str = "compr
             time_metric = st.empty()
         with metrics_cols[3]:
             task_metric = st.empty()
-        
+
         start_time = time.time()
-        
+
         def update_progress(progress: float, message: str):
             """Update the UI with current progress."""
             progress_bar.progress(progress)
             status_text.text(message)
-            
+
             # Update metrics
             progress_metric.metric("Progress", f"{progress*100:.1f}%")
             detail_metric.metric("Detail Level", detail_level.replace("_", " ").title())
-            
+
             elapsed = time.time() - start_time
             time_metric.metric("Elapsed", f"{elapsed:.1f}s")
             task_metric.metric("Task", task_id[:8])
-        
+
         # Poll until complete
         success, final_data = api_client.poll_until_complete(
-            task_id, 
+            task_id,
             progress_callback=update_progress,
             poll_interval=2.0,
-            timeout=600.0  # 10 minutes max for intelligence
+            timeout=600.0,  # 10 minutes max for intelligence
         )
-        
+
         if not success:
-            process_status.update(label="❌ Intelligence extraction failed", state="error")
+            process_status.update(
+                label="❌ Intelligence extraction failed", state="error"
+            )
             error = final_data.get("error", "Unknown error")
             st.error(f"Intelligence extraction failed: {error}")
             return None
-        
+
         # Success!
-        process_status.update(label="✅ Intelligence extraction completed", state="complete")
+        process_status.update(
+            label="✅ Intelligence extraction completed", state="complete"
+        )
         result = final_data.get("result")
-        
+
         if result:
             # Store intelligence in session state
             st.session_state.transcript["intelligence"] = result
             st.session_state.intelligence_extracted = True
-            
+
             st.success("🎉 Meeting intelligence extracted successfully!")
-            
+
             return result
         else:
             st.error("No intelligence data returned from backend")
@@ -297,7 +311,9 @@ def main():
     st.set_page_config(page_title="Meeting Intelligence", page_icon="🧠", layout="wide")
 
     st.title("🧠 Meeting Intelligence")
-    st.markdown("Extract and view meeting summaries, action items, and key insights using AI.")
+    st.markdown(
+        "Extract and view meeting summaries, action items, and key insights using AI."
+    )
 
     # Check backend health
     is_healthy, health_data = api_client.health_check()
@@ -363,9 +379,9 @@ def main():
             format_func=lambda x: x.replace("_", " ").title(),
             help="""
             • **Comprehensive**: Rich summaries with full context (recommended for most meetings)
-            • **Standard**: Key decisions and action items with basic context  
+            • **Standard**: Key decisions and action items with basic context
             • **Technical Focus**: Preserves ALL technical details, numbers, and specifications verbatim
-            """
+            """,
         )
 
         # Extract intelligence button
@@ -374,14 +390,18 @@ def main():
         ):
             # Get the transcript task_id from session state
             transcript_task_id = st.session_state.get("transcript_task_id")
-            
+
             if not transcript_task_id:
-                st.error("❌ No transcript task ID found. Please re-process your transcript.")
+                st.error(
+                    "❌ No transcript task ID found. Please re-process your transcript."
+                )
                 return
-            
+
             # Extract intelligence using the transcript task_id
-            intelligence_data = extract_intelligence_with_api(transcript_task_id, detail_level)
-            
+            intelligence_data = extract_intelligence_with_api(
+                transcript_task_id, detail_level
+            )
+
             if intelligence_data:
                 st.rerun()  # Refresh to show results
 
@@ -399,7 +419,7 @@ def main():
     # Header with key metrics
     action_items = intelligence_data.get("action_items", [])
     processing_stats = intelligence_data.get("processing_stats", {})
-    
+
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -435,11 +455,11 @@ def main():
 
     # Footer with regeneration option
     st.markdown("---")
-    
+
     # Re-extraction section
     with st.expander("🔄 Re-extract Intelligence with Different Detail Level"):
         col1, col2 = st.columns([2, 1])
-        
+
         with col1:
             # Detail level selector for re-extraction
             re_detail_level = st.selectbox(
@@ -450,29 +470,35 @@ def main():
                 format_func=lambda x: x.replace("_", " ").title(),
                 help="""
                 • **Comprehensive**: Rich summaries with full context (recommended for most meetings)
-                • **Standard**: Key decisions and action items with basic context  
+                • **Standard**: Key decisions and action items with basic context
                 • **Technical Focus**: Preserves ALL technical details, numbers, and specifications verbatim
-                """
+                """,
             )
-        
+
         with col2:
-            if st.button("🔄 Re-extract Intelligence", type="secondary", use_container_width=True):
+            if st.button(
+                "🔄 Re-extract Intelligence", type="secondary", use_container_width=True
+            ):
                 # Clear existing intelligence and re-extract with new detail level
                 if "intelligence" in st.session_state.transcript:
                     del st.session_state.transcript["intelligence"]
-                
+
                 # Get the transcript task_id from session state
                 transcript_task_id = st.session_state.get("transcript_task_id")
-                
+
                 if not transcript_task_id:
-                    st.error("❌ No transcript task ID found. Please re-process your transcript.")
+                    st.error(
+                        "❌ No transcript task ID found. Please re-process your transcript."
+                    )
                     return
-                
-                intelligence_data = extract_intelligence_with_api(transcript_task_id, re_detail_level)
-                
+
+                intelligence_data = extract_intelligence_with_api(
+                    transcript_task_id, re_detail_level
+                )
+
                 if intelligence_data:
                     st.rerun()
-    
+
     st.markdown(
         "*Intelligence extracted from processed transcript. Results are AI-generated and may need review.*"
     )
