@@ -16,8 +16,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project --no-dev
 
 # Copy project source code
-COPY frontend/ ./frontend/
-COPY backend/models/ ./models/
+COPY backend/ ./backend/
 
 # Production stage
 FROM python:3.11-slim
@@ -38,8 +37,8 @@ COPY --from=builder --chown=appuser:appgroup /app /app
 # Set working directory
 WORKDIR /app
 
-# Create .streamlit directory for config
-RUN mkdir -p /app/.streamlit && chown appuser:appgroup /app/.streamlit
+# Create logs directory
+RUN mkdir -p /app/logs && chown appuser:appgroup /app/logs
 
 # Switch to non-root user
 USER appuser
@@ -47,29 +46,13 @@ USER appuser
 # Add .venv to PATH
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Streamlit configuration
-RUN echo '[server]\n\
-headless = true\n\
-port = 8501\n\
-address = "0.0.0.0"\n\
-enableStaticServing = false\n\
-\n\
-[browser]\n\
-gatherUsageStats = false\n\
-\n\
-[theme]\n\
-primaryColor = "#1f77b4"\n\
-backgroundColor = "#ffffff"\n\
-secondaryBackgroundColor = "#f0f2f6"\n\
-textColor = "#262730"\n' > /app/.streamlit/config.toml
-
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # Expose port
-EXPOSE 8501
+EXPOSE 8000
 
-# Add frontend to Python path and run the Streamlit application
+# Add backend to Python path and run the application
 ENV PYTHONPATH="/app:$PYTHONPATH"
-CMD ["streamlit", "run", "frontend/main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

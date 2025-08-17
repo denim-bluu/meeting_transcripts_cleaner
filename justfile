@@ -76,7 +76,7 @@ run-backend:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "🚀 Starting backend service on http://localhost:8000"
-    cd backend_service && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 [group('dev')]
 run-frontend:
@@ -96,7 +96,7 @@ dev:
     echo "Press Ctrl+C to stop both services"
 
     # Start backend in background
-    (cd backend_service && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000) &
+    (cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000) &
     BACKEND_PID=$!
 
     # Wait a moment for backend to start
@@ -134,6 +134,11 @@ docker-stop:
     docker-compose down
 
 [group('docker')]
+docker-clean:
+    docker-compose down -v --rmi all
+    docker image prune -f
+
+[group('docker')]
 docker-logs service="":
     #!/usr/bin/env bash
     if [ "{{ service }}" = "" ]; then
@@ -149,7 +154,8 @@ docker-shell service:
 # Health and monitoring
 [group('monitor')]
 health:
-    curl -f http://localhost:8000/health || echo "❌ Backend service is not healthy"
+    #!/usr/bin/env bash
+    curl -s http://localhost:8000/api/v1/health | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin), indent=2))" 2>/dev/null || echo "❌ Backend service is not healthy"
 
 [group('monitor')]
 status:
@@ -157,7 +163,7 @@ status:
     echo "🔍 Checking service status..."
     echo ""
     echo "Backend (http://localhost:8000):"
-    curl -s http://localhost:8000/health | jq '.' 2>/dev/null || echo "❌ Backend not responding"
+    curl -s http://localhost:8000/api/v1/health | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin), indent=2))" 2>/dev/null || echo "❌ Backend not responding"
     echo ""
     echo "Frontend (http://localhost:8501):"
     curl -s http://localhost:8501/_stcore/health >/dev/null && echo "✅ Frontend healthy" || echo "❌ Frontend not responding"

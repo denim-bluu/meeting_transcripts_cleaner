@@ -29,6 +29,26 @@ class BackendAPIClient:
 
         logger.info("API client initialized", base_url=self.base_url)
 
+    def _make_request(self, method: str, endpoint: str, **kwargs) -> dict[str, Any] | None:
+        """Generic request method for debug endpoints.
+        
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            endpoint: API endpoint (without /api/v1 prefix)
+            **kwargs: Additional arguments for requests
+            
+        Returns:
+            Response JSON data or None if failed
+        """
+        try:
+            url = f"{self.base_url}/api/v1{endpoint}"
+            response = self.session.request(method, url, timeout=10, **kwargs)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.warning("API request failed", method=method, endpoint=endpoint, error=str(e))
+            return None
+
     def health_check(self) -> tuple[bool, dict[str, Any]]:
         """Check if backend is healthy.
 
@@ -36,7 +56,7 @@ class BackendAPIClient:
             (is_healthy, health_data)
         """
         try:
-            response = self.session.get(f"{self.base_url}/health", timeout=5)
+            response = self.session.get(f"{self.base_url}/api/v1/health", timeout=5)
             response.raise_for_status()
             return True, response.json()
         except Exception as e:

@@ -58,7 +58,7 @@ class TestHealthCheck:
         assert is_healthy is True
         assert health_data["status"] == "healthy"
         assert health_data["service"] == "test"
-        mock_get.assert_called_once_with("http://test-backend:8000/health", timeout=5)
+        mock_get.assert_called_once_with("http://test-backend:8000/api/v1/health", timeout=5)
     
     @patch('requests.Session.get')
     def test_health_check_failure(self, mock_get):
