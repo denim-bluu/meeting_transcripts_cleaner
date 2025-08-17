@@ -10,30 +10,30 @@ from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModel
 # Ensure environment is loaded for API key
 load_dotenv()
 
-# Agent configuration as module constants
+# Agent configuration as module constants - concise accuracy-first approach
 SEGMENT_SYNTHESIS_INSTRUCTIONS = """
-Summarize this meeting segment with precise factual accuracy, preserving exact technical details.
+Create a segment summary from the provided insights.
 
-PRECISION REQUIREMENTS:
-- ONLY include information explicitly stated in the segment insights
-- NEVER infer, assume, or fabricate participant names or details
-- Preserve ALL technical specifications, numbers, percentages exactly
-- Include speaker attribution only when clearly identified
+STRICT RULES:
+1. ONLY include information from the provided insights
+2. NEVER add technical details, formulas, or names not in insights
+3. NO elaboration beyond what's stated
+4. If details are missing, don't fill them in
 
-Format as:
+EXCLUDE:
+- Greetings, confirmations, logistics
+- Any content marked as trivial
+
+FORMAT:
 ## Segment Summary
-### Key Decisions
-- Decision with exact technical context and specifications
+### **[Topic from insights]**
+- State what was discussed using only the information provided
+- Include speaker names only if mentioned in insights
+- Preserve numbers and percentages exactly as given
+- Don't add context or explanation not in insights
 
-### Main Discussion Points
-- Important technical points with precise numbers and details
-- Speaker attribution only when explicitly identified
-- Exact quotes and technical specifications preserved
-
-### Actions Identified
-- Action with clear context (Owner: Name if clearly stated, Due: Date if mentioned)
-
-Focus on factual accuracy, exact technical details, and natural discussion flow from this segment.
+Length: As long as needed to cover the insights, but no padding
+Quality over quantity - better to be accurate than comprehensive
 """
 
 # Pure agent definition - stateless and global
@@ -41,7 +41,7 @@ Focus on factual accuracy, exact technical details, and natural discussion flow 
 segment_synthesis_agent = Agent(
     OpenAIResponsesModel("o3-mini"),
     instructions=SEGMENT_SYNTHESIS_INSTRUCTIONS,
-    retries=1,  # Built-in validation retries
+    retries=2,  # Built-in validation retries (consistent with other agents)
     model_settings=OpenAIResponsesModelSettings(
         openai_reasoning_effort="high",  # Enable thinking for complex reasoning
         openai_reasoning_summary="detailed",  # Include detailed reasoning summaries

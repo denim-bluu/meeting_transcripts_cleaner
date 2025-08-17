@@ -32,7 +32,9 @@ class IntelligenceOrchestrator:
         self.model = model
         self.chunker = SemanticChunker()
 
-        self.MIN_IMPORTANCE = 2  # Include more contextual content for richer summaries
+        self.MIN_IMPORTANCE = (
+            1  # Include ALL contextual content for comprehensive summaries
+        )
         self.CRITICAL_IMPORTANCE = 8  # Never exclude these
         self.CONTEXT_LIMIT = 50000  # Conservative token limit
         self.SEGMENT_MINUTES = 30  # Temporal segmentation
@@ -47,7 +49,10 @@ class IntelligenceOrchestrator:
     async def process_meeting(
         self,
         cleaned_chunks: list[VTTChunk],
+        self,
+        cleaned_chunks: list[VTTChunk],
         detail_level: str = "comprehensive",
+        progress_callback=None,
         progress_callback=None,
     ) -> MeetingIntelligence:
         """
@@ -93,6 +98,9 @@ class IntelligenceOrchestrator:
             chunks_to_process=len(semantic_chunks),
         )
         phase2_start = time.time()
+        insights_list = await self._extract_all_insights(
+            semantic_chunks, detail_level, progress_callback
+        )
         insights_list = await self._extract_all_insights(
             semantic_chunks, detail_level, progress_callback
         )
@@ -211,11 +219,12 @@ class IntelligenceOrchestrator:
             # Add metadata overhead
             total_chars += 100  # Importance, structure, etc.
 
-        # Add prompt overhead (synthesis instructions)
-        total_chars += 2000
+        # Add prompt overhead (synthesis instructions - increased for comprehensive prompts)
+        total_chars += 3000
 
         # Convert to tokens (standard GPT estimate)
-        estimated_tokens = total_chars // 4
+        # Use more conservative estimate for longer, richer outputs
+        estimated_tokens = total_chars // 3
 
         logger.debug(
             "Token estimation completed",
@@ -227,6 +236,10 @@ class IntelligenceOrchestrator:
         return estimated_tokens
 
     async def _extract_all_insights(
+        self,
+        semantic_chunks: list[str],
+        detail_level: str = "comprehensive",
+        progress_callback=None,
         self,
         semantic_chunks: list[str],
         detail_level: str = "comprehensive",
@@ -273,6 +286,7 @@ class IntelligenceOrchestrator:
                     actions_count=len(result.output.actions),
                 )
 
+
                 return i, result.output
 
             except Exception as e:
@@ -291,6 +305,7 @@ class IntelligenceOrchestrator:
             total_chunks=len(semantic_chunks),
             detail_level=detail_level,
         )
+
 
         tasks = [
             extract_single_chunk(i, chunk_text)
@@ -321,6 +336,10 @@ class IntelligenceOrchestrator:
             semantic_chunks
         )  # Pre-allocate with correct order
 
+        insights_list: list[ChunkInsights | None] = [None] * len(
+            semantic_chunks
+        )  # Pre-allocate with correct order
+
         for result in results:
             if isinstance(result, BaseException):
                 logger.error("Concurrent chunk extraction failed", error=str(result))
@@ -331,6 +350,10 @@ class IntelligenceOrchestrator:
                 insights_list[chunk_index] = insights
 
         # Ensure no None values (safety check)
+        final_insights: list[ChunkInsights] = [
+            insights for insights in insights_list if insights is not None
+        ]
+
         final_insights: list[ChunkInsights] = [
             insights for insights in insights_list if insights is not None
         ]
@@ -349,6 +372,7 @@ class IntelligenceOrchestrator:
         """Direct synthesis using pure agent with detailed logging."""
         logger.info(
             "Starting direct synthesis",
+            "Starting direct synthesis",
             insights_count=len(insights_list),
             total_actions=sum(len(insight.actions) for insight in insights_list),
             total_insights_items=sum(
@@ -361,13 +385,26 @@ class IntelligenceOrchestrator:
             )
             if insights_list
             else 0,
+            total_insights_items=sum(
+                len(insight.insights) for insight in insights_list
+            ),
+            avg_importance=round(
+                sum(insight.importance for insight in insights_list)
+                / len(insights_list),
+                2,
+            )
+            if insights_list
+            else 0,
         )
 
+
         formatted_insights = self._format_insights_for_synthesis(insights_list)
+
 
         logger.info(
             "Formatted insights for synthesis",
             formatted_size_chars=len(formatted_insights),
+            estimated_tokens=len(formatted_insights) // 4,  # Rough token estimate
             estimated_tokens=len(formatted_insights) // 4,  # Rough token estimate
         )
 
@@ -378,6 +415,7 @@ class IntelligenceOrchestrator:
 Return both summary (detailed markdown) and action_items (structured list)."""
 
         synthesis_start_time = time.time()
+
 
         try:
             logger.info(

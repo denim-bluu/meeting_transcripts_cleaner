@@ -8,66 +8,28 @@ from backend_service.models.intelligence import ChunkInsights
 # Ensure environment is loaded for API key
 load_dotenv()
 
-# Agent configuration as module constants - following industry best practices
+# Agent configuration as module constants - concise accuracy-first approach
 UNIVERSAL_EXTRACTION_INSTRUCTIONS = """
-<role>You are an expert meeting analyst extracting precise insights from conversation segments.</role>
+You are extracting insights from a meeting transcript segment.
 
-<critical_precision_requirements>
-ABSOLUTE FACTUAL ACCURACY:
-- ONLY extract information explicitly stated in the conversation segment
-- NEVER infer, assume, or complete participant names, roles, or details not explicitly mentioned
-- When you encounter numbers, percentages, technical specifications, exact quotes, preserve them EXACTLY as stated
-- Do not paraphrase, generalize, or summarize technical elements
-- If speaker attribution is unclear, note the content without false attribution
-</critical_precision_requirements>
+STRICT RULES:
+1. ONLY extract what is EXPLICITLY stated - no inference or elaboration
+2. SKIP trivial content (greetings, "OK", "Yeah", meeting logistics)
+3. NEVER add information not in the transcript
+4. If unsure, leave it out
 
-<think>
-Before extracting insights, consider:
-- What specific technical details, numbers, and specifications are explicitly stated?
-- Which quotes or statements should be preserved verbatim?
-- What decisions were made and what was the exact reasoning provided?
-- Are there action items with clearly identified owners and timelines?
-- Can I verify each insight directly from the conversation segment?
-</think>
+EXTRACT:
+- Technical explanations as stated (no adding details)
+- Decisions with the reasoning given
+- Important Q&A exchanges
+- Action items with owners if named
 
-<extraction_guidelines>
-Extract 10-20 comprehensive insights that capture the full richness of the conversation:
+Quality check each insight:
+- Is this exactly what was said?
+- Does it add value to understanding?
+- Am I adding any information not stated?
 
-1. INSIGHTS: Comprehensive statements that preserve:
-   - WHO said it (clear speaker attribution)
-   - WHAT exactly (specific details, numbers, technical terms, quotes)
-   - WHY it matters (context, reasoning, implications)
-   - Include contextual details, side discussions, and background information
-
-2. VERBATIM PRESERVATION: For technical content, preserve exactly:
-   - Numbers with units: "70% accuracy when threshold > 2%" not "good accuracy"
-   - Tool/system names: "PostgreSQL migration" not "database change"
-   - Percentages and metrics: "15% budget increase for Q3" not "budget increase"
-   - Quoted statements: Use exact words when impactful
-   - Technical specifications and thresholds
-
-3. IMPORTANCE: Rate 1-10 based on strategic value, decisions, or commitments
-   - Include contextual content (2-4 for background discussions)
-   - Reserve 8-10 for major decisions and commitments
-
-4. THEMES: 1-3 broad themes (e.g., "Budget Planning", "Technical Architecture", "Strategic Planning")
-
-5. ACTIONS: Any commitments, next steps, or deliverables with owner if mentioned
-</extraction_guidelines>
-
-<examples>
-Excellent extraction examples:
-✓ "John proposed increasing the budget by exactly 15% for Q3, citing rising infrastructure costs"
-✓ "Sarah explained that the model achieves 70% accuracy when the threshold exceeds 2%, noting edge cases"
-✓ "The team agreed to migrate from MongoDB to PostgreSQL after Mike highlighted scaling bottlenecks"
-✓ "Nathaniel mentioned the Smart Estimate vs consensus differential provides predictive value"
-
-Poor extraction examples:
-✗ "John suggested a budget increase" (missing specifics and reasoning)
-✗ "The model has good accuracy" (lost the precise numbers)
-✗ "Database migration was discussed" (lost technical details and decision)
-✗ "Some metrics were mentioned" (completely generic)
-</examples>
+Target: 10-20 meaningful insights per chunk
 """
 
 # Pure agent definition - stateless and global
@@ -88,66 +50,21 @@ def add_context_instructions(ctx: RunContext[dict]) -> str:
 
     instructions = []
 
-    # Industry standard: Adjust extraction density based on detail level
+    # Adjust extraction based on detail level
     detail_level = context.get("detail_level", "comprehensive")
-    if detail_level == "technical_focus":
-        instructions.append("""
-<technical_mode>
-EXTRACT 15-20 INSIGHTS per chunk.
-ABSOLUTE PRIORITY: Preserve ALL technical specifications verbatim.
-- Include every number, percentage, threshold, formula mentioned
-- Preserve exact tool names, version numbers, technical terms
-- Capture precise quotes and specifications
-- Don't summarize - extract verbatim when possible
-- Include technical reasoning and implementation details
-</technical_mode>""")
+    if detail_level == "premium":
+        instructions.append("Extract 15-20 insights with maximum accuracy. Include all technical details mentioned.")
+    elif detail_level == "technical_focus":
+        instructions.append("Extract 12-18 insights focusing on technical content and methodologies.")
     elif detail_level == "standard":
-        instructions.append("""
-<standard_mode>
-EXTRACT 8-12 KEY INSIGHTS per chunk.
-Focus on major decisions, action items, and outcomes.
-- Prioritize commitments and next steps
-- Include key decisions with basic context
-- Preserve important numbers but focus on implications
-</standard_mode>""")
+        instructions.append("Extract 10-15 key insights focusing on decisions and outcomes.")
     # Comprehensive uses base instructions (10-20 insights)
 
-    # Adjust based on chunk position in meeting
+    # Simple position adjustments
     position = context.get("position", "middle")
     if position == "start":
-        instructions.append(
-            "This is from the beginning of the meeting. Pay special attention to "
-            "meeting objectives, agenda items, and introductory statements."
-        )
+        instructions.append("Focus on objectives and introductory statements.")
     elif position == "end":
-        instructions.append(
-            "This is from the end of the meeting. Focus on final decisions, "
-            "action items, next steps, and meeting conclusions."
-        )
-
-    # Adjust based on meeting type
-    meeting_type = context.get("meeting_type")
-    if meeting_type == "technical":
-        instructions.append(
-            "This is a technical meeting. Pay special attention to architecture "
-            "decisions, technical specifications, system requirements, and implementation details."
-        )
-    elif meeting_type == "executive":
-        instructions.append(
-            "This is an executive meeting. Focus on strategic decisions, budget discussions, "
-            "high-level planning, and business outcomes."
-        )
-    elif meeting_type == "standup":
-        instructions.append(
-            "This is a standup meeting. Focus on progress updates, blockers, "
-            "and immediate next steps for team members."
-        )
-
-    # Adjust based on content characteristics
-    if context.get("action_heavy"):
-        instructions.append(
-            "This segment is action-heavy. Be extra thorough in identifying "
-            "commitments, assignments, and deliverables with owners and timelines."
-        )
+        instructions.append("Focus on decisions, action items, and conclusions.")
 
     return "\n\n".join(instructions) if instructions else ""

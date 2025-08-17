@@ -162,27 +162,3 @@ status:
     echo ""
     echo "Frontend (http://localhost:8501):"
     curl -s http://localhost:8501/_stcore/health >/dev/null && echo "✅ Frontend healthy" || echo "❌ Frontend not responding"
-
-# Database and migrations (for future use)
-[group('data')]
-migrate:
-    echo "No migrations needed for current in-memory storage"
-
-[group('data')]
-reset-data:
-    echo "Restarting services will reset in-memory data"
-
-# Deployment helpers
-[group('deploy')]
-pre-deploy: check
-    echo "✅ Pre-deployment checks passed"
-
-[group('deploy')]
-deploy-staging:
-    echo "🚀 Deploying to staging environment..."
-    # Add your staging deployment commands here
-
-[group('deploy')]
-deploy-production:
-    echo "🚀 Deploying to production environment..."
-    # Add your production deployment commands here
