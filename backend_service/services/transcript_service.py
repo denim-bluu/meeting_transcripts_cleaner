@@ -11,7 +11,9 @@ from backend_service.core.vtt_processor import VTTProcessor
 from backend_service.models.agents import CleaningResult, ReviewResult
 from backend_service.models.transcript import VTTChunk
 from backend_service.services.orchestration import IntelligenceOrchestrator
-from backend_service.services.transcript.cleaning_service import TranscriptCleaningService
+from backend_service.services.transcript.cleaning_service import (
+    TranscriptCleaningService,
+)
 from backend_service.services.transcript.review_service import TranscriptReviewService
 
 logger = structlog.get_logger(__name__)
@@ -427,13 +429,18 @@ class TranscriptService:
 
         elif format == "json":
             import json
+
             # Convert the transcript dict to JSON, handling Pydantic models
             serializable_transcript = {}
             for key, value in transcript.items():
-                if hasattr(value, 'model_dump'):
+                if hasattr(value, "model_dump"):
                     # Pydantic model
                     serializable_transcript[key] = value.model_dump()
-                elif isinstance(value, list) and value and hasattr(value[0], 'model_dump'):
+                elif (
+                    isinstance(value, list)
+                    and value
+                    and hasattr(value[0], "model_dump")
+                ):
                     # List of Pydantic models
                     serializable_transcript[key] = [item.model_dump() for item in value]
                 else:
@@ -449,14 +456,16 @@ class TranscriptService:
         secs = seconds % 60
         return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
 
-    async def extract_intelligence(self, transcript: dict, detail_level: str = "comprehensive") -> dict:
+    async def extract_intelligence(
+        self, transcript: dict, detail_level: str = "comprehensive"
+    ) -> dict:
         """
         Extract intelligence from cleaned transcript using industry-standard approach.
         Call after clean_transcript completes.
 
         Args:
             transcript: transcript dict with 'cleaned_chunks' or 'chunks' key
-            detail_level: "standard", "comprehensive", or "technical_focus"
+            detail_level: "standard", "comprehensive", "technical_focus", or "premium"
 
         Output: transcript dict with added 'intelligence' key
         """

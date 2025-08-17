@@ -31,7 +31,9 @@ class IntelligenceOrchestrator:
         self.model = model
         self.chunker = SemanticChunker()
 
-        self.MIN_IMPORTANCE = 2  # Include more contextual content for richer summaries
+        self.MIN_IMPORTANCE = (
+            1  # Include ALL contextual content for comprehensive summaries
+        )
         self.CRITICAL_IMPORTANCE = 8  # Never exclude these
         self.CONTEXT_LIMIT = 50000  # Conservative token limit
         self.SEGMENT_MINUTES = 30  # Temporal segmentation
@@ -44,10 +46,10 @@ class IntelligenceOrchestrator:
         )
 
     async def process_meeting(
-        self, 
-        cleaned_chunks: list[VTTChunk], 
+        self,
+        cleaned_chunks: list[VTTChunk],
         detail_level: str = "comprehensive",
-        progress_callback=None
+        progress_callback=None,
     ) -> MeetingIntelligence:
         """
         Two approaches:
@@ -74,13 +76,18 @@ class IntelligenceOrchestrator:
 
         # Phase 2: Extract insights from all chunks (N API calls)
         if progress_callback:
-            progress_callback(0.2, f"Phase 2: Extracting insights from {len(semantic_chunks)} chunks...")
+            progress_callback(
+                0.2,
+                f"Phase 2: Extracting insights from {len(semantic_chunks)} chunks...",
+            )
         logger.info(
             "Phase 2: Starting insight extraction",
             chunks_to_process=len(semantic_chunks),
         )
         phase2_start = time.time()
-        insights_list = await self._extract_all_insights(semantic_chunks, detail_level, progress_callback)
+        insights_list = await self._extract_all_insights(
+            semantic_chunks, detail_level, progress_callback
+        )
         phase2_time = int((time.time() - phase2_start) * 1000)
         logger.info(
             "Phase 2 completed",
@@ -191,11 +198,12 @@ class IntelligenceOrchestrator:
             # Add metadata overhead
             total_chars += 100  # Importance, structure, etc.
 
-        # Add prompt overhead (synthesis instructions)
-        total_chars += 2000
+        # Add prompt overhead (synthesis instructions - increased for comprehensive prompts)
+        total_chars += 3000
 
         # Convert to tokens (standard GPT estimate)
-        estimated_tokens = total_chars // 4
+        # Use more conservative estimate for longer, richer outputs
+        estimated_tokens = total_chars // 3
 
         logger.debug(
             "Token estimation completed",
@@ -207,12 +215,17 @@ class IntelligenceOrchestrator:
         return estimated_tokens
 
     async def _extract_all_insights(
-        self, semantic_chunks: list[str], detail_level: str = "comprehensive", progress_callback=None
+        self,
+        semantic_chunks: list[str],
+        detail_level: str = "comprehensive",
+        progress_callback=None,
     ) -> list[ChunkInsights]:
         """Extract insights from all semantic chunks using concurrent processing."""
         import asyncio
-        
-        async def extract_single_chunk(i: int, chunk_text: str) -> tuple[int, ChunkInsights]:
+
+        async def extract_single_chunk(
+            i: int, chunk_text: str
+        ) -> tuple[int, ChunkInsights]:
             """Extract insights from a single chunk with proper error handling."""
             # Create context for dynamic instructions
             context = {
@@ -247,7 +260,7 @@ class IntelligenceOrchestrator:
                     themes=result.output.themes,
                     actions_count=len(result.output.actions),
                 )
-                
+
                 return i, result.output
 
             except Exception as e:
@@ -266,7 +279,7 @@ class IntelligenceOrchestrator:
             total_chunks=len(semantic_chunks),
             detail_level=detail_level,
         )
-        
+
         tasks = [
             extract_single_chunk(i, chunk_text)
             for i, chunk_text in enumerate(semantic_chunks)
@@ -275,13 +288,17 @@ class IntelligenceOrchestrator:
         # Execute all tasks concurrently with simple progress tracking
         if progress_callback:
             progress_callback(0.3, f"Processing {len(tasks)} chunks concurrently...")
-        results: list[tuple[int, ChunkInsights] | BaseException] = await asyncio.gather(*tasks, return_exceptions=True)
+        results: list[tuple[int, ChunkInsights] | BaseException] = await asyncio.gather(
+            *tasks, return_exceptions=True
+        )
         if progress_callback:
             progress_callback(0.7, "Consolidating extraction results...")
 
         # Process results and handle exceptions
-        insights_list: list[ChunkInsights | None] = [None] * len(semantic_chunks)  # Pre-allocate with correct order
-        
+        insights_list: list[ChunkInsights | None] = [None] * len(
+            semantic_chunks
+        )  # Pre-allocate with correct order
+
         for result in results:
             if isinstance(result, BaseException):
                 logger.error("Concurrent chunk extraction failed", error=str(result))
@@ -292,8 +309,10 @@ class IntelligenceOrchestrator:
                 insights_list[chunk_index] = insights
 
         # Ensure no None values (safety check)
-        final_insights: list[ChunkInsights] = [insights for insights in insights_list if insights is not None]
-        
+        final_insights: list[ChunkInsights] = [
+            insights for insights in insights_list if insights is not None
+        ]
+
         logger.info(
             "Concurrent insight extraction completed",
             chunks_processed=len(final_insights),
@@ -307,19 +326,27 @@ class IntelligenceOrchestrator:
     ) -> MeetingIntelligence:
         """Direct synthesis using pure agent with detailed logging."""
         logger.info(
-            "Starting direct synthesis", 
+            "Starting direct synthesis",
             insights_count=len(insights_list),
             total_actions=sum(len(insight.actions) for insight in insights_list),
-            total_insights_items=sum(len(insight.insights) for insight in insights_list),
-            avg_importance=round(sum(insight.importance for insight in insights_list) / len(insights_list), 2) if insights_list else 0
+            total_insights_items=sum(
+                len(insight.insights) for insight in insights_list
+            ),
+            avg_importance=round(
+                sum(insight.importance for insight in insights_list)
+                / len(insights_list),
+                2,
+            )
+            if insights_list
+            else 0,
         )
-        
+
         formatted_insights = self._format_insights_for_synthesis(insights_list)
-        
+
         logger.info(
             "Formatted insights for synthesis",
             formatted_size_chars=len(formatted_insights),
-            estimated_tokens=len(formatted_insights) // 4  # Rough token estimate
+            estimated_tokens=len(formatted_insights) // 4,  # Rough token estimate
         )
 
         user_prompt = f"""Create comprehensive meeting intelligence from these insights:
@@ -329,48 +356,52 @@ class IntelligenceOrchestrator:
 Return both summary (detailed markdown) and action_items (structured list)."""
 
         synthesis_start_time = time.time()
-        
+
         try:
             logger.info(
-                "Calling direct synthesis agent", 
+                "Calling direct synthesis agent",
                 agent_retries=2,  # Built-in Pydantic AI retries
-                model="o3-mini"
+                model="o3-mini",
             )
-            
+
             # Use capture_run_messages to log all interactions including retries
             from pydantic_ai import capture_run_messages
-            
+
             with capture_run_messages() as run_messages:
                 result = await direct_synthesis_agent.run(user_prompt)
-            
+
             synthesis_time = int((time.time() - synthesis_start_time) * 1000)
-            
+
             # Log detailed information about the run
             logger.info(
                 "Direct synthesis run details",
                 total_messages=len(run_messages),
-                synthesis_time_ms=synthesis_time
+                synthesis_time_ms=synthesis_time,
             )
-            
+
             # Simple message logging without accessing potentially undefined attributes
             if len(run_messages) > 2:  # More than expected messages suggests retries
                 logger.info(
                     f"Multiple messages detected ({len(run_messages)})",
                     message_count=len(run_messages),
                     likely_retries=len(run_messages) > 2,
-                    synthesis_time_ms=synthesis_time
+                    synthesis_time_ms=synthesis_time,
                 )
-            
+
             logger.info(
                 "Direct synthesis completed successfully",
                 synthesis_time_ms=synthesis_time,
                 summary_length=len(result.output.summary),
                 action_items_count=len(result.output.action_items),
                 has_processing_stats=bool(result.output.processing_stats),
-                summary_sections=result.output.summary.count('#'),  # Count markdown headers
-                summary_preview=result.output.summary[:200].replace('\n', ' ') + '...' if len(result.output.summary) > 200 else result.output.summary.replace('\n', ' ')
+                summary_sections=result.output.summary.count(
+                    "#"
+                ),  # Count markdown headers
+                summary_preview=result.output.summary[:200].replace("\n", " ") + "..."
+                if len(result.output.summary) > 200
+                else result.output.summary.replace("\n", " "),
             )
-            
+
             return result.output
         except Exception as e:
             synthesis_time = int((time.time() - synthesis_start_time) * 1000)
@@ -379,7 +410,9 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                 error=str(e),
                 error_type=type(e).__name__,
                 synthesis_time_ms=synthesis_time,
-                formatted_insights_preview=formatted_insights[:300] + '...' if len(formatted_insights) > 300 else formatted_insights
+                formatted_insights_preview=formatted_insights[:300] + "..."
+                if len(formatted_insights) > 300
+                else formatted_insights,
             )
             raise
 
@@ -405,7 +438,9 @@ Return both summary (detailed markdown) and action_items (structured list)."""
         )
 
         # Step 2: Create segment summaries using concurrent segment_synthesis_agent
-        async def synthesize_single_segment(i: int, segment_insights: list[ChunkInsights]) -> tuple[int, str]:
+        async def synthesize_single_segment(
+            i: int, segment_insights: list[ChunkInsights]
+        ) -> tuple[int, str]:
             """Synthesize a single segment with proper error handling."""
             logger.info(
                 "Processing segment",
@@ -418,7 +453,7 @@ Return both summary (detailed markdown) and action_items (structured list)."""
 
             try:
                 from pydantic_ai import capture_run_messages
-                
+
                 with capture_run_messages() as segment_messages:
                     result = await segment_synthesis_agent.run(
                         f"Summarize this meeting segment:\n\n{segment_text}"
@@ -429,9 +464,9 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                     segment_index=i + 1,
                     summary_length=len(result.output),
                     total_messages=len(segment_messages),
-                    likely_retries=len(segment_messages) > 2
+                    likely_retries=len(segment_messages) > 2,
                 )
-                
+
                 return i, result.output
 
             except Exception as e:
@@ -447,7 +482,7 @@ Return both summary (detailed markdown) and action_items (structured list)."""
             "Starting concurrent segment synthesis",
             segments_count=len(segments),
         )
-        
+
         segment_tasks = [
             synthesize_single_segment(i, segment_insights)
             for i, segment_insights in enumerate(segments)
@@ -455,11 +490,14 @@ Return both summary (detailed markdown) and action_items (structured list)."""
 
         # Execute all segment synthesis tasks concurrently
         import asyncio
-        segment_results: list[tuple[int, str] | BaseException] = await asyncio.gather(*segment_tasks, return_exceptions=True)
+
+        segment_results: list[tuple[int, str] | BaseException] = await asyncio.gather(
+            *segment_tasks, return_exceptions=True
+        )
 
         # Process segment results
         segment_summaries: list[str | None] = [None] * len(segments)
-        
+
         for result in segment_results:
             if isinstance(result, BaseException):
                 logger.error("Concurrent segment synthesis failed", error=str(result))
@@ -470,7 +508,9 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                 segment_summaries[segment_index] = summary
 
         # Filter out None values
-        final_summaries: list[str] = [summary for summary in segment_summaries if summary is not None]
+        final_summaries: list[str] = [
+            summary for summary in segment_summaries if summary is not None
+        ]
 
         # Step 3: Combine all segment summaries using hierarchical_synthesis_agent
         logger.info(
@@ -488,7 +528,7 @@ Return both summary (detailed markdown) and action_items (structured list)."""
 
         try:
             from pydantic_ai import capture_run_messages
-            
+
             with capture_run_messages() as hierarchical_messages:
                 result = await hierarchical_synthesis_agent.run(
                     f"Create comprehensive meeting intelligence from these temporal segments:\n\n{combined_segments}"
@@ -499,7 +539,7 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                 final_summary_length=len(result.output.summary),
                 action_items_count=len(result.output.action_items),
                 total_messages=len(hierarchical_messages),
-                likely_retries=len(hierarchical_messages) > 2
+                likely_retries=len(hierarchical_messages) > 2,
             )
 
             return result.output
