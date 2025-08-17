@@ -11,26 +11,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+# Import enums from our cache module to avoid duplication
+from backend_service.core.task_cache import TaskStatus, TaskType
+
 # ===============================================================================
 # Enums for Controlled Vocabularies
 # ===============================================================================
-
-
-class TaskStatus(str, Enum):
-    """Task execution status."""
-
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
-
-class TaskType(str, Enum):
-    """Types of background tasks."""
-
-    TRANSCRIPT_PROCESSING = "transcript_processing"
-    INTELLIGENCE_EXTRACTION = "intelligence_extraction"
 
 
 class DetailLevel(str, Enum):

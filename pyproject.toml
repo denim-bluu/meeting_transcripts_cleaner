@@ -29,17 +29,14 @@ dependencies = [
   "tenacity>=8.2.0",
   "tiktoken>=0.8.0",
   "langchain>=0.3.27",
-  
   # Web framework and API
   "fastapi>=0.104.0",
   "uvicorn>=0.24.0",
   "streamlit>=1.39.0",
   "requests>=2.31.0",
-  
   # Database and storage
   "aiosqlite>=0.20.0",
   "duckdb>=1.1.0",
-  
   # Utilities
   "aiofiles>=24.1.0",
   "asyncio-throttle>=1.0.2",

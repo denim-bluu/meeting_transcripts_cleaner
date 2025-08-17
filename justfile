@@ -134,6 +134,11 @@ docker-stop:
     docker-compose down
 
 [group('docker')]
+docker-clean:
+    docker-compose down -v --rmi all
+    docker image prune -f
+
+[group('docker')]
 docker-logs service="":
     #!/usr/bin/env bash
     if [ "{{ service }}" = "" ]; then

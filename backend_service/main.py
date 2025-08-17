@@ -13,29 +13,40 @@ from fastapi.middleware.cors import CORSMiddleware
 import structlog
 
 # Configure structured logging first
-from backend_service.config import configure_structlog
+from backend_service.config import configure_structlog, settings
 
 configure_structlog()
 logger = structlog.get_logger(__name__)
 
-# Import API routes and repositories
+# Import API routes and cache
 from backend_service.api.v1.endpoints import router as api_v1_router
-from backend_service.repositories.factory import initialize_repositories
+from backend_service.core.task_cache import initialize_cache
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler for startup and shutdown."""
     # Startup
-    logger.info("Meeting Transcript API starting up", version="1.0.0")
+    logger.info(
+        "Meeting Transcript API starting up", 
+        version=settings.api_version,
+        environment=settings.get_environment_display(),
+        debug=settings.debug
+    )
 
-    # Initialize repositories
-    initialize_repositories()
-    logger.info("Repositories initialized successfully")
+    # Initialize task cache
+    initialize_cache(
+        ttl_hours=settings.task_ttl_hours, 
+        cleanup_interval_minutes=settings.cleanup_interval_minutes
+    )
+    logger.info(
+        "Task cache initialized successfully", 
+        ttl_hours=settings.task_ttl_hours, 
+        cleanup_interval_minutes=settings.cleanup_interval_minutes
+    )
 
     # Verify OpenAI API key is configured
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    if not settings.openai_api_key:
         logger.warning("OPENAI_API_KEY not configured - processing will fail")
     else:
         logger.info("OpenAI API key configured successfully")
@@ -49,10 +60,10 @@ async def lifespan(app: FastAPI):
     logger.info("Meeting Transcript API shutting down")
 
 
-# FastAPI app setup with enhanced metadata
+# FastAPI app setup with environment-aware configuration
 app = FastAPI(
-    title="Meeting Transcript API",
-    description="""
+    title=settings.api_title,
+    description=f"""
     **AI-Powered Meeting Transcript Processing Service**
 
     This API provides enterprise-grade meeting transcript processing with:
@@ -63,6 +74,10 @@ app = FastAPI(
     * **Formal Validation**: Comprehensive Pydantic schema validation
     * **Production Ready**: Built for Snowpark Container Services deployment
 
+    ## Environment
+
+    Currently running in **{settings.get_environment_display()}** mode.
+
     ## Authentication
 
     Currently using API key authentication. SPCS deployments will use
@@ -70,20 +85,21 @@ app = FastAPI(
 
     ## Rate Limits
 
-    - File uploads: 100MB max size
-    - Concurrent tasks: 10 per instance
-    - Request rate: 1000 requests/minute per client
+    - File uploads: {settings.max_file_size_mb}MB max size
+    - Concurrent tasks: {settings.max_concurrent_tasks} per instance
+    - Request rate: {settings.rate_limit_per_minute} requests/minute per client
 
     ## Support
 
     For issues or questions, see the project documentation.
     """,
-    version="1.0.0",
+    version=settings.api_version,
+    debug=settings.debug,
     lifespan=lifespan,
     # API documentation configuration
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url="/docs" if not settings.is_production() else None,  # Disable docs in production
+    redoc_url="/redoc" if not settings.is_production() else None,
+    openapi_url="/openapi.json" if not settings.is_production() else None,
     # Add contact and license info for production
     contact={
         "name": "Meeting Transcript API Support",
@@ -95,27 +111,15 @@ app = FastAPI(
     },
     # Add server info for different environments
     servers=[
-        {"url": "http://localhost:8000", "description": "Development server"},
-        {
-            "url": "https://your-spcs-endpoint.snowflakecomputing.com",
-            "description": "Production SPCS deployment",
-        },
+        {"url": f"http://{settings.host}:{settings.port}", "description": f"{settings.get_environment_display()} server"},
+    ] if not settings.is_production() else [
+        {"url": "https://your-spcs-endpoint.snowflakecomputing.com", "description": "Production SPCS deployment"},
     ],
 )
 
-# CORS middleware for Streamlit frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8501",  # Local Streamlit development
-        "https://*.snowflakecomputing.com",  # SPCS production domains
-        "*",  # TODO: Restrict for production
-    ],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["*"],
-    expose_headers=["X-Request-ID", "X-Processing-Time"],
-)
+# CORS middleware with environment-aware configuration
+cors_config = settings.get_cors_config()
+app.add_middleware(CORSMiddleware, **cors_config)
 
 # Include API routes
 app.include_router(api_v1_router, tags=["API v1"])
@@ -130,10 +134,11 @@ async def root():
     Use `/api/v1/health` for detailed health checks.
     """
     return {
-        "service": "Meeting Transcript API",
-        "version": "1.0.0",
+        "service": settings.api_title,
+        "version": settings.api_version,
+        "environment": settings.get_environment_display(),
         "status": "operational",
-        "docs": "/docs",
+        "docs": "/docs" if not settings.is_production() else "disabled",
         "health": "/api/v1/health",
     }
 
@@ -144,8 +149,8 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,  # Only for development
+        host=settings.host,
+        port=settings.port,
+        reload=settings.reload,
         log_config=None,  # Use our structured logging
     )

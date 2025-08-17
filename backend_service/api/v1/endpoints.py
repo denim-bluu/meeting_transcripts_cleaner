@@ -29,16 +29,15 @@ from backend_service.api.v1.schemas import (
     HealthStatus,
     IntelligenceExtractionRequest,
     TaskResponse,
-    TaskStatus,
     TaskStatusResponse,
-    TaskType,
     validate_file_extension,
     validate_file_size,
 )
-from backend_service.repositories.base import TaskEntity
-from backend_service.repositories.factory import (
-    get_idempotency_repository,
-    get_task_repository,
+from backend_service.core.task_cache import (
+    TaskEntry,
+    TaskStatus,
+    TaskType,
+    get_task_cache,
 )
 
 logger = structlog.get_logger(__name__)
@@ -53,20 +52,14 @@ router = APIRouter(prefix="/api/v1", tags=["v1"])
 
 
 async def cleanup_old_tasks() -> None:
-    """Remove tasks older than 1 hour to prevent memory leaks."""
-    cutoff = datetime.now() - timedelta(hours=1)
-    task_repo = get_task_repository()
-    idempotency_repo = get_idempotency_repository()
-
-    # Clean up old tasks and expired idempotency keys
-    tasks_deleted = await task_repo.cleanup_old_tasks(cutoff)
-    keys_deleted = await idempotency_repo.cleanup_expired_keys()
-
-    if tasks_deleted > 0 or keys_deleted > 0:
+    """Force cleanup of expired cache entries."""
+    cache = get_task_cache()
+    stats = await cache.cleanup()
+    
+    if stats["expired_tasks"] > 0 or stats["expired_idempotency_keys"] > 0:
         logger.info(
-            "Cleanup completed",
-            tasks_deleted=tasks_deleted,
-            idempotency_keys_deleted=keys_deleted,
+            "Cache cleanup completed",
+            **stats
         )
 
 
@@ -101,10 +94,10 @@ def validate_upload_file(file: UploadFile) -> None:
     # Note: file.size is not available until read, so we check during processing
 
 
-async def get_task_or_404(task_id: str) -> TaskEntity:
+async def get_task_or_404(task_id: str) -> TaskEntry:
     """Get task by ID or raise 404."""
-    task_repo = get_task_repository()
-    task = await task_repo.get_task(task_id)
+    cache = get_task_cache()
+    task = await cache.get_task(task_id)
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or expired"
@@ -117,8 +110,8 @@ async def handle_idempotency(idempotency_key: str | None) -> str | None:
     if not idempotency_key:
         return None
 
-    idempotency_repo = get_idempotency_repository()
-    existing_task_id = await idempotency_repo.get_task_for_key(idempotency_key)
+    cache = get_task_cache()
+    existing_task_id = await cache.get_task_for_idempotency_key(idempotency_key)
 
     if existing_task_id:
         logger.info(
@@ -152,13 +145,13 @@ async def health_check() -> HealthStatus:
     api_key = os.getenv("OPENAI_API_KEY")
     dependencies["openai"] = "configured" if api_key else "missing"
 
-    # Check repository health
-    task_repo = get_task_repository()
-    repo_health = await task_repo.health_check()
-    dependencies["database"] = repo_health.get("database", "unknown")
+    # Check cache health
+    cache = get_task_cache()
+    cache_health = await cache.health_check()
+    dependencies["cache"] = cache_health.get("cache", "unknown")
 
-    # Get task count from repository
-    task_count = await task_repo.get_task_count()
+    # Get task count from cache
+    task_count = await cache.get_task_count()
 
     # Determine overall status
     overall_status = (
@@ -232,12 +225,13 @@ async def process_transcript(
 
     task_id = str(uuid.uuid4())
 
-    # Create task entity
-    task = TaskEntity(
+    # Create task entry
+    task = TaskEntry(
         task_id=task_id,
         task_type=TaskType.TRANSCRIPT_PROCESSING,
         status=TaskStatus.PROCESSING,
         created_at=datetime.now(),
+        updated_at=datetime.now(),
         progress=0.0,
         message="Starting VTT processing...",
         metadata={
@@ -246,17 +240,14 @@ async def process_transcript(
         },
     )
 
-    # Store task in repository
-    task_repo = get_task_repository()
-    await task_repo.create_task(task)
+    # Store task in cache
+    cache = get_task_cache()
+    await cache.store_task(task)
 
     # Store idempotency key if provided
     if idempotency_key:
-        idempotency_repo = get_idempotency_repository()
         expires_at = datetime.now() + timedelta(days=1)  # 24-hour expiry
-        await idempotency_repo.store_idempotency_key(
-            idempotency_key, task_id, expires_at
-        )
+        await cache.store_idempotency_key(idempotency_key, task_id, expires_at)
 
     logger.info(
         "VTT processing task started",
@@ -320,12 +311,13 @@ async def extract_intelligence(
 
     task_id = str(uuid.uuid4())
 
-    # Create task entity
-    task = TaskEntity(
+    # Create task entry
+    task = TaskEntry(
         task_id=task_id,
         task_type=TaskType.INTELLIGENCE_EXTRACTION,
         status=TaskStatus.PROCESSING,
         created_at=datetime.now(),
+        updated_at=datetime.now(),
         progress=0.0,
         message=f"Starting intelligence extraction with {request.detail_level} detail level...",
         metadata={
@@ -335,17 +327,14 @@ async def extract_intelligence(
         },
     )
 
-    # Store task in repository
-    task_repo = get_task_repository()
-    await task_repo.create_task(task)
+    # Store task in cache
+    cache = get_task_cache()
+    await cache.store_task(task)
 
     # Store idempotency key if provided
     if request.idempotency_key:
-        idempotency_repo = get_idempotency_repository()
         expires_at = datetime.now() + timedelta(days=1)  # 24-hour expiry
-        await idempotency_repo.store_idempotency_key(
-            request.idempotency_key, task_id, expires_at
-        )
+        await cache.store_idempotency_key(request.idempotency_key, task_id, expires_at)
 
     logger.info(
         "Intelligence extraction task started",
@@ -380,7 +369,6 @@ async def extract_intelligence(
 async def debug_list_tasks(
     status: str | None = None,
     task_type: str | None = None,
-    hours_back: int = 24,
     limit: int = 100,
 ) -> dict[str, Any]:
     """
@@ -388,42 +376,25 @@ async def debug_list_tasks(
 
     - **status**: Filter by task status
     - **task_type**: Filter by task type
-    - **hours_back**: Show tasks from this many hours ago
     - **limit**: Maximum number of tasks to return
     """
-    task_repo = get_task_repository()
+    cache = get_task_cache()
 
     # Convert string filters to proper enums
     status_filter = TaskStatus(status) if status and status != "All" else None
     type_filter = TaskType(task_type) if task_type and task_type != "All" else None
 
-    # Get tasks
-    tasks = await task_repo.list_tasks(
-        status=status_filter, task_type=type_filter, limit=limit, offset=0
+    # Get tasks from cache
+    tasks = await cache.list_tasks(
+        status=status_filter, task_type=type_filter, limit=limit
     )
 
-    # Filter by time if specified
-    cutoff_time = datetime.now() - timedelta(hours=hours_back)
-    filtered_tasks = [task for task in tasks if task.created_at >= cutoff_time]
-
     # Convert to serializable format
-    task_data = []
-    for task in filtered_tasks:
-        task_data.append(
-            {
-                "task_id": task.task_id,
-                "task_type": task.task_type.value,
-                "status": task.status.value,
-                "progress": task.progress,
-                "message": task.message,
-                "created_at": task.created_at.isoformat(),
-                "updated_at": task.updated_at.isoformat(),
-                "error": task.error,
-                "error_code": task.error_code,
-                "metadata": task.metadata,
-                "has_result": bool(task.result),
-            }
-        )
+    task_data = [task.to_dict() for task in tasks]
+    
+    # Add convenience field
+    for data in task_data:
+        data["has_result"] = bool(data.get("result"))
 
     return {
         "tasks": task_data,
@@ -431,7 +402,7 @@ async def debug_list_tasks(
         "filters_applied": {
             "status": status,
             "task_type": task_type,
-            "hours_back": hours_back,
+            "limit": limit,
         },
     }
 
@@ -479,16 +450,16 @@ async def cancel_task(task_id: str) -> dict[str, str]:
     """
     Cancel a running task.
 
-    Note: This only removes the task from storage and stops result polling.
+    Note: This only removes the task from cache and stops result polling.
     Background processing cannot be interrupted once started.
 
     - **task_id**: Task ID to cancel
     """
     task = await get_task_or_404(task_id)
 
-    # Remove from repository
-    task_repo = get_task_repository()
-    deleted = await task_repo.delete_task(task_id)
+    # Remove from cache
+    cache = get_task_cache()
+    deleted = await cache.delete_task(task_id)
 
     if deleted:
         logger.info("Task cancelled/removed", task_id=task_id)
@@ -542,7 +513,7 @@ async def _serialize_transcript_result(transcript: dict) -> dict:
 
 async def run_transcript_processing(task_id: str, content: str) -> None:
     """Background task for VTT processing using existing TranscriptService."""
-    task_repo = get_task_repository()
+    cache = get_task_cache()
 
     try:
         # Import here to avoid startup overhead
@@ -556,15 +527,15 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
         # Initialize service
         service = TranscriptService(api_key)
 
-        # Progress callback that updates task in repository
+        # Progress callback that updates task in cache
         async def update_progress_async(progress: float, message: str) -> None:
-            """Async progress callback that updates task in repository."""
+            """Async progress callback that updates task in cache."""
             try:
-                task = await task_repo.get_task(task_id)
+                task = await cache.get_task(task_id)
                 if task:
                     task.progress = progress
                     task.message = message
-                    await task_repo.update_task(task)
+                    await cache.update_task(task)
                     logger.debug(
                         "Progress update",
                         task_id=task_id,
@@ -587,20 +558,20 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
             )
 
         # Update task: parsing VTT
-        task = await task_repo.get_task(task_id)
+        task = await cache.get_task(task_id)
         if task:
             task.message = "Parsing VTT file..."
-            await task_repo.update_task(task)
+            await cache.update_task(task)
 
         # Process VTT
         transcript = service.process_vtt(content)
 
         # Update task: starting AI cleaning
-        task = await task_repo.get_task(task_id)
+        task = await cache.get_task(task_id)
         if task:
             task.progress = 0.2
             task.message = f"VTT parsed: {len(transcript['chunks'])} chunks, starting AI cleaning..."
-            await task_repo.update_task(task)
+            await cache.update_task(task)
 
         # Clean transcript with concurrent processing
         await update_progress_async(
@@ -612,7 +583,7 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
         await update_progress_async(0.9, "AI cleaning completed, finalizing results...")
 
         # Update task: completed
-        task = await task_repo.get_task(task_id)
+        task = await cache.get_task(task_id)
         if task:
             task.status = TaskStatus.COMPLETED
             task.progress = 1.0
@@ -620,7 +591,7 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
 
             # Convert result to JSON-serializable format
             task.result = await _serialize_transcript_result(cleaned)
-            await task_repo.update_task(task)
+            await cache.update_task(task)
 
         logger.info(
             "Transcript processing completed",
@@ -633,13 +604,13 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
         logger.error("Transcript processing failed", task_id=task_id, error=str(e))
 
         # Update task: failed
-        task = await task_repo.get_task(task_id)
+        task = await cache.get_task(task_id)
         if task:
             task.status = TaskStatus.FAILED
             task.error = str(e)
             task.error_code = "processing_failed"
             task.message = f"Processing failed: {str(e)}"
-            await task_repo.update_task(task)
+            await cache.update_task(task)
 
 
 async def run_intelligence_extraction(
@@ -649,7 +620,7 @@ async def run_intelligence_extraction(
     custom_instructions: str | None = None,
 ) -> None:
     """Background task for intelligence extraction using existing orchestrator."""
-    task_repo = get_task_repository()
+    cache = get_task_cache()
 
     try:
         if not transcript_data:
@@ -663,13 +634,13 @@ async def run_intelligence_extraction(
         # Initialize orchestrator
         orchestrator = IntelligenceOrchestrator(model="o3-mini")
 
-        # Progress callback that updates task in repository
+        # Progress callback that updates task in cache
         async def update_progress(progress: float, message: str) -> None:
-            task = await task_repo.get_task(task_id)
+            task = await cache.get_task(task_id)
             if task:
                 task.progress = progress
                 task.message = message
-                await task_repo.update_task(task)
+                await cache.update_task(task)
                 logger.debug(
                     "Intelligence progress", task_id=task_id, progress=progress
                 )
@@ -707,7 +678,7 @@ async def run_intelligence_extraction(
         )
 
         # Update task: completed
-        task = await task_repo.get_task(task_id)
+        task = await cache.get_task(task_id)
         if task:
             task.status = TaskStatus.COMPLETED
             task.progress = 1.0
@@ -721,7 +692,7 @@ async def run_intelligence_extraction(
                 "processing_stats": intelligence.processing_stats,
                 "detail_level": detail_level,
             }
-            await task_repo.update_task(task)
+            await cache.update_task(task)
 
         logger.info(
             "Intelligence extraction completed",
@@ -734,10 +705,10 @@ async def run_intelligence_extraction(
         logger.error("Intelligence extraction failed", task_id=task_id, error=str(e))
 
         # Update task: failed
-        task = await task_repo.get_task(task_id)
+        task = await cache.get_task(task_id)
         if task:
             task.status = TaskStatus.FAILED
             task.error = str(e)
             task.error_code = "extraction_failed"
             task.message = f"Intelligence extraction failed: {str(e)}"
-            await task_repo.update_task(task)
+            await cache.update_task(task)
