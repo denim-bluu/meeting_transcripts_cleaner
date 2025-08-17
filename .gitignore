@@ -208,6 +208,26 @@ __marimo__/
 .streamlit/secrets.toml
 .DS_Store
 
+# Docker
+docker-compose.override.yml
+.docker/
+
+# Application logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
 # examples
 examples/
 CLAUDE.md
