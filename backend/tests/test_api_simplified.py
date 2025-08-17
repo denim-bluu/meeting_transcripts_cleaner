@@ -5,7 +5,7 @@ Tests cover all API endpoints, error handling, and integration with the
 SimpleTaskCache implementation.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -487,6 +487,14 @@ class TestDebugEndpoints:
         ]
 
         mock_cache.list_tasks.return_value = tasks
+        mock_cache.health_check.return_value = {
+            "cache": "healthy",
+            "total_tasks": 4,
+            "total_idempotency_keys": 0,
+            "status_breakdown": {"processing": 2, "completed": 2},
+            "expires_within_1h": 4,
+            "last_cleanup": "2024-01-01T00:00:00"
+        }
 
         response = client.get("/api/v1/debug/tasks")
 
@@ -495,13 +503,21 @@ class TestDebugEndpoints:
         assert data["total_count"] == 4
         assert len(data["tasks"]) == 4
 
+        # Check updated response structure
+        assert "cache_statistics" in data
+        assert "available_filters" in data
+        assert data["cache_statistics"]["total_tasks_in_cache"] == 4
+
         # Check task data structure
         first_task = data["tasks"][0]
         assert "task_id" in first_task
-        assert "task_type" in first_task
+        assert "type" in first_task
+        assert "task_type" in first_task  # Added for frontend compatibility
         assert "status" in first_task
         assert "progress" in first_task
         assert "has_result" in first_task
+        assert "has_error" in first_task
+        assert "duration_seconds" in first_task
 
     @patch('backend.api.v1.endpoints.get_task_cache')
     def test_debug_list_tasks_filtered(self, mock_get_cache, client, mock_cache):
@@ -520,6 +536,14 @@ class TestDebugEndpoints:
         ]
 
         mock_cache.list_tasks.return_value = processing_tasks
+        mock_cache.health_check.return_value = {
+            "cache": "healthy",
+            "total_tasks": 1,
+            "total_idempotency_keys": 0,
+            "status_breakdown": {"processing": 1},
+            "expires_within_1h": 1,
+            "last_cleanup": "2024-01-01T00:00:00"
+        }
 
         response = client.get("/api/v1/debug/tasks?status=processing&task_type=transcript_processing&limit=50")
 
@@ -542,6 +566,14 @@ class TestDebugEndpoints:
         """Test debug endpoint with no tasks."""
         mock_get_cache.return_value = mock_cache
         mock_cache.list_tasks.return_value = []
+        mock_cache.health_check.return_value = {
+            "cache": "healthy",
+            "total_tasks": 0,
+            "total_idempotency_keys": 0,
+            "status_breakdown": {},
+            "expires_within_1h": 0,
+            "last_cleanup": "2024-01-01T00:00:00"
+        }
 
         response = client.get("/api/v1/debug/tasks")
 
@@ -549,6 +581,151 @@ class TestDebugEndpoints:
         data = response.json()
         assert data["total_count"] == 0
         assert data["tasks"] == []
+        assert "cache_statistics" in data
+        assert data["cache_statistics"]["total_tasks_in_cache"] == 0
+
+    @patch('backend.api.v1.endpoints.get_task_cache')
+    def test_debug_cache_stats(self, mock_get_cache, client, mock_cache):
+        """Test debug cache statistics endpoint."""
+        mock_get_cache.return_value = mock_cache
+        
+        # Mock health check
+        mock_cache.health_check.return_value = {
+            "cache": "healthy",
+            "total_tasks": 5,
+            "total_idempotency_keys": 2,
+            "status_breakdown": {"processing": 3, "completed": 2},
+            "expires_within_1h": 1,
+            "last_cleanup": "2024-01-01T00:00:00"
+        }
+        
+        # Mock task listing for detailed stats
+        mock_cache.list_tasks.return_value = [
+            TaskEntry(
+                task_id="task-1",
+                task_type=TaskType.TRANSCRIPT_PROCESSING,
+                status=TaskStatus.PROCESSING,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                progress=0.5,
+            ),
+            TaskEntry(
+                task_id="task-2", 
+                task_type=TaskType.INTELLIGENCE_EXTRACTION,
+                status=TaskStatus.COMPLETED,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                progress=1.0,
+            )
+        ]
+        
+        response = client.get("/api/v1/debug/cache/stats")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert "cache_health" in data
+        assert "detailed_statistics" in data
+        assert "performance_metrics" in data
+        assert data["performance_metrics"]["total_tasks_sampled"] == 2
+
+    @patch('backend.api.v1.endpoints.get_task_cache')
+    def test_debug_force_cleanup(self, mock_get_cache, client, mock_cache):
+        """Test debug force cleanup endpoint."""
+        mock_get_cache.return_value = mock_cache
+        
+        # Mock cleanup stats
+        mock_cache.cleanup.return_value = {
+            "expired_tasks": 3,
+            "expired_idempotency_keys": 1,
+            "remaining_tasks": 5,
+            "remaining_idempotency_keys": 2
+        }
+        
+        response = client.post("/api/v1/debug/cache/cleanup")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["message"] == "Cache cleanup completed"
+        assert "cleanup_statistics" in data
+        assert "timestamp" in data
+        assert data["cleanup_statistics"]["expired_tasks"] == 3
+        
+        # Verify cleanup was called
+        mock_cache.cleanup.assert_called_once()
+
+    @patch('backend.api.v1.endpoints.get_task_cache')
+    def test_debug_invalid_status_filter(self, mock_get_cache, client, mock_cache):
+        """Test debug endpoint with invalid status filter."""
+        mock_get_cache.return_value = mock_cache
+        
+        response = client.get("/api/v1/debug/tasks?status=invalid_status")
+        
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Invalid status" in response.json()["detail"]
+
+    @patch('backend.api.v1.endpoints.get_task_cache')
+    def test_debug_invalid_task_type_filter(self, mock_get_cache, client, mock_cache):
+        """Test debug endpoint with invalid task type filter."""
+        mock_get_cache.return_value = mock_cache
+        
+        response = client.get("/api/v1/debug/tasks?task_type=invalid_type")
+        
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Invalid task_type" in response.json()["detail"]
+
+    @patch('backend.api.v1.endpoints.get_task_cache')
+    def test_debug_analytics(self, mock_get_cache, client, mock_cache):
+        """Test debug analytics endpoint."""
+        mock_get_cache.return_value = mock_cache
+        
+        # Mock health check
+        mock_cache.health_check.return_value = {
+            "cache": "healthy",
+            "total_tasks": 10,
+            "total_idempotency_keys": 3,
+            "status_breakdown": {"processing": 5, "completed": 4, "failed": 1},
+            "expires_within_1h": 2,
+            "last_cleanup": "2024-01-01T00:00:00"
+        }
+        
+        # Mock task listing for analytics
+        mock_tasks = [
+            TaskEntry(
+                task_id="analytics-1",
+                task_type=TaskType.TRANSCRIPT_PROCESSING,
+                status=TaskStatus.COMPLETED,
+                created_at=datetime.now() - timedelta(minutes=30),
+                updated_at=datetime.now() - timedelta(minutes=28),
+                progress=1.0,
+            ),
+            TaskEntry(
+                task_id="analytics-2",
+                task_type=TaskType.INTELLIGENCE_EXTRACTION,
+                status=TaskStatus.PROCESSING,
+                created_at=datetime.now() - timedelta(minutes=10),
+                updated_at=datetime.now() - timedelta(minutes=8),
+                progress=0.5,
+            ),
+        ]
+        mock_cache.list_tasks.return_value = mock_tasks
+        
+        response = client.get("/api/v1/debug/analytics")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        
+        # Check analytics structure
+        assert "cache_analytics" in data
+        assert "task_distribution" in data
+        assert "performance_metrics" in data
+        assert "system_info" in data
+        assert "timestamp" in data
+        
+        # Check specific analytics data
+        assert data["cache_analytics"]["total_tasks"] == 2
+        assert data["system_info"]["storage_type"] == "in_memory_cache"
+        assert "by_status" in data["task_distribution"]
+        assert "by_type" in data["task_distribution"]
 
 
 class TestFileValidation:

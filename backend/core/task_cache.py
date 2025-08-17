@@ -71,6 +71,7 @@ class TaskEntry:
         return {
             "task_id": self.task_id,
             "type": self.task_type.value,
+            "task_type": self.task_type.value,  # Added for frontend compatibility
             "status": self.status.value,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
