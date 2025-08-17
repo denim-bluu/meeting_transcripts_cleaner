@@ -49,10 +49,7 @@ class IntelligenceOrchestrator:
     async def process_meeting(
         self,
         cleaned_chunks: list[VTTChunk],
-        self,
-        cleaned_chunks: list[VTTChunk],
         detail_level: str = "comprehensive",
-        progress_callback=None,
         progress_callback=None,
     ) -> MeetingIntelligence:
         """
@@ -98,9 +95,6 @@ class IntelligenceOrchestrator:
             chunks_to_process=len(semantic_chunks),
         )
         phase2_start = time.time()
-        insights_list = await self._extract_all_insights(
-            semantic_chunks, detail_level, progress_callback
-        )
         insights_list = await self._extract_all_insights(
             semantic_chunks, detail_level, progress_callback
         )
@@ -236,10 +230,6 @@ class IntelligenceOrchestrator:
         return estimated_tokens
 
     async def _extract_all_insights(
-        self,
-        semantic_chunks: list[str],
-        detail_level: str = "comprehensive",
-        progress_callback=None,
         self,
         semantic_chunks: list[str],
         detail_level: str = "comprehensive",
@@ -385,16 +375,6 @@ class IntelligenceOrchestrator:
             )
             if insights_list
             else 0,
-            total_insights_items=sum(
-                len(insight.insights) for insight in insights_list
-            ),
-            avg_importance=round(
-                sum(insight.importance for insight in insights_list)
-                / len(insights_list),
-                2,
-            )
-            if insights_list
-            else 0,
         )
 
 
@@ -404,7 +384,6 @@ class IntelligenceOrchestrator:
         logger.info(
             "Formatted insights for synthesis",
             formatted_size_chars=len(formatted_insights),
-            estimated_tokens=len(formatted_insights) // 4,  # Rough token estimate
             estimated_tokens=len(formatted_insights) // 4,  # Rough token estimate
         )
 

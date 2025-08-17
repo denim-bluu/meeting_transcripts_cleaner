@@ -436,24 +436,6 @@ async def debug_list_tasks(
     }
 
 
-@router.get("/debug/analytics")
-async def debug_analytics() -> dict[str, Any]:
-    """Debug endpoint to get database analytics."""
-    task_repo = get_task_repository()
-
-    # Get analytics summary
-    analytics = await task_repo.get_analytics_summary()
-
-    # Get health check
-    health = await task_repo.health_check()
-
-    return {
-        "analytics": analytics,
-        "database_health": health,
-        "timestamp": datetime.now().isoformat(),
-    }
-
-
 # ===============================================================================
 # Task Management Endpoints
 # ===============================================================================
