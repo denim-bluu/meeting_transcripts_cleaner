@@ -6,9 +6,14 @@
 
 Modern organizations generate thousands of hours of meeting recordings, but extracting actionable intelligence from transcripts remains a manual, time-intensive process. Existing solutions either lack technical depth, hallucinate information, or fail to preserve critical business context.
 
-### Our Solution
+### The Solution
 
 The **Meeting Intelligence System** is a production-ready, microservices-based platform that transforms raw VTT transcripts into executive-quality summaries while preserving technical accuracy and business context. Built with modern cloud-native patterns and advanced AI agents.
+
+### Light Demo
+
+[streamlit-main-2025-08-17-20-08-35.webm](https://github.com/user-attachments/assets/2dd3ea7a-ee73-4c0e-98b7-1dcc9b17d73f)
+
 
 ---
 
