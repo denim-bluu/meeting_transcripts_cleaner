@@ -76,7 +76,7 @@ run-backend:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "🚀 Starting backend service on http://localhost:8000"
-    cd backend_service && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 [group('dev')]
 run-frontend:
@@ -96,7 +96,7 @@ dev:
     echo "Press Ctrl+C to stop both services"
 
     # Start backend in background
-    (cd backend_service && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000) &
+    (cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000) &
     BACKEND_PID=$!
 
     # Wait a moment for backend to start

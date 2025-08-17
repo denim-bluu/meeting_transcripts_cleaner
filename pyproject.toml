@@ -34,9 +34,7 @@ dependencies = [
   "uvicorn>=0.24.0",
   "streamlit>=1.39.0",
   "requests>=2.31.0",
-  # Database and storage
-  "aiosqlite>=0.20.0",
-  "duckdb>=1.1.0",
+  # Storage (simplified in-memory)
   # Utilities
   "aiofiles>=24.1.0",
   "asyncio-throttle>=1.0.2",
@@ -81,7 +79,7 @@ test = [
 # No scripts needed - use just dev or docker
 
 [tool.setuptools]
-packages = ["backend_service", "frontend"]
+packages = ["backend", "frontend"]
 
 [tool.black]
 line-length = 88
@@ -105,7 +103,7 @@ profile = "black"
 multi_line_output = 3
 line_length = 88
 known_first_party = [
-  "backend_service",
+  "backend",
   "frontend",
 ]
 

@@ -99,7 +99,7 @@ Project Structure:
 
 A clean, logical project structure is essential for long-term maintainability. Adopting principles from Clean Architecture is highly recommended, where dependencies flow inward from frameworks and drivers to core business logic.18 A suggested structure would be:
 
-backend_service/
+backend/
 
 ├── app/
 
@@ -291,7 +291,7 @@ FastAPI makes this straightforward with its CORSMiddleware. In the app/main.py f
 
 Python
 
-# In backend_service/app/main.py
+# In backend/app/main.py
 
 from fastapi import FastAPI
 
@@ -447,11 +447,11 @@ Two separate, optimized Dockerfiles are created.
 
     WORKDIR /app
 
-    COPY backend_service/requirements.txt.
+    COPY backend/requirements.txt.
 
     RUN pip install --no-cache-dir -r requirements.txt
 
-    COPY backend_service/.
+    COPY backend/.
 
     EXPOSE 8000
 
