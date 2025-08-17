@@ -14,16 +14,6 @@ The **Meeting Intelligence System** is a production-ready, microservices-based p
 
 ## System Architecture
 
-### Architectural Principles
-
-Our system follows **simplified microservices** and **clean architecture** principles optimized for containerized deployments:
-
-- **Stateless Services**: Horizontally scalable services with no persistent state
-- **Event-Driven Architecture**: Asynchronous processing with background task queues
-- **In-Memory Caching**: Simple TTL-based task storage for ephemeral container environments
-- **Dependency Injection**: Loose coupling through interface-based design
-- **Pure Function Agents**: Stateless AI agents for concurrent safety and reliability
-
 ### High-Level Architecture
 
 ```mermaid
@@ -136,35 +126,6 @@ graph TB
     class TC,FS data
     class OAI,LC external
 ```
-
-### Service Boundaries & Responsibilities
-
-#### Frontend Service (`frontend/`)
-
-**Responsibility**: User interface and user experience management
-
-- **Streamlit Web Application**: Interactive UI with real-time progress tracking
-- **API Client**: Type-safe HTTP client with automatic retry and error handling
-- **State Management**: Session state persistence and form validation
-- **Responsive Design**: Mobile-friendly interface with modern UX patterns
-
-#### Backend Service (`backend/`)
-
-**Responsibility**: Business logic orchestration and API management
-
-- **FastAPI Application**: High-performance async REST API with OpenAPI documentation
-- **Background Task Processing**: Queue-based long-running operations with progress tracking
-- **Health Check System**: Kubernetes-ready liveness and readiness probes
-- **Request/Response Pipeline**: Validation, serialization, and error handling
-
-#### Agent Domain (`backend/agents/`)
-
-**Responsibility**: AI-powered content processing and intelligence extraction
-
-- **Pure Pydantic AI Agents**: Stateless, concurrent-safe agents with built-in validation
-- **Dynamic Instruction System**: Context-aware prompt adaptation based on processing requirements
-- **Quality Assurance Pipeline**: Multi-stage validation with automatic retry mechanisms
-- **Concurrent Processing**: Parallel execution with proper error isolation
 
 ### Data Flow Architecture
 
