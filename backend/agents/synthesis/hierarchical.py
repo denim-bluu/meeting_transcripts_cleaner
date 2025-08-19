@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 
+from backend.config import settings
 from backend.models.intelligence import MeetingIntelligence
 
 # Ensure environment is loaded for API key
@@ -40,7 +41,7 @@ Extract action items mentioned across all segments with exact context given.
 # Pure agent definition - stateless and global
 # Using OpenAIResponsesModel for o3 models to enable thinking
 hierarchical_synthesis_agent = Agent(
-    OpenAIResponsesModel("o3"),
+    OpenAIResponsesModel(settings.synthesis_model),
     output_type=MeetingIntelligence,
     instructions=FINAL_HIERARCHICAL_INSTRUCTIONS,
     retries=2,  # Built-in validation retries (reduced with simpler prompts)

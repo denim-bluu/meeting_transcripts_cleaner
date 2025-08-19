@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 
+from backend.config import settings
+
 # Import for string output type
 # (segment synthesis returns plain string, not structured)
 
@@ -39,7 +41,7 @@ Quality over quantity - better to be accurate than comprehensive
 # Pure agent definition - stateless and global
 # Using OpenAIResponsesModel for o3 models to enable thinking
 segment_synthesis_agent = Agent(
-    OpenAIResponsesModel("o3-mini"),
+    OpenAIResponsesModel(settings.synthesis_model),
     instructions=SEGMENT_SYNTHESIS_INSTRUCTIONS,
     retries=2,  # Built-in validation retries (consistent with other agents)
     model_settings=OpenAIResponsesModelSettings(

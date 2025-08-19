@@ -44,9 +44,9 @@ class TranscriptService:
         self.throttler = Throttler(rate_limit=rate_limit, period=60)
 
         # Initialize services using pure agents
-        self.cleaner = TranscriptCleaningService(model="o3-mini")
-        self.reviewer = TranscriptReviewService(model="o3-mini")
-        self._intelligence_orchestrator = IntelligenceOrchestrator(model="o3-mini")
+        self.cleaner = TranscriptCleaningService()
+        self.reviewer = TranscriptReviewService()
+        self._intelligence_orchestrator = IntelligenceOrchestrator()
 
     def process_vtt(self, content: str) -> dict:
         """

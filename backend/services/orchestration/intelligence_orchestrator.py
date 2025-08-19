@@ -28,8 +28,7 @@ class IntelligenceOrchestrator:
     - Track processing stats and performance
     """
 
-    def __init__(self, model: str = "o3-mini"):
-        self.model = model
+    def __init__(self):
         self.chunker = SemanticChunker()
 
         self.MIN_IMPORTANCE = (
@@ -41,7 +40,6 @@ class IntelligenceOrchestrator:
 
         logger.info(
             "IntelligenceOrchestrator initialized with pure agents",
-            model=model,
             min_importance=self.MIN_IMPORTANCE,
             context_limit=self.CONTEXT_LIMIT,
         )
@@ -276,7 +274,6 @@ class IntelligenceOrchestrator:
                     actions_count=len(result.output.actions),
                 )
 
-
                 return i, result.output
 
             except Exception as e:
@@ -295,7 +292,6 @@ class IntelligenceOrchestrator:
             total_chunks=len(semantic_chunks),
             detail_level=detail_level,
         )
-
 
         tasks = [
             extract_single_chunk(i, chunk_text)
@@ -377,9 +373,7 @@ class IntelligenceOrchestrator:
             else 0,
         )
 
-
         formatted_insights = self._format_insights_for_synthesis(insights_list)
-
 
         logger.info(
             "Formatted insights for synthesis",
@@ -395,12 +389,10 @@ Return both summary (detailed markdown) and action_items (structured list)."""
 
         synthesis_start_time = time.time()
 
-
         try:
             logger.info(
                 "Calling direct synthesis agent",
                 agent_retries=2,  # Built-in Pydantic AI retries
-                model="o3-mini",
             )
 
             # Use capture_run_messages to log all interactions including retries

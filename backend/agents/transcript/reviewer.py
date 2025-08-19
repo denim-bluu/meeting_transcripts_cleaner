@@ -2,8 +2,9 @@
 
 from dotenv import load_dotenv
 from pydantic_ai import Agent
-from pydantic_ai.settings import ModelSettings
+from pydantic_ai.models.openai import OpenAIResponsesModel
 
+from backend.config import settings
 from backend.models.agents import ReviewResult
 
 # Ensure environment is loaded for API key
@@ -34,17 +35,8 @@ Output format: JSON with exactly these fields:
 
 # Pure agent definition - stateless and global
 review_agent = Agent(
-    "openai:o3-mini",
+    OpenAIResponsesModel(settings.review_model),
     output_type=ReviewResult,
     system_prompt=REVIEWER_SYSTEM_PROMPT,
     retries=3,  # Built-in retry on validation failure
 )
-
-
-# Model settings function for runtime configuration
-def get_model_settings(model: str) -> ModelSettings | None:
-    """Get appropriate model settings based on model type."""
-    if model.startswith("o3"):
-        return None  # o3 models don't support temperature/max_tokens
-    else:
-        return ModelSettings(temperature=0.2, max_tokens=500)

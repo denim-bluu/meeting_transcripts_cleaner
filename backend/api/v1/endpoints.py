@@ -552,37 +552,37 @@ async def debug_force_cleanup() -> dict[str, Any]:
 async def debug_analytics() -> dict[str, Any]:
     """
     Debug endpoint providing analytics data for the Database tab.
-    
+
     Provides database/cache analytics that were previously from a database system.
     Now adapted for the in-memory cache system.
     """
     cache = get_task_cache()
-    
+
     # Get cache health and task statistics
     health_info = await cache.health_check()
     all_tasks = await cache.list_tasks(limit=1000)
-    
+
     # Calculate analytics similar to what a database would provide
     total_tasks = len(all_tasks)
-    
+
     # Status distribution
     status_distribution = {}
     for task in all_tasks:
         status = task.status.value
         status_distribution[status] = status_distribution.get(status, 0) + 1
-    
+
     # Type distribution
     type_distribution = {}
     for task in all_tasks:
         task_type = task.task_type.value
         type_distribution[task_type] = type_distribution.get(task_type, 0) + 1
-    
+
     # Calculate completion rate
     completed_tasks = status_distribution.get("completed", 0)
     failed_tasks = status_distribution.get("failed", 0)
     total_finished = completed_tasks + failed_tasks
     success_rate = (completed_tasks / total_finished * 100) if total_finished > 0 else 0
-    
+
     # Average task duration
     total_duration = 0
     duration_count = 0
@@ -590,16 +590,15 @@ async def debug_analytics() -> dict[str, Any]:
         if task.updated_at and task.created_at:
             total_duration += (task.updated_at - task.created_at).total_seconds()
             duration_count += 1
-    
+
     avg_duration = total_duration / duration_count if duration_count > 0 else 0
-    
+
     # Recent activity (last hour)
     now = datetime.now()
     recent_tasks = sum(
-        1 for task in all_tasks 
-        if (now - task.created_at).total_seconds() < 3600
+        1 for task in all_tasks if (now - task.created_at).total_seconds() < 3600
     )
-    
+
     return {
         "cache_analytics": {
             "total_tasks": total_tasks,
@@ -855,7 +854,7 @@ async def run_intelligence_extraction(
         )
 
         # Initialize orchestrator
-        orchestrator = IntelligenceOrchestrator(model="o3-mini")
+        orchestrator = IntelligenceOrchestrator()
 
         # Progress callback that updates task in cache
         async def update_progress(progress: float, message: str) -> None:
