@@ -3,6 +3,7 @@
 import asyncio
 import time
 
+from asyncio_throttle.throttler import Throttler
 import structlog
 
 # Use pure agents following Pydantic AI best practices
@@ -10,6 +11,7 @@ from backend.agents.extraction.insights import chunk_extraction_agent
 from backend.agents.synthesis.direct import direct_synthesis_agent
 from backend.agents.synthesis.hierarchical import hierarchical_synthesis_agent
 from backend.agents.synthesis.segment import segment_synthesis_agent
+from backend.config import settings
 from backend.models.intelligence import ChunkInsights, MeetingIntelligence
 from backend.models.transcript import VTTChunk
 from backend.utils.semantic_chunker import SemanticChunker
@@ -68,7 +70,9 @@ class IntelligenceOrchestrator:
                 progress_callback(0.1, "Phase 1: Semantic chunking...")
         logger.info("Phase 1: Starting semantic chunking")
         phase1_start = time.time()
-        semantic_chunks = self.chunker.create_chunks(cleaned_chunks)
+        semantic_chunks = await asyncio.to_thread(
+            self.chunker.create_chunks, cleaned_chunks
+        )
         phase1_time = int((time.time() - phase1_start) * 1000)
         logger.info(
             "Phase 1 completed",
@@ -236,6 +240,9 @@ class IntelligenceOrchestrator:
         """Extract insights from all semantic chunks using concurrent processing."""
         import asyncio
 
+        semaphore = asyncio.Semaphore(settings.max_concurrent_tasks)
+        throttler = Throttler(rate_limit=settings.rate_limit_per_minute, period=60)
+
         async def extract_single_chunk(
             i: int, chunk_text: str
         ) -> tuple[int, ChunkInsights]:
@@ -263,7 +270,8 @@ class IntelligenceOrchestrator:
                     position=context.get("position", "middle"),
                 )
 
-                result = await chunk_extraction_agent.run(user_prompt, deps=context)
+                async with semaphore, throttler:
+                    result = await chunk_extraction_agent.run(user_prompt, deps=context)
 
                 logger.info(
                     "Chunk extraction completed",

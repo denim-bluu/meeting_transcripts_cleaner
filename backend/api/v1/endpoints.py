@@ -5,6 +5,7 @@ This module contains all the FastAPI route handlers with proper Pydantic schema
 validation, error handling, and OpenAPI documentation.
 """
 
+import asyncio
 from datetime import datetime, timedelta
 import os
 from typing import Any
@@ -771,7 +772,13 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
 
         # Since TranscriptService expects a sync callback, we'll handle progress differently
         def update_progress_sync(progress: float, message: str) -> None:
-            """Sync progress callback - just log for now."""
+            """Sync progress callback - schedule async cache update and log."""
+            try:
+                asyncio.create_task(update_progress_async(progress, message))
+            except Exception as e:
+                logger.warning(
+                    "Failed to schedule progress update", task_id=task_id, error=str(e)
+                )
             logger.info(
                 "Processing progress",
                 task_id=task_id,
@@ -786,7 +793,8 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
             await cache.update_task(task)
 
         # Process VTT
-        transcript = service.process_vtt(content)
+
+        transcript = await asyncio.to_thread(service.process_vtt, content)
 
         # Update task: starting AI cleaning
         task = await cache.get_task(task_id)
