@@ -34,6 +34,7 @@ from backend.api.v1.schemas import (
     validate_file_extension,
     validate_file_size,
 )
+from backend.config import settings
 from backend.core.task_cache import TaskEntry, TaskStatus, TaskType, get_task_cache
 
 logger = structlog.get_logger(__name__)
@@ -160,6 +161,16 @@ async def health_check() -> HealthStatus:
         uptime_seconds=uptime_seconds,
         tasks_in_memory=task_count,
         dependencies=dependencies,
+        models={
+            "default_model": settings.default_model,
+            "cleaning_model": settings.cleaning_model,
+            "review_model": settings.review_model,
+            "insights_model": settings.insights_model,
+            "synthesis_model": settings.synthesis_model,
+            "segment_model": settings.segment_model,
+            "synthesis_reasoning_effort": settings.synthesis_reasoning_effort,
+            "synthesis_reasoning_summary": settings.synthesis_reasoning_summary,
+        },
     )
 
 
@@ -230,6 +241,10 @@ async def process_transcript(
         metadata={
             "filename": file.filename,
             "file_size_bytes": len(content),
+            "models": {
+                "cleaning_model": settings.cleaning_model,
+                "review_model": settings.review_model,
+            },
         },
     )
 
@@ -248,6 +263,8 @@ async def process_transcript(
         filename=file.filename,
         content_size=len(content_str),
         idempotent=bool(idempotency_key),
+        cleaning_model=settings.cleaning_model,
+        review_model=settings.review_model,
     )
 
     # Process in background
@@ -317,6 +334,13 @@ async def extract_intelligence(
             "detail_level": request.detail_level.value,
             "transcript_id": request.transcript_id,
             "custom_instructions": request.custom_instructions,
+            "models": {
+                "insights_model": settings.insights_model,
+                "synthesis_model": settings.synthesis_model,
+                "segment_model": settings.segment_model,
+                "synthesis_reasoning_effort": settings.synthesis_reasoning_effort,
+                "synthesis_reasoning_summary": settings.synthesis_reasoning_summary,
+            },
         },
     )
 
@@ -335,6 +359,11 @@ async def extract_intelligence(
         transcript_id=request.transcript_id,
         detail_level=request.detail_level.value,
         idempotent=bool(request.idempotency_key),
+        insights_model=settings.insights_model,
+        synthesis_model=settings.synthesis_model,
+        segment_model=settings.segment_model,
+        synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
+        synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
     )
 
     # Extract intelligence in background

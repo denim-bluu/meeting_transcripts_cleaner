@@ -3,9 +3,12 @@
 from dotenv import load_dotenv
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIResponsesModel
+import structlog
 
 from backend.config import settings
 from backend.models.agents import ReviewResult
+
+logger = structlog.get_logger(__name__)
 
 # Ensure environment is loaded for API key
 load_dotenv()
@@ -40,3 +43,4 @@ review_agent = Agent(
     system_prompt=REVIEWER_SYSTEM_PROMPT,
     retries=3,  # Built-in retry on validation failure
 )
+logger.info("Review agent configured", review_model=settings.review_model)

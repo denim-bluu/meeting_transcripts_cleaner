@@ -6,12 +6,14 @@ from pydantic_ai.models.openai import (
     OpenAIResponsesModel,
     OpenAIResponsesModelSettings,
 )
+import structlog
 
 from backend.config import settings
 from backend.models.intelligence import MeetingIntelligence
 
 # Ensure environment is loaded for API key
 load_dotenv()
+logger = structlog.get_logger(__name__)
 
 # Agent configuration as module constants - following industry best practices
 PRODUCTION_SYNTHESIS_INSTRUCTIONS = """
@@ -62,4 +64,10 @@ direct_synthesis_agent = Agent(
             else "detailed"
         ),
     ),
+)
+logger.info(
+    "Direct synthesis agent configured",
+    synthesis_model=settings.synthesis_model,
+    synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
+    synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
 )

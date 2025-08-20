@@ -5,6 +5,7 @@ import time
 import structlog
 
 from backend.agents.transcript.cleaner import cleaning_agent
+from backend.config import settings
 from backend.models.agents import CleaningResult
 from backend.models.transcript import VTTChunk
 
@@ -16,7 +17,10 @@ class TranscriptCleaningService:
 
     def __init__(self):
         """Initialize service using agent's internal configuration."""
-        logger.info("TranscriptCleaningService initialized")
+        logger.info(
+            "TranscriptCleaningService initialized",
+            cleaning_model=settings.cleaning_model,
+        )
 
     async def clean_chunk(self, chunk: VTTChunk, prev_text: str = "") -> CleaningResult:
         """Clean a transcript chunk using the pure cleaning agent.
@@ -44,6 +48,7 @@ class TranscriptCleaningService:
             speakers=chunk_speakers,
             text_length=len(chunk_text),
             context_length=len(context),
+            cleaning_model=settings.cleaning_model,
             text_preview=chunk_text[:100].replace("\n", " ") + "..."
             if len(chunk_text) > 100
             else chunk_text,
@@ -68,6 +73,7 @@ Return JSON with cleaned_text, confidence, and changes_made."""
             logger.debug(
                 "Sending request to OpenAI API",
                 chunk_id=chunk.chunk_id,
+                cleaning_model=settings.cleaning_model,
             )
 
             # Use the pure global agent with runtime model override if needed
@@ -92,6 +98,7 @@ Return JSON with cleaned_text, confidence, and changes_made."""
                 chunk_id=chunk.chunk_id,
                 processing_time_ms=int(processing_time * 1000),
                 api_call_time_ms=int(api_call_time * 1000),
+                cleaning_model=settings.cleaning_model,
                 confidence=result.output.confidence,
                 changes_count=len(result.output.changes_made),
                 changes_made=result.output.changes_made[

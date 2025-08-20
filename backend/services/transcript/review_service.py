@@ -5,6 +5,7 @@ import time
 import structlog
 
 from backend.agents.transcript.reviewer import review_agent
+from backend.config import settings
 from backend.models.agents import ReviewResult
 from backend.models.transcript import VTTChunk
 
@@ -16,7 +17,10 @@ class TranscriptReviewService:
 
     def __init__(self):
         """Initialize service using agent's internal configuration."""
-        logger.info("TranscriptReviewService initialized")
+        logger.info(
+            "TranscriptReviewService initialized",
+            review_model=settings.review_model,
+        )
 
     async def review_chunk(self, original: VTTChunk, cleaned: str) -> ReviewResult:
         """Review a cleaned transcript chunk using the pure review agent.
@@ -45,6 +49,7 @@ Evaluate the cleaning quality and return JSON with quality_score, issues, and ac
                 chunk_id=original.chunk_id,
                 original_length=len(original.to_transcript_text()),
                 cleaned_length=len(cleaned),
+                review_model=settings.review_model,
             )
 
             # Run review agent using its internal configuration
@@ -56,6 +61,7 @@ Evaluate the cleaning quality and return JSON with quality_score, issues, and ac
                 "Chunk review completed",
                 chunk_id=original.chunk_id,
                 processing_time_ms=int(processing_time * 1000),
+                review_model=settings.review_model,
                 quality_score=result.output.quality_score,
                 issues_count=len(result.output.issues),
                 accepted=result.output.accept,

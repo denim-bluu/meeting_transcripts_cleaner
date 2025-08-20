@@ -3,9 +3,12 @@
 from dotenv import load_dotenv
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIResponsesModel
+import structlog
 
 from backend.config import settings
 from backend.models.agents import CleaningResult
+
+logger = structlog.get_logger(__name__)
 
 # Ensure environment is loaded for API key
 load_dotenv()
@@ -36,6 +39,7 @@ cleaning_agent = Agent(
     deps_type=dict,  # Accept context dictionary for tools
     retries=3,  # Built-in retry on validation failure
 )
+logger.info("Cleaning agent configured", cleaning_model=settings.cleaning_model)
 
 
 # Add tools for dynamic context (following Pydantic AI patterns)

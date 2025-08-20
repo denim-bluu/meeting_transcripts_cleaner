@@ -44,6 +44,11 @@ class IntelligenceOrchestrator:
             "IntelligenceOrchestrator initialized with pure agents",
             min_importance=self.MIN_IMPORTANCE,
             context_limit=self.CONTEXT_LIMIT,
+            insights_model=settings.insights_model,
+            synthesis_model=settings.synthesis_model,
+            segment_model=settings.segment_model,
+            synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
+            synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
         )
 
     async def process_meeting(
@@ -60,7 +65,15 @@ class IntelligenceOrchestrator:
         Returns MeetingIntelligence with structured output.
         """
         start_time = time.time()
-        logger.info("Starting intelligence processing", vtt_chunks=len(cleaned_chunks))
+        logger.info(
+            "Starting intelligence processing",
+            vtt_chunks=len(cleaned_chunks),
+            insights_model=settings.insights_model,
+            synthesis_model=settings.synthesis_model,
+            segment_model=settings.segment_model,
+            synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
+            synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
+        )
 
         # Phase 1: Semantic chunking (no API calls)
         if progress_callback:
@@ -268,6 +281,7 @@ class IntelligenceOrchestrator:
                     total_chunks=len(semantic_chunks),
                     chunk_size_chars=len(chunk_text),
                     position=context.get("position", "middle"),
+                    insights_model=settings.insights_model,
                 )
 
                 async with semaphore, throttler:
@@ -400,6 +414,9 @@ Return both summary (detailed markdown) and action_items (structured list)."""
             logger.info(
                 "Calling direct synthesis agent",
                 agent_retries=2,  # Built-in Pydantic AI retries
+                synthesis_model=settings.synthesis_model,
+                synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
+                synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
             )
 
             # Use capture_run_messages to log all interactions including retries
@@ -466,6 +483,7 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                 "Processing segment",
                 segment_index=i + 1,
                 insights_in_segment=len(segment_insights),
+                segment_model=settings.segment_model,
             )
 
             # Format insights for segment synthesis
@@ -537,6 +555,7 @@ Return both summary (detailed markdown) and action_items (structured list)."""
         logger.info(
             "Starting final hierarchical synthesis",
             segment_summaries_count=len(segment_summaries),
+            synthesis_model=settings.synthesis_model,
         )
 
         # Combine all segment summaries

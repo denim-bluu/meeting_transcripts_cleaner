@@ -3,8 +3,11 @@
 from dotenv import load_dotenv
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
+import structlog
 
 from backend.config import settings
+
+logger = structlog.get_logger(__name__)
 
 # Import for string output type
 # (segment synthesis returns plain string, not structured)
@@ -56,4 +59,11 @@ segment_synthesis_agent = Agent(
             else "detailed"
         ),
     ),
+)
+
+logger.info(
+    "Segment synthesis agent configured",
+    segment_model=settings.segment_model,
+    synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
+    synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
 )

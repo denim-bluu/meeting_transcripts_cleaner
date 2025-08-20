@@ -3,9 +3,12 @@
 from dotenv import load_dotenv
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIResponsesModel
+import structlog
 
 from backend.config import settings
 from backend.models.intelligence import ChunkInsights
+
+logger = structlog.get_logger(__name__)
 
 # Ensure environment is loaded for API key
 load_dotenv()
@@ -42,6 +45,7 @@ chunk_extraction_agent = Agent(
     deps_type=dict,  # Accept context dictionary as dependency
     retries=2,  # Built-in retry on validation failure
 )
+logger.info("Chunk extraction agent configured", insights_model=settings.insights_model)
 
 
 # Dynamic instructions based on meeting context (following Pydantic AI patterns)
