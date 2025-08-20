@@ -3,6 +3,11 @@
 from dotenv import load_dotenv
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
+import structlog
+
+from backend.config import settings
+
+logger = structlog.get_logger(__name__)
 
 # Import for string output type
 # (segment synthesis returns plain string, not structured)
@@ -39,11 +44,26 @@ Quality over quantity - better to be accurate than comprehensive
 # Pure agent definition - stateless and global
 # Using OpenAIResponsesModel for o3 models to enable thinking
 segment_synthesis_agent = Agent(
-    OpenAIResponsesModel("o3-mini"),
+    OpenAIResponsesModel(settings.segment_model),
     instructions=SEGMENT_SYNTHESIS_INSTRUCTIONS,
     retries=2,  # Built-in validation retries (consistent with other agents)
     model_settings=OpenAIResponsesModelSettings(
-        openai_reasoning_effort="high",  # Enable thinking for complex reasoning
-        openai_reasoning_summary="detailed",  # Include detailed reasoning summaries
+        openai_reasoning_effort=(
+            settings.synthesis_reasoning_effort
+            if settings.synthesis_reasoning_effort in ("low", "medium", "high")
+            else "high"
+        ),
+        openai_reasoning_summary=(
+            settings.synthesis_reasoning_summary
+            if settings.synthesis_reasoning_summary in ("detailed", "concise")
+            else "detailed"
+        ),
     ),
+)
+
+logger.info(
+    "Segment synthesis agent configured",
+    segment_model=settings.segment_model,
+    synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
+    synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
 )

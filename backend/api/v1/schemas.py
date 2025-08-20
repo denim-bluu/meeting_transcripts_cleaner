@@ -240,6 +240,10 @@ class HealthStatus(BaseModel):
     dependencies: dict[str, str] = Field(
         default_factory=dict, description="Dependency status"
     )
+    models: dict[str, str] = Field(
+        default_factory=dict,
+        description="Configured LLM models (cleaning, review, insights, synthesis, segment, and reasoning settings)",
+    )
 
     model_config = {"json_encoders": {datetime: lambda v: v.isoformat()}}
 

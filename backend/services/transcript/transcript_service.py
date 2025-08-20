@@ -36,6 +36,8 @@ class TranscriptService:
         self.transcript_cleaner = None
         self.transcript_reviewer = None
         self.semaphore = asyncio.Semaphore(max_concurrent)
+        # Keep an explicit copy of the configured concurrency for worker sizing
+        self.max_concurrent = max_concurrent
 
         # Initialize VTT processor
         self.processor = VTTProcessor()
@@ -44,9 +46,9 @@ class TranscriptService:
         self.throttler = Throttler(rate_limit=rate_limit, period=60)
 
         # Initialize services using pure agents
-        self.cleaner = TranscriptCleaningService(model="o3-mini")
-        self.reviewer = TranscriptReviewService(model="o3-mini")
-        self._intelligence_orchestrator = IntelligenceOrchestrator(model="o3-mini")
+        self.cleaner = TranscriptCleaningService()
+        self.reviewer = TranscriptReviewService()
+        self._intelligence_orchestrator = IntelligenceOrchestrator()
 
     def process_vtt(self, content: str) -> dict:
         """
@@ -167,7 +169,8 @@ class TranscriptService:
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> dict:
         """
-        Run concurrent AI cleaning and review on all chunks with enterprise-grade error handling.
+        Run concurrent AI cleaning and review on all chunks using a single in-process
+        asyncio.Queue with bounded concurrency (Semaphore) and provider rate limiting.
 
         Args:
             transcript: Output from process_vtt()
@@ -179,7 +182,7 @@ class TranscriptService:
         total_chunks = len(chunks)
 
         logger.info(
-            "Starting concurrent transcript processing",
+            "Starting concurrent transcript processing (single-queue)",
             total_chunks=total_chunks,
             total_speakers=len(transcript["speakers"]),
             duration_seconds=transcript["duration"],
@@ -194,151 +197,127 @@ class TranscriptService:
 
         start_time = time.time()
 
-        # Process chunks concurrently in batches to maintain context flow
-        batch_size = min(10, total_chunks)  # Reduced for o3-mini stability
-        cleaned_chunks: list[CleaningResult | None] = [
-            None
-        ] * total_chunks  # Pre-allocate for order preservation
+        # Pre-allocate for order preservation
+        cleaned_chunks: list[CleaningResult | None] = [None] * total_chunks
         review_results: list[ReviewResult | None] = [None] * total_chunks
 
-        # Track progress
-        completed_chunks = 0
+        # Worker sizing respects OpenAI concurrency controls via Semaphore
+        worker_count = min(
+            total_chunks, max(1, getattr(self, "max_concurrent", self.semaphore._value))
+        )
 
-        for batch_start in range(0, total_chunks, batch_size):
-            batch_end = min(batch_start + batch_size, total_chunks)
-            batch_chunks = chunks[batch_start:batch_end]
-            current_batch = batch_start // batch_size + 1
-            total_batches = (total_chunks + batch_size - 1) // batch_size
+        # Single in-process work queue
+        queue: asyncio.Queue = asyncio.Queue()
 
-            if progress_callback:
-                progress = completed_chunks / total_chunks
-                # Calculate active requests more accurately
-                active_requests = len(
-                    batch_chunks
-                )  # All chunks in current batch are active
-                status = f"Batch {current_batch}/{total_batches} • {len(batch_chunks)} chunks • {active_requests} active • Concurrency: {batch_size}"
-                progress_callback(progress, status)
-            # Create tasks for concurrent processing
-            tasks: list[
-                tuple[int, asyncio.Task[tuple[CleaningResult, ReviewResult]]]
-            ] = []
+        # NOTE: Intentional design for value first. This in-process queue is the simplest
+        # way to reduce tail latency and improve throughput. When/if we need durability
+        # and horizontal scaling, we can swap this queue for Redis/SQS with the same worker
+        # function and shared rate limiter semantics. For now, we prioritize faster delivery.
 
-            for i, chunk in enumerate(batch_chunks):
-                chunk_index: int = batch_start + i
+        # Enqueue all chunks
+        for idx, ch in enumerate(chunks):
+            queue.put_nowait((idx, ch))
 
-                # Get previous chunk context (sequential for quality)
-                prev_text: str = ""
-                prev_chunk: CleaningResult | None = (
-                    cleaned_chunks[chunk_index - 1] if chunk_index > 0 else None
-                )
-                if prev_chunk is not None:
-                    prev_text = prev_chunk.cleaned_text[-200:]  # Last 200 chars
+        # Sentinels are enqueued after processing completes to avoid any worker exiting early.
 
-                # Explicitly create an asyncio.Task so we can add type hints
-                task: asyncio.Task[tuple[CleaningResult, ReviewResult]] = (
-                    asyncio.create_task(
-                        self._process_chunk_with_concurrency_control(
-                            chunk, chunk_index, prev_text
-                        )
-                    )
-                )
+        # Progress tracking
+        completed = 0
+        progress_lock = asyncio.Lock()
 
-                tasks.append((chunk_index, task))
-
-            # Execute batch concurrently using asyncio.gather
-            logger.debug(
-                f"Executing batch {batch_start // batch_size + 1} with {len(tasks)} chunks"
+        if progress_callback:
+            progress_callback(
+                0.0,
+                f"Queued {total_chunks} chunks • Workers: {worker_count} • Concurrency limit: {getattr(self, 'max_concurrent', self.semaphore._value)}",
             )
 
-            # Extract just the tasks for concurrent execution
-            task_list = [task for _, task in tasks]
+        async def worker(worker_id: int):
+            nonlocal completed
+            while True:
+                item = await queue.get()
+                try:
+                    if item is None:
+                        # Sentinel - acknowledge and exit
+                        return
 
-            try:
-                # Execute all tasks in this batch concurrently
-                batch_results = await asyncio.gather(*task_list, return_exceptions=True)
+                    idx, ch = item
 
-                # Process results and handle any exceptions
-                batch_completed_count = 0
-                for i, (chunk_index, _) in enumerate(tasks):
-                    result = batch_results[i]
+                    # Previous context: prefer cleaned previous if available, else raw previous text
+                    prev_text = ""
+                    if idx > 0:
+                        prev_clean = cleaned_chunks[idx - 1]
+                        if prev_clean:
+                            prev_text = prev_clean.cleaned_text[-200:]
+                        else:
+                            prev_text = chunks[idx - 1].to_transcript_text()[-200:]
 
-                    if isinstance(result, Exception):
+                    try:
+                        (
+                            clean_res,
+                            review_res,
+                        ) = await self._process_chunk_with_concurrency_control(
+                            ch, idx, prev_text
+                        )
+                    except Exception as e:
                         logger.error(
-                            "Batch processing failed for chunk",
-                            chunk_index=chunk_index,
-                            error=str(result),
+                            "Chunk processing failed",
+                            chunk_id=ch.chunk_id,
+                            chunk_index=idx,
+                            error=str(e),
                         )
-
-                        # Fallback to original text
-                        cleaned_chunks[chunk_index] = CleaningResult(
-                            cleaned_text=chunks[chunk_index].to_transcript_text(),
+                        # Fallback to original text on error
+                        clean_res = CleaningResult(
+                            cleaned_text=ch.to_transcript_text(),
                             confidence=0.0,
-                            changes_made=[f"Processing failed: {str(result)}"],
+                            changes_made=[f"Processing failed: {str(e)}"],
                         )
-                        review_results[chunk_index] = ReviewResult(
+                        review_res = ReviewResult(
                             quality_score=0.0,
-                            issues=[f"Processing error: {str(result)}"],
+                            issues=[f"Processing error: {str(e)}"],
                             accept=False,
                         )
-                    else:
-                        clean_result, review_result = result  # type: ignore
-                        cleaned_chunks[chunk_index] = clean_result
-                        review_results[chunk_index] = review_result
 
-                    batch_completed_count += 1
+                    cleaned_chunks[idx] = clean_res
+                    review_results[idx] = review_res
 
-                    # Update progress more frequently - after each chunk in the batch
-                    if (
-                        progress_callback and batch_completed_count % 1 == 0
-                    ):  # Update after every chunk
-                        current_total_completed = batch_start + batch_completed_count
-                        progress = current_total_completed / total_chunks
-                        active_remaining = len(batch_chunks) - batch_completed_count
+                    # Update progress after each chunk
+                    async with progress_lock:
+                        completed += 1
+                        if progress_callback:
+                            progress = completed / total_chunks
+                            elapsed_time = time.time() - start_time
+                            chunks_per_sec = (
+                                completed / elapsed_time if elapsed_time > 0 else 0
+                            )
+                            remaining_chunks = total_chunks - completed
+                            eta = (
+                                remaining_chunks / chunks_per_sec
+                                if chunks_per_sec > 0
+                                else 0
+                            )
+                            in_queue = max(
+                                0, queue.qsize() - worker_count
+                            )  # rough estimate of not-yet-picked items
+                            status = (
+                                f"Processing {completed}/{total_chunks} • in-queue: {in_queue} "
+                                f"• concurrency: {worker_count} • {chunks_per_sec:.1f}/sec • ETA: {eta:.1f}s"
+                            )
+                            progress_callback(progress, status)
+                finally:
+                    # Mark task (including sentinel) as done
+                    queue.task_done()
 
-                        elapsed_time = time.time() - start_time
-                        chunks_per_sec = (
-                            current_total_completed / elapsed_time
-                            if elapsed_time > 0
-                            else 0
-                        )
+        # Launch workers under structured concurrency
+        workers = [asyncio.create_task(worker(i)) for i in range(worker_count)]
 
-                        status = f"Batch {current_batch}/{total_batches} • {batch_completed_count}/{len(batch_chunks)} done • {active_remaining} active • {chunks_per_sec:.1f}/sec"
-                        progress_callback(progress, status)
+        # Wait for all tasks to be processed
+        await queue.join()
 
-            except Exception as e:
-                logger.error(
-                    "Batch execution failed",
-                    batch_start=batch_start,
-                    batch_end=batch_end,
-                    error=str(e),
-                )
-                # Fallback for entire batch
+        # Now signal workers to exit by pushing sentinels
+        for _ in range(worker_count):
+            queue.put_nowait(None)
 
-                for chunk_index, _ in tasks:
-                    cleaned_chunks[chunk_index] = CleaningResult(
-                        cleaned_text=chunks[chunk_index].to_transcript_text(),
-                        confidence=0.0,
-                        changes_made=[f"Batch processing failed: {str(e)}"],
-                    )
-                    review_results[chunk_index] = ReviewResult(
-                        quality_score=0.0,
-                        issues=[f"Batch error: {str(e)}"],
-                        accept=False,
-                    )
-
-            # Update progress after batch completion
-            completed_chunks = batch_end
-            if progress_callback:
-                progress = completed_chunks / total_chunks
-                elapsed_time = time.time() - start_time
-                chunks_per_sec = (
-                    completed_chunks / elapsed_time if elapsed_time > 0 else 0
-                )
-                remaining_chunks = total_chunks - completed_chunks
-                eta = remaining_chunks / chunks_per_sec if chunks_per_sec > 0 else 0
-
-                status = f"Completed batch {current_batch}/{total_batches} • {completed_chunks}/{total_chunks} chunks • {chunks_per_sec:.1f}/sec • ETA: {eta:.1f}s"
-                progress_callback(progress, status)
+        # Ensure workers exit after receiving sentinels
+        await asyncio.gather(*workers, return_exceptions=False)
 
         # Final progress update
         if progress_callback:
@@ -378,7 +357,9 @@ class TranscriptService:
         transcript["final_transcript"] = final_transcript
         transcript["processing_stats"] = {
             "processing_time_seconds": processing_time,
-            "chunks_per_second": total_chunks / processing_time,
+            "chunks_per_second": (total_chunks / processing_time)
+            if processing_time > 0
+            else 0.0,
             "accepted_chunks": accepted_count,
             "average_quality_score": avg_quality,
         }

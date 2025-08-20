@@ -2,12 +2,18 @@
 
 from dotenv import load_dotenv
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
+from pydantic_ai.models.openai import (
+    OpenAIResponsesModel,
+    OpenAIResponsesModelSettings,
+)
+import structlog
 
+from backend.config import settings
 from backend.models.intelligence import MeetingIntelligence
 
 # Ensure environment is loaded for API key
 load_dotenv()
+logger = structlog.get_logger(__name__)
 
 # Agent configuration as module constants - concise accuracy-first approach
 FINAL_HIERARCHICAL_INSTRUCTIONS = """
@@ -40,12 +46,26 @@ Extract action items mentioned across all segments with exact context given.
 # Pure agent definition - stateless and global
 # Using OpenAIResponsesModel for o3 models to enable thinking
 hierarchical_synthesis_agent = Agent(
-    OpenAIResponsesModel("o3"),
+    OpenAIResponsesModel(settings.synthesis_model),
     output_type=MeetingIntelligence,
     instructions=FINAL_HIERARCHICAL_INSTRUCTIONS,
     retries=2,  # Built-in validation retries (reduced with simpler prompts)
     model_settings=OpenAIResponsesModelSettings(
-        openai_reasoning_effort="high",  # Enable thinking for complex reasoning
-        openai_reasoning_summary="detailed",  # Include detailed reasoning summaries
+        openai_reasoning_effort=(
+            settings.synthesis_reasoning_effort
+            if settings.synthesis_reasoning_effort in ("low", "medium", "high")
+            else "high"
+        ),
+        openai_reasoning_summary=(
+            settings.synthesis_reasoning_summary
+            if settings.synthesis_reasoning_summary in ("detailed", "concise")
+            else "detailed"
+        ),
     ),
+)
+logger.info(
+    "Hierarchical synthesis agent configured",
+    synthesis_model=settings.synthesis_model,
+    synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
+    synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
 )

@@ -4,7 +4,8 @@ import time
 
 import structlog
 
-from backend.agents.transcript.reviewer import get_model_settings, review_agent
+from backend.agents.transcript.reviewer import review_agent
+from backend.config import settings
 from backend.models.agents import ReviewResult
 from backend.models.transcript import VTTChunk
 
@@ -14,14 +15,12 @@ logger = structlog.get_logger(__name__)
 class TranscriptReviewService:
     """Orchestrates transcript review using pure Pydantic AI agents."""
 
-    def __init__(self, model: str = "o3-mini"):
-        """Initialize service with model configuration.
-
-        Args:
-            model: Model name to use (e.g., 'o3-mini', 'gpt-4')
-        """
-        self.model = model
-        logger.info("TranscriptReviewService initialized", model=model)
+    def __init__(self):
+        """Initialize service using agent's internal configuration."""
+        logger.info(
+            "TranscriptReviewService initialized",
+            review_model=settings.review_model,
+        )
 
     async def review_chunk(self, original: VTTChunk, cleaned: str) -> ReviewResult:
         """Review a cleaned transcript chunk using the pure review agent.
@@ -50,20 +49,11 @@ Evaluate the cleaning quality and return JSON with quality_score, issues, and ac
                 chunk_id=original.chunk_id,
                 original_length=len(original.to_transcript_text()),
                 cleaned_length=len(cleaned),
-                model=self.model,
+                review_model=settings.review_model,
             )
 
-            # Get appropriate model settings
-            settings = get_model_settings(self.model)
-
-            # Use the pure global agent with runtime model override if needed
-            if self.model != "o3-mini":
-                # Override model using Pydantic AI's override method
-                with review_agent.override(model=f"openai:{self.model}"):
-                    result = await review_agent.run(user_prompt, model_settings=settings)
-            else:
-                # Use default model
-                result = await review_agent.run(user_prompt, model_settings=settings)
+            # Run review agent using its internal configuration
+            result = await review_agent.run(user_prompt)
 
             processing_time = time.time() - start_time
 
@@ -71,10 +61,10 @@ Evaluate the cleaning quality and return JSON with quality_score, issues, and ac
                 "Chunk review completed",
                 chunk_id=original.chunk_id,
                 processing_time_ms=int(processing_time * 1000),
+                review_model=settings.review_model,
                 quality_score=result.output.quality_score,
                 issues_count=len(result.output.issues),
                 accepted=result.output.accept,
-                model=self.model,
             )
 
             return result.output
@@ -85,6 +75,5 @@ Evaluate the cleaning quality and return JSON with quality_score, issues, and ac
                 chunk_id=original.chunk_id,
                 error=str(e),
                 processing_time_ms=int((time.time() - start_time) * 1000),
-                model=self.model,
             )
             raise

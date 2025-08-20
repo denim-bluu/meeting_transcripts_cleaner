@@ -4,8 +4,6 @@ Simple configuration for VTT transcript processing.
 This module provides basic settings for the simplified VTT processing pipeline.
 """
 
-import os
-
 import structlog
 
 # Load .env file if it exists
@@ -20,12 +18,6 @@ except ImportError:
 
 class Config:
     """Simple configuration for VTT processing."""
-
-    # AI Agent settings
-    DEFAULT_MODEL = "o3-mini"
-    CLEANING_MODEL = os.getenv("CLEANING_MODEL", DEFAULT_MODEL)
-    REVIEW_MODEL = os.getenv("REVIEW_MODEL", DEFAULT_MODEL)
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 
 def configure_structlog() -> None:

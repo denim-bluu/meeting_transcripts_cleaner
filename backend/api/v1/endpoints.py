@@ -5,6 +5,7 @@ This module contains all the FastAPI route handlers with proper Pydantic schema
 validation, error handling, and OpenAPI documentation.
 """
 
+import asyncio
 from datetime import datetime, timedelta
 import os
 from typing import Any
@@ -33,6 +34,7 @@ from backend.api.v1.schemas import (
     validate_file_extension,
     validate_file_size,
 )
+from backend.config import settings
 from backend.core.task_cache import TaskEntry, TaskStatus, TaskType, get_task_cache
 
 logger = structlog.get_logger(__name__)
@@ -159,6 +161,15 @@ async def health_check() -> HealthStatus:
         uptime_seconds=uptime_seconds,
         tasks_in_memory=task_count,
         dependencies=dependencies,
+        models={
+            "cleaning_model": settings.cleaning_model,
+            "review_model": settings.review_model,
+            "insights_model": settings.insights_model,
+            "synthesis_model": settings.synthesis_model,
+            "segment_model": settings.segment_model,
+            "synthesis_reasoning_effort": settings.synthesis_reasoning_effort,
+            "synthesis_reasoning_summary": settings.synthesis_reasoning_summary,
+        },
     )
 
 
@@ -229,6 +240,10 @@ async def process_transcript(
         metadata={
             "filename": file.filename,
             "file_size_bytes": len(content),
+            "models": {
+                "cleaning_model": settings.cleaning_model,
+                "review_model": settings.review_model,
+            },
         },
     )
 
@@ -247,6 +262,8 @@ async def process_transcript(
         filename=file.filename,
         content_size=len(content_str),
         idempotent=bool(idempotency_key),
+        cleaning_model=settings.cleaning_model,
+        review_model=settings.review_model,
     )
 
     # Process in background
@@ -316,6 +333,13 @@ async def extract_intelligence(
             "detail_level": request.detail_level.value,
             "transcript_id": request.transcript_id,
             "custom_instructions": request.custom_instructions,
+            "models": {
+                "insights_model": settings.insights_model,
+                "synthesis_model": settings.synthesis_model,
+                "segment_model": settings.segment_model,
+                "synthesis_reasoning_effort": settings.synthesis_reasoning_effort,
+                "synthesis_reasoning_summary": settings.synthesis_reasoning_summary,
+            },
         },
     )
 
@@ -334,6 +358,11 @@ async def extract_intelligence(
         transcript_id=request.transcript_id,
         detail_level=request.detail_level.value,
         idempotent=bool(request.idempotency_key),
+        insights_model=settings.insights_model,
+        synthesis_model=settings.synthesis_model,
+        segment_model=settings.segment_model,
+        synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
+        synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
     )
 
     # Extract intelligence in background
@@ -552,37 +581,37 @@ async def debug_force_cleanup() -> dict[str, Any]:
 async def debug_analytics() -> dict[str, Any]:
     """
     Debug endpoint providing analytics data for the Database tab.
-    
+
     Provides database/cache analytics that were previously from a database system.
     Now adapted for the in-memory cache system.
     """
     cache = get_task_cache()
-    
+
     # Get cache health and task statistics
     health_info = await cache.health_check()
     all_tasks = await cache.list_tasks(limit=1000)
-    
+
     # Calculate analytics similar to what a database would provide
     total_tasks = len(all_tasks)
-    
+
     # Status distribution
     status_distribution = {}
     for task in all_tasks:
         status = task.status.value
         status_distribution[status] = status_distribution.get(status, 0) + 1
-    
+
     # Type distribution
     type_distribution = {}
     for task in all_tasks:
         task_type = task.task_type.value
         type_distribution[task_type] = type_distribution.get(task_type, 0) + 1
-    
+
     # Calculate completion rate
     completed_tasks = status_distribution.get("completed", 0)
     failed_tasks = status_distribution.get("failed", 0)
     total_finished = completed_tasks + failed_tasks
     success_rate = (completed_tasks / total_finished * 100) if total_finished > 0 else 0
-    
+
     # Average task duration
     total_duration = 0
     duration_count = 0
@@ -590,16 +619,15 @@ async def debug_analytics() -> dict[str, Any]:
         if task.updated_at and task.created_at:
             total_duration += (task.updated_at - task.created_at).total_seconds()
             duration_count += 1
-    
+
     avg_duration = total_duration / duration_count if duration_count > 0 else 0
-    
+
     # Recent activity (last hour)
     now = datetime.now()
     recent_tasks = sum(
-        1 for task in all_tasks 
-        if (now - task.created_at).total_seconds() < 3600
+        1 for task in all_tasks if (now - task.created_at).total_seconds() < 3600
     )
-    
+
     return {
         "cache_analytics": {
             "total_tasks": total_tasks,
@@ -740,6 +768,7 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
 
     try:
         # Import here to avoid startup overhead
+        from backend.config import settings
         from backend.services.transcript.transcript_service import TranscriptService
 
         # Get API key
@@ -748,7 +777,11 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
             raise Exception("OPENAI_API_KEY not configured")
 
         # Initialize service
-        service = TranscriptService(api_key)
+        service = TranscriptService(
+            api_key,
+            max_concurrent=settings.max_concurrent_tasks,
+            rate_limit=settings.rate_limit_per_minute,
+        )
 
         # Progress callback that updates task in cache
         async def update_progress_async(progress: float, message: str) -> None:
@@ -772,7 +805,13 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
 
         # Since TranscriptService expects a sync callback, we'll handle progress differently
         def update_progress_sync(progress: float, message: str) -> None:
-            """Sync progress callback - just log for now."""
+            """Sync progress callback - schedule async cache update and log."""
+            try:
+                asyncio.create_task(update_progress_async(progress, message))
+            except Exception as e:
+                logger.warning(
+                    "Failed to schedule progress update", task_id=task_id, error=str(e)
+                )
             logger.info(
                 "Processing progress",
                 task_id=task_id,
@@ -787,7 +826,8 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
             await cache.update_task(task)
 
         # Process VTT
-        transcript = service.process_vtt(content)
+
+        transcript = await asyncio.to_thread(service.process_vtt, content)
 
         # Update task: starting AI cleaning
         task = await cache.get_task(task_id)
@@ -855,7 +895,7 @@ async def run_intelligence_extraction(
         )
 
         # Initialize orchestrator
-        orchestrator = IntelligenceOrchestrator(model="o3-mini")
+        orchestrator = IntelligenceOrchestrator()
 
         # Progress callback that updates task in cache
         async def update_progress(progress: float, message: str) -> None:

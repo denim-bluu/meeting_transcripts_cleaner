@@ -5,6 +5,7 @@ This page uses the FastAPI backend to process VTT files, with simple polling
 for progress updates. No more complex threading or direct service imports.
 """
 
+import hashlib
 import time
 
 from api_client import api_client
@@ -52,8 +53,10 @@ def process_vtt_file(uploaded_file):
 
     # Upload file to backend
     with st.status("Uploading file to backend...", expanded=True) as upload_status:
+        # Derive idempotency key from file content
+        idempotency_key = hashlib.sha256(file_content).hexdigest()
         success, task_id_or_error, message = api_client.upload_and_process_transcript(
-            file_content, filename
+            file_content, filename, idempotency_key=idempotency_key
         )
 
         if not success:
@@ -62,6 +65,12 @@ def process_vtt_file(uploaded_file):
             return
 
         task_id = task_id_or_error
+
+        # Persist task_id in URL so we can resume after refresh
+        q = st.query_params
+        q["task"] = task_id
+        st.query_params = q
+
         upload_status.update(label="✅ Upload successful", state="complete")
         st.info(f"Task ID: {task_id}")
 
@@ -88,12 +97,34 @@ def process_vtt_file(uploaded_file):
             progress_bar.progress(progress)
             status_text.text(message)
 
+            # Try to extract ETA seconds from backend status string e.g. "... • ETA: 12.3s"
+            eta_seconds = None
+            marker = "ETA:"
+            if marker in message:
+                try:
+                    after = message.split(marker, 1)[1].strip()
+                    num = ""
+                    for ch in after:
+                        if ch.isdigit() or ch == ".":
+                            num += ch
+                        else:
+                            break
+                    if num:
+                        eta_seconds = float(num)
+                except Exception:
+                    eta_seconds = None
+
             # Update metrics
             progress_metric.metric("Progress", f"{progress*100:.1f}%")
-            status_metric.metric("Status", "Processing")
+            status_metric.metric("Status", "Processing", delta=message)
 
             elapsed = time.time() - start_time
-            time_metric.metric("Elapsed", f"{elapsed:.1f}s")
+            if eta_seconds is not None:
+                time_metric.metric(
+                    "Elapsed", f"{elapsed:.1f}s", delta=f"ETA {eta_seconds:.1f}s"
+                )
+            else:
+                time_metric.metric("Elapsed", f"{elapsed:.1f}s")
             task_metric.metric("Task", task_id[:8])
 
         # Poll until complete
@@ -117,7 +148,9 @@ def process_vtt_file(uploaded_file):
         if result:
             # Store in session state for other pages
             st.session_state.transcript = result
-            st.session_state.transcript_task_id = task_id  # Store task_id for intelligence extraction
+            st.session_state.transcript_task_id = (
+                task_id  # Store task_id for intelligence extraction
+            )
             st.session_state.processing_complete = True
 
             # Show success metrics
@@ -159,6 +192,48 @@ def main():
     # Check backend health first
     if not check_backend_health():
         st.stop()
+
+    # Resume ongoing task from URL if present
+    q = st.query_params
+    task_in_url = q.get("task")
+    if task_in_url and not st.session_state.get("transcript"):
+        # Verify the task type before resuming to avoid attaching wrong task
+        success, status_data = api_client.get_task_status(task_in_url)
+        if not success:
+            st.warning("Could not look up task from URL. It may have expired.")
+        else:
+            if status_data.get("type") != "transcript_processing":
+                st.info("Task in URL is not a transcript-processing task. Ignoring.")
+                # Optionally clear the param to avoid repeated attempts
+                q.pop("task", None)
+                st.query_params = q
+            else:
+                with st.status(
+                    "Resuming ongoing processing task...", expanded=True
+                ) as resume_status:
+                    progress_text = st.empty()
+
+                    def _resume_progress(p, m):
+                        progress_text.text(f"{p*100:.1f}% - {m}")
+
+                    ok, data = api_client.poll_until_complete(
+                        task_in_url,
+                        progress_callback=_resume_progress,
+                        poll_interval=2.0,
+                        timeout=300.0,
+                    )
+                    if ok:
+                        result = data.get("result")
+                        if result:
+                            st.session_state.transcript = result
+                            st.session_state.transcript_task_id = task_in_url
+                            st.session_state.processing_complete = True
+                            resume_status.update(
+                                label="✅ Task resumed and completed", state="complete"
+                            )
+                            # Clear task param now that it's done
+                            q.pop("task", None)
+                            st.query_params = q
 
     # Show current status if we have a transcript
     if hasattr(st.session_state, "transcript") and st.session_state.transcript:

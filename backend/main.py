@@ -22,7 +22,6 @@ configure_structlog()
 logger = structlog.get_logger(__name__)
 
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler for startup and shutdown."""
@@ -31,18 +30,18 @@ async def lifespan(app: FastAPI):
         "Meeting Transcript API starting up",
         version=settings.api_version,
         environment=settings.get_environment_display(),
-        debug=settings.debug
+        debug=settings.debug,
     )
 
     # Initialize task cache
     initialize_cache(
         ttl_hours=settings.task_ttl_hours,
-        cleanup_interval_minutes=settings.cleanup_interval_minutes
+        cleanup_interval_minutes=settings.cleanup_interval_minutes,
     )
     logger.info(
         "Task cache initialized successfully",
         ttl_hours=settings.task_ttl_hours,
-        cleanup_interval_minutes=settings.cleanup_interval_minutes
+        cleanup_interval_minutes=settings.cleanup_interval_minutes,
     )
 
     # Verify OpenAI API key is configured
@@ -53,6 +52,16 @@ async def lifespan(app: FastAPI):
 
     # Log API configuration
     logger.info("API routes registered", endpoints=len(app.routes))
+    logger.info(
+        "LLM model configuration",
+        cleaning_model=settings.cleaning_model,
+        review_model=settings.review_model,
+        insights_model=settings.insights_model,
+        synthesis_model=settings.synthesis_model,
+        segment_model=settings.segment_model,
+        synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
+        synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
+    )
 
     yield
 
@@ -97,7 +106,9 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan,
     # API documentation configuration
-    docs_url="/docs" if not settings.is_production() else None,  # Disable docs in production
+    docs_url="/docs"
+    if not settings.is_production()
+    else None,  # Disable docs in production
     redoc_url="/redoc" if not settings.is_production() else None,
     openapi_url="/openapi.json" if not settings.is_production() else None,
     # Add contact and license info for production
@@ -111,9 +122,17 @@ app = FastAPI(
     },
     # Add server info for different environments
     servers=[
-        {"url": f"http://{settings.host}:{settings.port}", "description": f"{settings.get_environment_display()} server"},
-    ] if not settings.is_production() else [
-        {"url": "https://your-spcs-endpoint.snowflakecomputing.com", "description": "Production SPCS deployment"},
+        {
+            "url": f"http://{settings.host}:{settings.port}",
+            "description": f"{settings.get_environment_display()} server",
+        },
+    ]
+    if not settings.is_production()
+    else [
+        {
+            "url": "https://your-spcs-endpoint.snowflakecomputing.com",
+            "description": "Production SPCS deployment",
+        },
     ],
 )
 

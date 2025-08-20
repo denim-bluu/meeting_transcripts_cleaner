@@ -3,6 +3,7 @@
 import asyncio
 import time
 
+from asyncio_throttle.throttler import Throttler
 import structlog
 
 # Use pure agents following Pydantic AI best practices
@@ -10,6 +11,7 @@ from backend.agents.extraction.insights import chunk_extraction_agent
 from backend.agents.synthesis.direct import direct_synthesis_agent
 from backend.agents.synthesis.hierarchical import hierarchical_synthesis_agent
 from backend.agents.synthesis.segment import segment_synthesis_agent
+from backend.config import settings
 from backend.models.intelligence import ChunkInsights, MeetingIntelligence
 from backend.models.transcript import VTTChunk
 from backend.utils.semantic_chunker import SemanticChunker
@@ -28,22 +30,25 @@ class IntelligenceOrchestrator:
     - Track processing stats and performance
     """
 
-    def __init__(self, model: str = "o3-mini"):
-        self.model = model
+    def __init__(self):
         self.chunker = SemanticChunker()
 
         self.MIN_IMPORTANCE = (
             1  # Include ALL contextual content for comprehensive summaries
         )
         self.CRITICAL_IMPORTANCE = 8  # Never exclude these
-        self.CONTEXT_LIMIT = 50000  # Conservative token limit
+        self.CONTEXT_LIMIT = settings.synthesis_context_token_limit  # Honor settings
         self.SEGMENT_MINUTES = 30  # Temporal segmentation
 
         logger.info(
             "IntelligenceOrchestrator initialized with pure agents",
-            model=model,
             min_importance=self.MIN_IMPORTANCE,
             context_limit=self.CONTEXT_LIMIT,
+            insights_model=settings.insights_model,
+            synthesis_model=settings.synthesis_model,
+            segment_model=settings.segment_model,
+            synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
+            synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
         )
 
     async def process_meeting(
@@ -60,7 +65,15 @@ class IntelligenceOrchestrator:
         Returns MeetingIntelligence with structured output.
         """
         start_time = time.time()
-        logger.info("Starting intelligence processing", vtt_chunks=len(cleaned_chunks))
+        logger.info(
+            "Starting intelligence processing",
+            vtt_chunks=len(cleaned_chunks),
+            insights_model=settings.insights_model,
+            synthesis_model=settings.synthesis_model,
+            segment_model=settings.segment_model,
+            synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
+            synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
+        )
 
         # Phase 1: Semantic chunking (no API calls)
         if progress_callback:
@@ -70,7 +83,9 @@ class IntelligenceOrchestrator:
                 progress_callback(0.1, "Phase 1: Semantic chunking...")
         logger.info("Phase 1: Starting semantic chunking")
         phase1_start = time.time()
-        semantic_chunks = self.chunker.create_chunks(cleaned_chunks)
+        semantic_chunks = await asyncio.to_thread(
+            self.chunker.create_chunks, cleaned_chunks
+        )
         phase1_time = int((time.time() - phase1_start) * 1000)
         logger.info(
             "Phase 1 completed",
@@ -238,6 +253,9 @@ class IntelligenceOrchestrator:
         """Extract insights from all semantic chunks using concurrent processing."""
         import asyncio
 
+        semaphore = asyncio.Semaphore(settings.max_concurrent_tasks)
+        throttler = Throttler(rate_limit=settings.rate_limit_per_minute, period=60)
+
         async def extract_single_chunk(
             i: int, chunk_text: str
         ) -> tuple[int, ChunkInsights]:
@@ -263,9 +281,11 @@ class IntelligenceOrchestrator:
                     total_chunks=len(semantic_chunks),
                     chunk_size_chars=len(chunk_text),
                     position=context.get("position", "middle"),
+                    insights_model=settings.insights_model,
                 )
 
-                result = await chunk_extraction_agent.run(user_prompt, deps=context)
+                async with semaphore, throttler:
+                    result = await chunk_extraction_agent.run(user_prompt, deps=context)
 
                 logger.info(
                     "Chunk extraction completed",
@@ -275,7 +295,6 @@ class IntelligenceOrchestrator:
                     themes=result.output.themes,
                     actions_count=len(result.output.actions),
                 )
-
 
                 return i, result.output
 
@@ -295,7 +314,6 @@ class IntelligenceOrchestrator:
             total_chunks=len(semantic_chunks),
             detail_level=detail_level,
         )
-
 
         tasks = [
             extract_single_chunk(i, chunk_text)
@@ -362,7 +380,6 @@ class IntelligenceOrchestrator:
         """Direct synthesis using pure agent with detailed logging."""
         logger.info(
             "Starting direct synthesis",
-            "Starting direct synthesis",
             insights_count=len(insights_list),
             total_actions=sum(len(insight.actions) for insight in insights_list),
             total_insights_items=sum(
@@ -377,9 +394,7 @@ class IntelligenceOrchestrator:
             else 0,
         )
 
-
         formatted_insights = self._format_insights_for_synthesis(insights_list)
-
 
         logger.info(
             "Formatted insights for synthesis",
@@ -395,37 +410,35 @@ Return both summary (detailed markdown) and action_items (structured list)."""
 
         synthesis_start_time = time.time()
 
-
         try:
             logger.info(
                 "Calling direct synthesis agent",
                 agent_retries=2,  # Built-in Pydantic AI retries
-                model="o3-mini",
+                synthesis_model=settings.synthesis_model,
+                synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
+                synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
             )
 
             # Use capture_run_messages to log all interactions including retries
             from pydantic_ai import capture_run_messages
 
             with capture_run_messages() as run_messages:
-                result = await direct_synthesis_agent.run(user_prompt)
+                try:
+                    result = await asyncio.wait_for(
+                        direct_synthesis_agent.run(user_prompt),
+                        timeout=settings.synthesis_timeout_seconds,
+                    )
+
+                except Exception as e:
+                    logger.error(
+                        "Direct synthesis failed",
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        timeout=settings.synthesis_timeout_seconds,
+                    )
+                    raise
 
             synthesis_time = int((time.time() - synthesis_start_time) * 1000)
-
-            # Log detailed information about the run
-            logger.info(
-                "Direct synthesis run details",
-                total_messages=len(run_messages),
-                synthesis_time_ms=synthesis_time,
-            )
-
-            # Simple message logging without accessing potentially undefined attributes
-            if len(run_messages) > 2:  # More than expected messages suggests retries
-                logger.info(
-                    f"Multiple messages detected ({len(run_messages)})",
-                    message_count=len(run_messages),
-                    likely_retries=len(run_messages) > 2,
-                    synthesis_time_ms=synthesis_time,
-                )
 
             logger.info(
                 "Direct synthesis completed successfully",
@@ -433,12 +446,6 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                 summary_length=len(result.output.summary),
                 action_items_count=len(result.output.action_items),
                 has_processing_stats=bool(result.output.processing_stats),
-                summary_sections=result.output.summary.count(
-                    "#"
-                ),  # Count markdown headers
-                summary_preview=result.output.summary[:200].replace("\n", " ") + "..."
-                if len(result.output.summary) > 200
-                else result.output.summary.replace("\n", " "),
             )
 
             return result.output
@@ -449,9 +456,6 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                 error=str(e),
                 error_type=type(e).__name__,
                 synthesis_time_ms=synthesis_time,
-                formatted_insights_preview=formatted_insights[:300] + "..."
-                if len(formatted_insights) > 300
-                else formatted_insights,
             )
             raise
 
@@ -485,36 +489,37 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                 "Processing segment",
                 segment_index=i + 1,
                 insights_in_segment=len(segment_insights),
+                segment_model=settings.segment_model,
             )
 
             # Format insights for segment synthesis
             segment_text = self._format_insights_for_synthesis(segment_insights)
 
-            try:
-                from pydantic_ai import capture_run_messages
-
-                with capture_run_messages() as segment_messages:
-                    result = await segment_synthesis_agent.run(
-                        f"Summarize this meeting segment:\n\n{segment_text}"
+            with capture_run_messages() as segment_messages:
+                try:
+                    result = await asyncio.wait_for(
+                        segment_synthesis_agent.run(
+                            f"Summarize this meeting segment:\n\n{segment_text}"
+                        ),
+                        timeout=settings.synthesis_timeout_seconds,
                     )
 
-                logger.info(
-                    "Segment synthesis completed",
-                    segment_index=i + 1,
-                    summary_length=len(result.output),
-                    total_messages=len(segment_messages),
-                    likely_retries=len(segment_messages) > 2,
-                )
+                    logger.info(
+                        "Segment synthesis completed",
+                        segment_index=i + 1,
+                        summary_length=len(result.output),
+                    )
 
-                return i, result.output
+                    return i, result.output
 
-            except Exception as e:
-                logger.error(
-                    "Segment synthesis failed",
-                    segment_index=i + 1,
-                    error=str(e),
-                )
-                raise
+                except Exception as e:
+                    logger.error(
+                        "Segment synthesis failed",
+                        message=segment_messages,
+                        segment_index=i + 1,
+                        error=str(e),
+                    )
+                    raise
 
         # Create concurrent tasks for all segments
         logger.info(
@@ -528,8 +533,6 @@ Return both summary (detailed markdown) and action_items (structured list)."""
         ]
 
         # Execute all segment synthesis tasks concurrently
-        import asyncio
-
         segment_results: list[tuple[int, str] | BaseException] = await asyncio.gather(
             *segment_tasks, return_exceptions=True
         )
@@ -555,6 +558,7 @@ Return both summary (detailed markdown) and action_items (structured list)."""
         logger.info(
             "Starting final hierarchical synthesis",
             segment_summaries_count=len(segment_summaries),
+            synthesis_model=settings.synthesis_model,
         )
 
         # Combine all segment summaries
@@ -569,16 +573,17 @@ Return both summary (detailed markdown) and action_items (structured list)."""
             from pydantic_ai import capture_run_messages
 
             with capture_run_messages() as hierarchical_messages:
-                result = await hierarchical_synthesis_agent.run(
-                    f"Create comprehensive meeting intelligence from these temporal segments:\n\n{combined_segments}"
+                result = await asyncio.wait_for(
+                    hierarchical_synthesis_agent.run(
+                        f"Create comprehensive meeting intelligence from these temporal segments:\n\n{combined_segments}"
+                    ),
+                    timeout=settings.synthesis_timeout_seconds,
                 )
 
             logger.info(
                 "Hierarchical synthesis completed",
                 final_summary_length=len(result.output.summary),
                 action_items_count=len(result.output.action_items),
-                total_messages=len(hierarchical_messages),
-                likely_retries=len(hierarchical_messages) > 2,
             )
 
             return result.output

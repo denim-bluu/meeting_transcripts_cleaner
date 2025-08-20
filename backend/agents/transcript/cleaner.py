@@ -2,9 +2,13 @@
 
 from dotenv import load_dotenv
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.settings import ModelSettings
+from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
+import structlog
 
+from backend.config import settings
 from backend.models.agents import CleaningResult
+
+logger = structlog.get_logger(__name__)
 
 # Ensure environment is loaded for API key
 load_dotenv()
@@ -29,12 +33,14 @@ Output format: JSON with exactly these fields:
 
 # Pure agent definition - stateless and global
 cleaning_agent = Agent(
-    "openai:o3-mini",
+    OpenAIResponsesModel(settings.cleaning_model),
     output_type=CleaningResult,
     system_prompt=CLEANER_SYSTEM_PROMPT,
     deps_type=dict,  # Accept context dictionary for tools
     retries=3,  # Built-in retry on validation failure
+    model_settings=OpenAIResponsesModelSettings(openai_reasoning_effort="medium"),
 )
+logger.info("Cleaning agent configured", cleaning_model=settings.cleaning_model)
 
 
 # Add tools for dynamic context (following Pydantic AI patterns)
@@ -42,12 +48,3 @@ cleaning_agent = Agent(
 def provide_context_window(ctx: RunContext[dict], prev_text: str) -> str:
     """Provide context from previous chunk for better flow preservation."""
     return prev_text[-200:] if prev_text else ""
-
-
-# Model settings function for runtime configuration
-def get_model_settings(model: str) -> ModelSettings | None:
-    """Get appropriate model settings based on model type."""
-    if model.startswith("o3"):
-        return None  # o3 models don't support temperature/max_tokens
-    else:
-        return ModelSettings(temperature=0.3, max_tokens=1000)

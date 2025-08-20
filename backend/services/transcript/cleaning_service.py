@@ -4,7 +4,8 @@ import time
 
 import structlog
 
-from backend.agents.transcript.cleaner import cleaning_agent, get_model_settings
+from backend.agents.transcript.cleaner import cleaning_agent
+from backend.config import settings
 from backend.models.agents import CleaningResult
 from backend.models.transcript import VTTChunk
 
@@ -14,18 +15,11 @@ logger = structlog.get_logger(__name__)
 class TranscriptCleaningService:
     """Orchestrates transcript cleaning using pure Pydantic AI agents."""
 
-    def __init__(self, model: str = "o3-mini"):
-        """Initialize service with model configuration.
-
-        Args:
-            model: Model name to use (e.g., 'o3-mini', 'gpt-4')
-        """
-        self.model = model
+    def __init__(self):
+        """Initialize service using agent's internal configuration."""
         logger.info(
             "TranscriptCleaningService initialized",
-            model=model,
-            supports_temperature=not model.startswith("o3"),
-            supports_max_tokens=not model.startswith("o3"),
+            cleaning_model=settings.cleaning_model,
         )
 
     async def clean_chunk(self, chunk: VTTChunk, prev_text: str = "") -> CleaningResult:
@@ -54,7 +48,7 @@ class TranscriptCleaningService:
             speakers=chunk_speakers,
             text_length=len(chunk_text),
             context_length=len(context),
-            model=self.model,
+            cleaning_model=settings.cleaning_model,
             text_preview=chunk_text[:100].replace("\n", " ") + "..."
             if len(chunk_text) > 100
             else chunk_text,
@@ -73,29 +67,19 @@ Return JSON with cleaned_text, confidence, and changes_made."""
                 "Starting chunk cleaning",
                 chunk_id=chunk.chunk_id,
                 token_count=chunk.token_count,
-                model=self.model,
             )
-
-            # Get appropriate model settings
-            settings = get_model_settings(self.model)
 
             api_call_start = time.time()
             logger.debug(
                 "Sending request to OpenAI API",
                 chunk_id=chunk.chunk_id,
-                model=self.model,
+                cleaning_model=settings.cleaning_model,
             )
 
             # Use the pure global agent with runtime model override if needed
             context_deps = {"prev_text": context}
 
-            if self.model != "o3-mini":
-                # Override model using Pydantic AI's override method
-                with cleaning_agent.override(model=f"openai:{self.model}"):
-                    result = await cleaning_agent.run(user_prompt, deps=context_deps, model_settings=settings)
-            else:
-                # Use default model
-                result = await cleaning_agent.run(user_prompt, deps=context_deps, model_settings=settings)
+            result = await cleaning_agent.run(user_prompt, deps=context_deps)
 
             api_call_time = time.time() - api_call_start
             processing_time = time.time() - start_time
@@ -114,6 +98,7 @@ Return JSON with cleaned_text, confidence, and changes_made."""
                 chunk_id=chunk.chunk_id,
                 processing_time_ms=int(processing_time * 1000),
                 api_call_time_ms=int(api_call_time * 1000),
+                cleaning_model=settings.cleaning_model,
                 confidence=result.output.confidence,
                 changes_count=len(result.output.changes_made),
                 changes_made=result.output.changes_made[
@@ -127,7 +112,6 @@ Return JSON with cleaned_text, confidence, and changes_made."""
                     if original_length > 0
                     else 1.0,
                 },
-                model=self.model,
             )
 
             return result.output
@@ -138,6 +122,5 @@ Return JSON with cleaned_text, confidence, and changes_made."""
                 chunk_id=chunk.chunk_id,
                 error=str(e),
                 processing_time_ms=int((time.time() - start_time) * 1000),
-                model=self.model,
             )
             raise
