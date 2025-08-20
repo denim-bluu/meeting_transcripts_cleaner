@@ -117,9 +117,9 @@ class Settings(BaseSettings):
         if self.environment != Environment.DEVELOPMENT:
             self.reload = False
 
-        # Use env values if provided; otherwise fall back to default_model; finally to "o3-mini"
+        # Use env values if provided; otherwise fall back to "o3-mini"
         def _fallback(v: str) -> str:
-            return v or self.default_model or "o3-mini"
+            return v or "o3-mini"
 
         self.cleaning_model = _fallback(self.cleaning_model)
         self.review_model = _fallback(self.review_model)

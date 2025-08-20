@@ -2,7 +2,7 @@
 
 from dotenv import load_dotenv
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 import structlog
 
 from backend.config import settings
@@ -38,6 +38,7 @@ cleaning_agent = Agent(
     system_prompt=CLEANER_SYSTEM_PROMPT,
     deps_type=dict,  # Accept context dictionary for tools
     retries=3,  # Built-in retry on validation failure
+    model_settings=OpenAIResponsesModelSettings(openai_reasoning_effort="medium"),
 )
 logger.info("Cleaning agent configured", cleaning_model=settings.cleaning_model)
 

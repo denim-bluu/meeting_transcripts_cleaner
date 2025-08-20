@@ -2,7 +2,7 @@
 
 from dotenv import load_dotenv
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 import structlog
 
 from backend.config import settings
@@ -42,5 +42,6 @@ review_agent = Agent(
     output_type=ReviewResult,
     system_prompt=REVIEWER_SYSTEM_PROMPT,
     retries=3,  # Built-in retry on validation failure
+    model_settings=OpenAIResponsesModelSettings(openai_reasoning_effort="medium"),
 )
 logger.info("Review agent configured", review_model=settings.review_model)

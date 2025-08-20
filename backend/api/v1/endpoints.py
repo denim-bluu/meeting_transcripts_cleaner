@@ -162,7 +162,6 @@ async def health_check() -> HealthStatus:
         tasks_in_memory=task_count,
         dependencies=dependencies,
         models={
-            "default_model": settings.default_model,
             "cleaning_model": settings.cleaning_model,
             "review_model": settings.review_model,
             "insights_model": settings.insights_model,
@@ -769,6 +768,7 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
 
     try:
         # Import here to avoid startup overhead
+        from backend.config import settings
         from backend.services.transcript.transcript_service import TranscriptService
 
         # Get API key
@@ -777,7 +777,11 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
             raise Exception("OPENAI_API_KEY not configured")
 
         # Initialize service
-        service = TranscriptService(api_key)
+        service = TranscriptService(
+            api_key,
+            max_concurrent=settings.max_concurrent_tasks,
+            rate_limit=settings.rate_limit_per_minute,
+        )
 
         # Progress callback that updates task in cache
         async def update_progress_async(progress: float, message: str) -> None:

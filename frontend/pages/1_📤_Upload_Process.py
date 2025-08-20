@@ -88,12 +88,34 @@ def process_vtt_file(uploaded_file):
             progress_bar.progress(progress)
             status_text.text(message)
 
+            # Try to extract ETA seconds from backend status string e.g. "... • ETA: 12.3s"
+            eta_seconds = None
+            marker = "ETA:"
+            if marker in message:
+                try:
+                    after = message.split(marker, 1)[1].strip()
+                    num = ""
+                    for ch in after:
+                        if ch.isdigit() or ch == ".":
+                            num += ch
+                        else:
+                            break
+                    if num:
+                        eta_seconds = float(num)
+                except Exception:
+                    eta_seconds = None
+
             # Update metrics
             progress_metric.metric("Progress", f"{progress*100:.1f}%")
-            status_metric.metric("Status", "Processing")
+            status_metric.metric("Status", "Processing", delta=message)
 
             elapsed = time.time() - start_time
-            time_metric.metric("Elapsed", f"{elapsed:.1f}s")
+            if eta_seconds is not None:
+                time_metric.metric(
+                    "Elapsed", f"{elapsed:.1f}s", delta=f"ETA {eta_seconds:.1f}s"
+                )
+            else:
+                time_metric.metric("Elapsed", f"{elapsed:.1f}s")
             task_metric.metric("Task", task_id[:8])
 
         # Poll until complete
@@ -117,7 +139,9 @@ def process_vtt_file(uploaded_file):
         if result:
             # Store in session state for other pages
             st.session_state.transcript = result
-            st.session_state.transcript_task_id = task_id  # Store task_id for intelligence extraction
+            st.session_state.transcript_task_id = (
+                task_id  # Store task_id for intelligence extraction
+            )
             st.session_state.processing_complete = True
 
             # Show success metrics

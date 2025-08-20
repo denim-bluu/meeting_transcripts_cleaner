@@ -54,7 +54,6 @@ async def lifespan(app: FastAPI):
     logger.info("API routes registered", endpoints=len(app.routes))
     logger.info(
         "LLM model configuration",
-        default_model=settings.default_model,
         cleaning_model=settings.cleaning_model,
         review_model=settings.review_model,
         insights_model=settings.insights_model,

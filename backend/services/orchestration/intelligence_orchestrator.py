@@ -423,16 +423,22 @@ Return both summary (detailed markdown) and action_items (structured list)."""
             from pydantic_ai import capture_run_messages
 
             with capture_run_messages() as run_messages:
-                result = await asyncio.wait_for(
-                    direct_synthesis_agent.run(user_prompt),
-                    timeout=settings.synthesis_timeout_seconds,
-                )
+                try:
+                    result = await asyncio.wait_for(
+                        direct_synthesis_agent.run(user_prompt),
+                        timeout=settings.synthesis_timeout_seconds,
+                    )
+
+                except Exception as e:
+                    logger.error(
+                        "Direct synthesis failed",
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        timeout=settings.synthesis_timeout_seconds,
+                    )
+                    raise
 
             synthesis_time = int((time.time() - synthesis_start_time) * 1000)
-
-            # Reduced verbose synthesis run details logging
-
-            # Reduced verbose retry logging
 
             logger.info(
                 "Direct synthesis completed successfully",
@@ -489,10 +495,8 @@ Return both summary (detailed markdown) and action_items (structured list)."""
             # Format insights for segment synthesis
             segment_text = self._format_insights_for_synthesis(segment_insights)
 
-            try:
-                from pydantic_ai import capture_run_messages
-
-                with capture_run_messages() as segment_messages:
+            with capture_run_messages() as segment_messages:
+                try:
                     result = await asyncio.wait_for(
                         segment_synthesis_agent.run(
                             f"Summarize this meeting segment:\n\n{segment_text}"
@@ -500,21 +504,22 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                         timeout=settings.synthesis_timeout_seconds,
                     )
 
-                logger.info(
-                    "Segment synthesis completed",
-                    segment_index=i + 1,
-                    summary_length=len(result.output),
-                )
+                    logger.info(
+                        "Segment synthesis completed",
+                        segment_index=i + 1,
+                        summary_length=len(result.output),
+                    )
 
-                return i, result.output
+                    return i, result.output
 
-            except Exception as e:
-                logger.error(
-                    "Segment synthesis failed",
-                    segment_index=i + 1,
-                    error=str(e),
-                )
-                raise
+                except Exception as e:
+                    logger.error(
+                        "Segment synthesis failed",
+                        message=segment_messages,
+                        segment_index=i + 1,
+                        error=str(e),
+                    )
+                    raise
 
         # Create concurrent tasks for all segments
         logger.info(
@@ -528,8 +533,6 @@ Return both summary (detailed markdown) and action_items (structured list)."""
         ]
 
         # Execute all segment synthesis tasks concurrently
-        import asyncio
-
         segment_results: list[tuple[int, str] | BaseException] = await asyncio.gather(
             *segment_tasks, return_exceptions=True
         )
