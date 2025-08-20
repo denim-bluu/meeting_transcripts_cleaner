@@ -225,8 +225,9 @@ def extract_intelligence_with_api(
     with st.status(
         "Starting intelligence extraction...", expanded=True
     ) as extract_status:
+        idempotency_key = f"{transcript_id}:{detail_level}"
         success, task_id_or_error, message = api_client.extract_intelligence(
-            transcript_id, detail_level
+            transcript_id, detail_level, idempotency_key=idempotency_key
         )
 
         if not success:
@@ -237,6 +238,10 @@ def extract_intelligence_with_api(
         task_id = task_id_or_error
         extract_status.update(label="✅ Extraction started", state="complete")
         st.info(f"Task ID: {task_id}")
+        # Persist task_id in URL so refresh can resume
+        q = st.query_params
+        q["task"] = task_id
+        st.query_params = q
 
     # Poll for completion with progress updates
     with st.status(
@@ -329,6 +334,48 @@ def main():
     if "intelligence_extracted" not in st.session_state:
         st.session_state.intelligence_extracted = False
 
+    # Early resume: if a task id is present in the URL, attempt to resume intelligence extraction
+    q = st.query_params
+    task_in_url = q.get("task")
+    if task_in_url:
+        # Verify the task type before resuming to avoid attaching to the wrong task
+        success, status_data = api_client.get_task_status(task_in_url)
+        if success and status_data.get("type") == "intelligence_extraction":
+            with st.status(
+                "Resuming ongoing intelligence extraction...", expanded=True
+            ) as resume_status:
+                progress_text = st.empty()
+
+                def _resume_progress(p, m):
+                    progress_text.text(f"{p*100:.1f}% - {m}")
+
+                ok, data = api_client.poll_until_complete(
+                    task_in_url,
+                    progress_callback=_resume_progress,
+                    poll_interval=2.0,
+                    timeout=600.0,
+                )
+                if ok:
+                    result = data.get("result")
+                    if result:
+                        # Ensure a minimal transcript object exists
+                        if not st.session_state.get("transcript"):
+                            st.session_state.transcript = {}
+                        st.session_state.transcript["intelligence"] = result
+                        st.session_state.intelligence_extracted = True
+                        resume_status.update(
+                            label="✅ Intelligence task resumed and completed",
+                            state="complete",
+                        )
+                        # Clear the task param now that it's done
+                        q.pop("task", None)
+                        st.query_params = q
+        elif success:
+            # Not an intelligence task; ignore and optionally clear the param
+            if status_data.get("type") != "intelligence_extraction":
+                q.pop("task", None)
+                st.query_params = q
+
     # Check if we have a processed transcript
     if st.session_state.transcript is None or not st.session_state.transcript:
         st.warning(
@@ -364,6 +411,8 @@ def main():
         return
 
     transcript = st.session_state.transcript
+
+    # Resume of intelligence tasks is handled earlier before transcript checks.
 
     # Check if intelligence has been extracted
     if "intelligence" not in transcript:

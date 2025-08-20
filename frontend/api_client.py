@@ -29,14 +29,16 @@ class BackendAPIClient:
 
         logger.info("API client initialized", base_url=self.base_url)
 
-    def _make_request(self, method: str, endpoint: str, **kwargs) -> dict[str, Any] | None:
+    def _make_request(
+        self, method: str, endpoint: str, **kwargs
+    ) -> dict[str, Any] | None:
         """Generic request method for debug endpoints.
-        
+
         Args:
             method: HTTP method (GET, POST, etc.)
             endpoint: API endpoint (without /api/v1 prefix)
             **kwargs: Additional arguments for requests
-            
+
         Returns:
             Response JSON data or None if failed
         """
@@ -46,7 +48,9 @@ class BackendAPIClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            logger.warning("API request failed", method=method, endpoint=endpoint, error=str(e))
+            logger.warning(
+                "API request failed", method=method, endpoint=endpoint, error=str(e)
+            )
             return None
 
     def health_check(self) -> tuple[bool, dict[str, Any]]:
@@ -64,26 +68,33 @@ class BackendAPIClient:
             return False, {"error": str(e)}
 
     def upload_and_process_transcript(
-        self, file_content: bytes, filename: str
+        self, file_content: bytes, filename: str, idempotency_key: str | None = None
     ) -> tuple[bool, str, str]:
         """Upload VTT file and start processing.
 
         Args:
             file_content: VTT file content as bytes
             filename: Original filename
+            idempotency_key: Optional idempotency key to dedupe retries
 
         Returns:
             (success, task_id_or_error, message)
         """
         try:
             files = {"file": (filename, file_content, "text/vtt")}
+            headers = {}
+            if idempotency_key:
+                headers["Idempotency-Key"] = idempotency_key
 
             logger.info(
                 "Uploading VTT file", filename=filename, size_bytes=len(file_content)
             )
 
             response = self.session.post(
-                f"{self.base_url}/api/v1/transcript/process", files=files, timeout=30
+                f"{self.base_url}/api/v1/transcript/process",
+                files=files,
+                headers=headers,
+                timeout=30,
             )
             response.raise_for_status()
 
@@ -99,19 +110,25 @@ class BackendAPIClient:
             return False, error_msg, error_msg
 
     def extract_intelligence(
-        self, transcript_id: str, detail_level: str = "comprehensive"
+        self,
+        transcript_id: str,
+        detail_level: str = "comprehensive",
+        idempotency_key: str | None = None,
     ) -> tuple[bool, str, str]:
         """Start intelligence extraction.
 
         Args:
             transcript_id: Task ID from completed transcript processing
             detail_level: One of "comprehensive", "standard", "technical_focus"
+            idempotency_key: Optional idempotency key to dedupe retries
 
         Returns:
             (success, task_id_or_error, message)
         """
         try:
             data = {"transcript_id": transcript_id, "detail_level": detail_level}
+            if idempotency_key:
+                data["idempotency_key"] = idempotency_key
 
             logger.info(
                 "Starting intelligence extraction",
@@ -119,10 +136,14 @@ class BackendAPIClient:
                 detail_level=detail_level,
             )
 
+            headers = {"Content-Type": "application/json"}
+            if idempotency_key:
+                headers["Idempotency-Key"] = idempotency_key
+
             response = self.session.post(
                 f"{self.base_url}/api/v1/intelligence/extract",
                 json=data,
-                headers={"Content-Type": "application/json"},
+                headers=headers,
                 timeout=30,
             )
             response.raise_for_status()
