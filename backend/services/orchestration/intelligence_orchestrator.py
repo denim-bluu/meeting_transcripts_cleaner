@@ -37,7 +37,7 @@ class IntelligenceOrchestrator:
             1  # Include ALL contextual content for comprehensive summaries
         )
         self.CRITICAL_IMPORTANCE = 8  # Never exclude these
-        self.CONTEXT_LIMIT = 50000  # Conservative token limit
+        self.CONTEXT_LIMIT = settings.synthesis_context_token_limit  # Honor settings
         self.SEGMENT_MINUTES = 30  # Temporal segmentation
 
         logger.info(
@@ -366,7 +366,6 @@ class IntelligenceOrchestrator:
         """Direct synthesis using pure agent with detailed logging."""
         logger.info(
             "Starting direct synthesis",
-            "Starting direct synthesis",
             insights_count=len(insights_list),
             total_actions=sum(len(insight.actions) for insight in insights_list),
             total_insights_items=sum(
@@ -407,25 +406,16 @@ Return both summary (detailed markdown) and action_items (structured list)."""
             from pydantic_ai import capture_run_messages
 
             with capture_run_messages() as run_messages:
-                result = await direct_synthesis_agent.run(user_prompt)
+                result = await asyncio.wait_for(
+                    direct_synthesis_agent.run(user_prompt),
+                    timeout=settings.synthesis_timeout_seconds,
+                )
 
             synthesis_time = int((time.time() - synthesis_start_time) * 1000)
 
-            # Log detailed information about the run
-            logger.info(
-                "Direct synthesis run details",
-                total_messages=len(run_messages),
-                synthesis_time_ms=synthesis_time,
-            )
+            # Reduced verbose synthesis run details logging
 
-            # Simple message logging without accessing potentially undefined attributes
-            if len(run_messages) > 2:  # More than expected messages suggests retries
-                logger.info(
-                    f"Multiple messages detected ({len(run_messages)})",
-                    message_count=len(run_messages),
-                    likely_retries=len(run_messages) > 2,
-                    synthesis_time_ms=synthesis_time,
-                )
+            # Reduced verbose retry logging
 
             logger.info(
                 "Direct synthesis completed successfully",
@@ -433,12 +423,6 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                 summary_length=len(result.output.summary),
                 action_items_count=len(result.output.action_items),
                 has_processing_stats=bool(result.output.processing_stats),
-                summary_sections=result.output.summary.count(
-                    "#"
-                ),  # Count markdown headers
-                summary_preview=result.output.summary[:200].replace("\n", " ") + "..."
-                if len(result.output.summary) > 200
-                else result.output.summary.replace("\n", " "),
             )
 
             return result.output
@@ -449,9 +433,6 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                 error=str(e),
                 error_type=type(e).__name__,
                 synthesis_time_ms=synthesis_time,
-                formatted_insights_preview=formatted_insights[:300] + "..."
-                if len(formatted_insights) > 300
-                else formatted_insights,
             )
             raise
 
@@ -494,16 +475,17 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                 from pydantic_ai import capture_run_messages
 
                 with capture_run_messages() as segment_messages:
-                    result = await segment_synthesis_agent.run(
-                        f"Summarize this meeting segment:\n\n{segment_text}"
+                    result = await asyncio.wait_for(
+                        segment_synthesis_agent.run(
+                            f"Summarize this meeting segment:\n\n{segment_text}"
+                        ),
+                        timeout=settings.synthesis_timeout_seconds,
                     )
 
                 logger.info(
                     "Segment synthesis completed",
                     segment_index=i + 1,
                     summary_length=len(result.output),
-                    total_messages=len(segment_messages),
-                    likely_retries=len(segment_messages) > 2,
                 )
 
                 return i, result.output
@@ -569,16 +551,17 @@ Return both summary (detailed markdown) and action_items (structured list)."""
             from pydantic_ai import capture_run_messages
 
             with capture_run_messages() as hierarchical_messages:
-                result = await hierarchical_synthesis_agent.run(
-                    f"Create comprehensive meeting intelligence from these temporal segments:\n\n{combined_segments}"
+                result = await asyncio.wait_for(
+                    hierarchical_synthesis_agent.run(
+                        f"Create comprehensive meeting intelligence from these temporal segments:\n\n{combined_segments}"
+                    ),
+                    timeout=settings.synthesis_timeout_seconds,
                 )
 
             logger.info(
                 "Hierarchical synthesis completed",
                 final_summary_length=len(result.output.summary),
                 action_items_count=len(result.output.action_items),
-                total_messages=len(hierarchical_messages),
-                likely_retries=len(hierarchical_messages) > 2,
             )
 
             return result.output

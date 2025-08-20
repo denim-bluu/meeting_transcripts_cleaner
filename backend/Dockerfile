@@ -33,6 +33,8 @@ COPY --from=builder --chown=appuser:appgroup /app/.venv /app/.venv
 
 # Copy project files
 COPY --from=builder --chown=appuser:appgroup /app /app
+# Copy .env into image for runtime configuration
+COPY --chown=appuser:appgroup .env /app/.env
 
 # Set working directory
 WORKDIR /app

@@ -41,11 +41,19 @@ Quality over quantity - better to be accurate than comprehensive
 # Pure agent definition - stateless and global
 # Using OpenAIResponsesModel for o3 models to enable thinking
 segment_synthesis_agent = Agent(
-    OpenAIResponsesModel(settings.synthesis_model),
+    OpenAIResponsesModel(settings.segment_model),
     instructions=SEGMENT_SYNTHESIS_INSTRUCTIONS,
     retries=2,  # Built-in validation retries (consistent with other agents)
     model_settings=OpenAIResponsesModelSettings(
-        openai_reasoning_effort="high",  # Enable thinking for complex reasoning
-        openai_reasoning_summary="detailed",  # Include detailed reasoning summaries
+        openai_reasoning_effort=(
+            settings.synthesis_reasoning_effort
+            if settings.synthesis_reasoning_effort in ("low", "medium", "high")
+            else "high"
+        ),
+        openai_reasoning_summary=(
+            settings.synthesis_reasoning_summary
+            if settings.synthesis_reasoning_summary in ("detailed", "concise")
+            else "detailed"
+        ),
     ),
 )
