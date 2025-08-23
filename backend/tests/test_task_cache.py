@@ -10,14 +10,16 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from backend.core.task_cache import (
+from tasks.cache import (
     SimpleTaskCache,
-    TaskEntry,
-    TaskStatus,
-    TaskType,
     get_task_cache,
     initialize_cache,
     reset_cache,
+)
+from tasks.models import (
+    TaskEntry,
+    TaskStatus,
+    TaskType,
 )
 
 
@@ -525,10 +527,9 @@ class TestGlobalCacheFunctions:
     @pytest.mark.asyncio
     async def test_global_cleanup_function(self):
         """Test global cleanup function."""
-        from backend.services.transcript.task_cache import cleanup_cache
-
         # Initialize cache
         initialize_cache()
+        cache = get_task_cache()
 
         # Add expired task
         cache = get_task_cache()

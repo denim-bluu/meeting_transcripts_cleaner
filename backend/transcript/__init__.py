@@ -1,0 +1,1 @@
+"""Transcript domain - complete transcript processing functionality."""

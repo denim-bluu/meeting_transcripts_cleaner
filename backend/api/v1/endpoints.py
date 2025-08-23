@@ -11,8 +11,6 @@ import os
 from typing import Any
 import uuid
 
-from config import settings
-from core.task_cache import TaskEntry, TaskStatus, TaskType, get_task_cache
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -23,7 +21,10 @@ from fastapi import (
     status,
 )
 from fastapi.responses import JSONResponse
+from shared.config import settings
 import structlog
+from tasks.cache import get_task_cache
+from tasks.models import TaskEntry, TaskStatus, TaskType
 
 from api.v1.schemas import (
     ErrorDetail,
@@ -768,7 +769,7 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
 
     try:
         # Import here to avoid startup overhead
-        from infrastructure.factories import create_transcript_processor
+        from integrations.factories import create_transcript_processor
 
         # Get API key
         api_key = os.getenv("OPENAI_API_KEY")
@@ -885,7 +886,7 @@ async def run_intelligence_extraction(
             raise Exception("No transcript data provided")
 
         # Import here to avoid startup overhead
-        from infrastructure.factories import create_intelligence_processor
+        from integrations.factories import create_intelligence_processor
 
         # Get API key
         api_key = os.getenv("OPENAI_API_KEY")
@@ -907,7 +908,7 @@ async def run_intelligence_extraction(
                 )
 
         # Deserialize chunks back to VTTChunk objects
-        from models.transcript import VTTChunk, VTTEntry
+        from transcript.models import VTTChunk, VTTEntry
 
         vtt_chunks = []
         for chunk_data in transcript_data["chunks"]:

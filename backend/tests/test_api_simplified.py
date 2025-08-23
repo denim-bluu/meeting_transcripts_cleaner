@@ -14,9 +14,9 @@ from fastapi.testclient import TestClient
 import pytest
 
 # Import our application
-from backend.main import app
-from backend.core.task_cache import (
-    SimpleTaskCache,
+from main import app
+from tasks.cache import SimpleTaskCache
+from tasks.models import (
     TaskEntry,
     TaskStatus,
     TaskType,
@@ -735,7 +735,7 @@ class TestFileValidation:
         """Test file validation with no filename."""
         from fastapi import HTTPException, UploadFile
 
-        from backend.api.v1.endpoints import validate_upload_file
+        from api.v1.endpoints import validate_upload_file
 
         # Mock UploadFile with no filename
         mock_file = Mock(spec=UploadFile)
@@ -751,7 +751,7 @@ class TestFileValidation:
         """Test file validation with invalid extension."""
         from fastapi import HTTPException, UploadFile
 
-        from backend.api.v1.endpoints import validate_upload_file
+        from api.v1.endpoints import validate_upload_file
 
         # Mock UploadFile with invalid extension
         mock_file = Mock(spec=UploadFile)

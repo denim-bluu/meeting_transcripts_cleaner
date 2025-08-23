@@ -17,7 +17,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Copy project source code
 COPY frontend/ ./frontend/
-COPY backend/models/ ./models/
 
 # Production stage
 FROM python:3.11-slim

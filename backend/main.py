@@ -11,8 +11,8 @@ from contextlib import asynccontextmanager
 from api.v1.endpoints import router as api_v1_router
 
 # Configure structured logging first
-from config import configure_structlog, settings
-from core.task_cache import initialize_cache
+from shared.config import configure_structlog, settings
+from tasks.cache import initialize_cache
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import structlog

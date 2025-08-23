@@ -1,0 +1,1 @@
+"""Intelligence domain - complete intelligence extraction functionality."""
