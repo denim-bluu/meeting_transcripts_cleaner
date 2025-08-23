@@ -1,10 +1,6 @@
 """Transcript processing models - VTT parsing, cleaning, and review."""
 
-import asyncio
 from dataclasses import dataclass
-from datetime import datetime
-from enum import Enum
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -57,5 +53,3 @@ class ReviewResult(BaseModel):
 
 # Task-related models are now in backend.core.task_cache
 # Import them for backward compatibility
-from backend.core.task_cache import TaskStatus, TaskType, TaskEntry
-

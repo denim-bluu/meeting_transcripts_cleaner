@@ -11,6 +11,8 @@ import os
 from typing import Any
 import uuid
 
+from config import settings
+from core.task_cache import TaskEntry, TaskStatus, TaskType, get_task_cache
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -23,7 +25,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 import structlog
 
-from backend.api.v1.schemas import (
+from api.v1.schemas import (
     ErrorDetail,
     ErrorResponse,
     FileUploadConstraints,
@@ -34,8 +36,6 @@ from backend.api.v1.schemas import (
     validate_file_extension,
     validate_file_size,
 )
-from backend.config import settings
-from backend.core.task_cache import TaskEntry, TaskStatus, TaskType, get_task_cache
 
 logger = structlog.get_logger(__name__)
 
@@ -763,25 +763,20 @@ async def _serialize_transcript_result(transcript: dict) -> dict:
 
 
 async def run_transcript_processing(task_id: str, content: str) -> None:
-    """Background task for VTT processing using existing TranscriptService."""
+    """Background task for VTT processing using refactored TranscriptProcessor."""
     cache = get_task_cache()
 
     try:
         # Import here to avoid startup overhead
-        from backend.config import settings
-        from backend.services.transcript.transcript_service import TranscriptService
+        from infrastructure.factories import create_transcript_processor
 
         # Get API key
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise Exception("OPENAI_API_KEY not configured")
 
-        # Initialize service
-        service = TranscriptService(
-            api_key,
-            max_concurrent=settings.max_concurrent_tasks,
-            rate_limit=settings.rate_limit_per_minute,
-        )
+        # Initialize processor using factory
+        processor = create_transcript_processor(api_key)
 
         # Progress callback that updates task in cache
         async def update_progress_async(progress: float, message: str) -> None:
@@ -803,7 +798,7 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
                     "Failed to update progress", task_id=task_id, error=str(e)
                 )
 
-        # Since TranscriptService expects a sync callback, we'll handle progress differently
+        # Since TranscriptProcessor expects a sync callback, we'll handle progress differently
         def update_progress_sync(progress: float, message: str) -> None:
             """Sync progress callback - schedule async cache update and log."""
             try:
@@ -827,7 +822,7 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
 
         # Process VTT
 
-        transcript = await asyncio.to_thread(service.process_vtt, content)
+        transcript = await asyncio.to_thread(processor.process_vtt, content)
 
         # Update task: starting AI cleaning
         task = await cache.get_task(task_id)
@@ -840,7 +835,7 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
         await update_progress_async(
             0.3, f"Starting AI cleaning of {len(transcript['chunks'])} chunks..."
         )
-        cleaned = await service.clean_transcript(
+        cleaned = await processor.clean_transcript(
             transcript, progress_callback=update_progress_sync
         )
         await update_progress_async(0.9, "AI cleaning completed, finalizing results...")
@@ -890,12 +885,15 @@ async def run_intelligence_extraction(
             raise Exception("No transcript data provided")
 
         # Import here to avoid startup overhead
-        from backend.services.orchestration.intelligence_orchestrator import (
-            IntelligenceOrchestrator,
-        )
+        from infrastructure.factories import create_intelligence_processor
 
-        # Initialize orchestrator
-        orchestrator = IntelligenceOrchestrator()
+        # Get API key
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise Exception("OPENAI_API_KEY not configured")
+
+        # Initialize processor using factory
+        processor = create_intelligence_processor(api_key)
 
         # Progress callback that updates task in cache
         async def update_progress(progress: float, message: str) -> None:
@@ -909,7 +907,7 @@ async def run_intelligence_extraction(
                 )
 
         # Deserialize chunks back to VTTChunk objects
-        from backend.models.transcript import VTTChunk, VTTEntry
+        from models.transcript import VTTChunk, VTTEntry
 
         vtt_chunks = []
         for chunk_data in transcript_data["chunks"]:
@@ -934,7 +932,7 @@ async def run_intelligence_extraction(
             vtt_chunks.append(chunk)
 
         # Extract intelligence with proper VTTChunk objects
-        intelligence = await orchestrator.process_meeting(
+        intelligence = await processor.process_meeting(
             vtt_chunks,
             detail_level=detail_level,
             progress_callback=update_progress,

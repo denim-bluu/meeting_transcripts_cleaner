@@ -39,7 +39,7 @@ class ChunkInsights(BaseModel):
             raise ModelRetry(
                 "No insights provided. Extract important statements from the conversation."
             )
-        
+
         return v
 
     @field_validator("actions")
@@ -53,10 +53,8 @@ class ChunkInsights(BaseModel):
     def validate_themes_quality(cls, v: list[str]) -> list[str]:
         """Minimal validation - just check themes exist."""
         if not v:
-            raise ModelRetry(
-                "No themes provided. Identify discussion themes."
-            )
-        
+            raise ModelRetry("No themes provided. Identify discussion themes.")
+
         return v
 
 
@@ -72,10 +70,8 @@ class ActionItem(BaseModel):
     def validate_description_quality(cls, v: str) -> str:
         """Minimal validation - just check it's not empty."""
         if len(v.strip()) < 3:
-            raise ModelRetry(
-                "Action item description cannot be empty."
-            )
-        
+            raise ModelRetry("Action item description cannot be empty.")
+
         return v
 
 
@@ -102,10 +98,8 @@ class MeetingIntelligence(BaseModel):
     def validate_summary_quality(cls, v: str) -> str:
         """Minimal validation - only check if summary exists and isn't empty."""
         if len(v.strip()) < 10:  # Very minimal requirement
-            raise ModelRetry(
-                "Summary cannot be empty. Provide any meaningful content."
-            )
-        
+            raise ModelRetry("Summary cannot be empty. Provide any meaningful content.")
+
         return v
 
     @field_validator("action_items")

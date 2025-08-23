@@ -1,7 +1,7 @@
 """Models package for Meeting Transcript Cleaner."""
 
 from .intelligence import ActionItem, ChunkInsights, MeetingIntelligence
-from .transcript import CleaningResult, ReviewResult, VTTChunk, VTTEntry, TaskStatus, TaskType, TaskEntry
+from .transcript import CleaningResult, ReviewResult, VTTChunk, VTTEntry
 
 __all__ = [
     "VTTEntry",
@@ -11,7 +11,4 @@ __all__ = [
     "MeetingIntelligence",
     "ActionItem",
     "ChunkInsights",
-    "TaskStatus",
-    "TaskType",
-    "TaskEntry",
 ]

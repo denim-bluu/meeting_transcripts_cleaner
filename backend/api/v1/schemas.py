@@ -9,10 +9,9 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
-
 # Import enums from our cache module to avoid duplication
-from backend.models.transcript import TaskStatus, TaskType
+from core.task_cache import TaskStatus, TaskType
+from pydantic import BaseModel, Field
 
 # ===============================================================================
 # Enums for Controlled Vocabularies

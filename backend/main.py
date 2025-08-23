@@ -7,16 +7,15 @@ and automatic OpenAPI documentation. Built for scalable SPCS deployment.
 
 from contextlib import asynccontextmanager
 
+# Import API routes and cache
+from api.v1.endpoints import router as api_v1_router
+
+# Configure structured logging first
+from config import configure_structlog, settings
+from core.task_cache import initialize_cache
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import structlog
-
-# Import API routes and cache
-from backend.api.v1.endpoints import router as api_v1_router
-
-# Configure structured logging first
-from backend.config import configure_structlog, settings
-from backend.services.transcript.task_cache import initialize_cache
 
 configure_structlog()
 logger = structlog.get_logger(__name__)

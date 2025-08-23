@@ -6,8 +6,7 @@ import structlog
 
 from backend.agents.transcript.reviewer import review_agent
 from backend.config import settings
-from backend.models.agents import ReviewResult
-from backend.models.transcript import VTTChunk
+from backend.models.transcript import ReviewResult, VTTChunk
 
 logger = structlog.get_logger(__name__)
 

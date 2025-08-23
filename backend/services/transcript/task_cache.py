@@ -18,7 +18,7 @@ from backend.core.task_cache import (
 __all__ = [
     "SimpleTaskCache",
     "TaskEntry",
-    "TaskStatus", 
+    "TaskStatus",
     "TaskType",
     "get_task_cache",
     "initialize_cache",
