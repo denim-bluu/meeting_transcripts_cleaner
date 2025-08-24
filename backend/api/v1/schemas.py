@@ -12,7 +12,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 # Import enums from our tasks domain to avoid duplication
-from tasks.models import TaskStatus, TaskType
+from backend.tasks.models import TaskStatus, TaskType
 
 # ===============================================================================
 # Enums for Controlled Vocabularies

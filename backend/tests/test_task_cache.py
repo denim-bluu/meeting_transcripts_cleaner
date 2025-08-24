@@ -10,13 +10,13 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from tasks.cache import (
+from backend.tasks.cache import (
     SimpleTaskCache,
     get_task_cache,
     initialize_cache,
     reset_cache,
 )
-from tasks.models import (
+from backend.tasks.models import (
     TaskEntry,
     TaskStatus,
     TaskType,

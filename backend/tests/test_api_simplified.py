@@ -14,9 +14,9 @@ from fastapi.testclient import TestClient
 import pytest
 
 # Import our application
-from main import app
-from tasks.cache import SimpleTaskCache
-from tasks.models import (
+from backend.main import app
+from backend.tasks.cache import SimpleTaskCache
+from backend.tasks.models import (
     TaskEntry,
     TaskStatus,
     TaskType,

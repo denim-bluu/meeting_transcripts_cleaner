@@ -2,9 +2,9 @@
 
 import time
 
+from shared.config import settings
 import structlog
 
-from shared.config import settings
 from ..agents.reviewer import review_agent
 from ..models import ReviewResult, VTTChunk
 

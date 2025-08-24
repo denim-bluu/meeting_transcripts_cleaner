@@ -9,6 +9,9 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LOG_LEVEL=INFO
+      - CACHE_TYPE=duckdb
+      - DUCKDB_PATH=/app/data/tasks.duckdb
+      - ENVIRONMENT=production
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
@@ -20,6 +23,15 @@ services:
     restart: unless-stopped
     networks:
       - transcript-network
+    # Resource limits for optimal performance
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4G
+        reservations:
+          cpus: '2.0'
+          memory: 2G
 
   frontend:
     build:

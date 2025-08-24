@@ -3,9 +3,9 @@
 from dotenv import load_dotenv
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
+from shared.config import settings
 import structlog
 
-from shared.config import settings
 from ..models import ReviewResult
 
 logger = structlog.get_logger(__name__)
