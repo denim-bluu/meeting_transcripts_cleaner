@@ -17,8 +17,6 @@ Import patterns:
 # Import all agents for convenient access
 from backend.agents.extraction.insights import chunk_extraction_agent
 from backend.agents.synthesis.direct import direct_synthesis_agent
-from backend.agents.synthesis.hierarchical import hierarchical_synthesis_agent
-from backend.agents.synthesis.segment import segment_synthesis_agent
 from backend.agents.transcript.cleaner import cleaning_agent
 from backend.agents.transcript.reviewer import review_agent
 
@@ -28,6 +26,4 @@ __all__ = [
     "review_agent",
     "chunk_extraction_agent",
     "direct_synthesis_agent",
-    "segment_synthesis_agent",
-    "hierarchical_synthesis_agent",
 ]

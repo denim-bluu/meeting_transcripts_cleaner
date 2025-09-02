@@ -10,11 +10,9 @@ from backend.models.intelligence import ChunkInsights
 
 logger = structlog.get_logger(__name__)
 
-# Ensure environment is loaded for API key
 load_dotenv()
 
-# Agent configuration as module constants - concise accuracy-first approach
-UNIVERSAL_EXTRACTION_INSTRUCTIONS = """
+INSTRUCTIONS = """
 You are extracting insights from a meeting transcript segment.
 
 STRICT RULES:
@@ -37,15 +35,13 @@ Quality check each insight:
 Target: 10-20 meaningful insights per chunk
 """
 
-# Pure agent definition - stateless and global
 chunk_extraction_agent = Agent(
     OpenAIResponsesModel(settings.insights_model),
     output_type=ChunkInsights,
-    instructions=UNIVERSAL_EXTRACTION_INSTRUCTIONS,
-    deps_type=dict,  # Accept context dictionary as dependency
-    retries=2,  # Built-in retry on validation failure
+    instructions=INSTRUCTIONS,
+    deps_type=dict,
+    retries=2,
 )
-logger.info("Chunk extraction agent configured", insights_model=settings.insights_model)
 
 
 # Dynamic instructions based on meeting context (following Pydantic AI patterns)

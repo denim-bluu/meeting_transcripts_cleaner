@@ -9,8 +9,6 @@ import structlog
 # Use pure agents following Pydantic AI best practices
 from backend.agents.extraction.insights import chunk_extraction_agent
 from backend.agents.synthesis.direct import direct_synthesis_agent
-from backend.agents.synthesis.hierarchical import hierarchical_synthesis_agent
-from backend.agents.synthesis.segment import segment_synthesis_agent
 from backend.config import settings
 from backend.models.intelligence import ChunkInsights, MeetingIntelligence
 from backend.models.transcript import VTTChunk
@@ -136,34 +134,12 @@ class IntelligenceOrchestrator:
             i for i in insights_list if i.importance >= self.MIN_IMPORTANCE
         ]
 
-        # Estimate tokens and choose synthesis path
-        estimated_tokens = self._estimate_tokens(important_insights)
-
-        if estimated_tokens <= self.CONTEXT_LIMIT:
-            # COMMON CASE: Direct synthesis
-            logger.info(
-                "Using direct synthesis",
-                estimated_tokens=estimated_tokens,
-                filtered_insights=len(important_insights),
-            )
-            intelligence = await self._synthesize_direct(important_insights)
-            synthesis_method = "direct"
-        else:
-            # EDGE CASE: Hierarchical synthesis
-            logger.info(
-                "Using hierarchical synthesis",
-                estimated_tokens=estimated_tokens,
-                filtered_insights=len(important_insights),
-            )
-            intelligence = await self._synthesize_hierarchical(
-                important_insights, self.SEGMENT_MINUTES
-            )
-            synthesis_method = "hierarchical"
+        logger.info("Passing insights", filtered_insights=len(important_insights))
+        intelligence = await self._synthesize(important_insights)
 
         phase3_time = int((time.time() - phase3_start) * 1000)
         logger.info(
             "Phase 3 completed",
-            synthesis_method=synthesis_method,
             summary_length=len(intelligence.summary),
             action_items=len(intelligence.action_items),
             time_ms=phase3_time,
@@ -171,7 +147,7 @@ class IntelligenceOrchestrator:
 
         # Calculate final stats
         total_time = int((time.time() - start_time) * 1000)
-        api_calls = len(semantic_chunks) + (1 if synthesis_method == "direct" else 2)
+        api_calls = len(semantic_chunks)
         avg_importance = sum(i.importance for i in insights_list) / len(insights_list)
 
         # Preserve critical insights check
@@ -186,12 +162,10 @@ class IntelligenceOrchestrator:
             "semantic_chunks": len(semantic_chunks),
             "api_calls": api_calls,
             "time_ms": total_time,
-            "synthesis_method": synthesis_method,
             "avg_importance": round(avg_importance, 2),
             "insights_filtered": len(important_insights),
             "insights_total": len(insights_list),
             "critical_insights_preserved": critical_preserved,
-            "estimated_tokens": estimated_tokens,
             "phase_times": {
                 "semantic_chunking_ms": phase1_time,
                 "insight_extraction_ms": phase2_time,
@@ -203,46 +177,11 @@ class IntelligenceOrchestrator:
             "Intelligence processing completed successfully",
             api_calls=api_calls,
             total_time_ms=total_time,
-            synthesis_method=synthesis_method,
             avg_importance=round(avg_importance, 2),
             critical_preserved=critical_preserved,
         )
 
         return intelligence
-
-    def _estimate_tokens(self, insights_list) -> int:
-        """
-        Estimate tokens for synthesis based on insights content.
-
-        Standard estimation (1 token ≈ 4 characters for GPT models).
-        """
-        total_chars = 0
-
-        for insight in insights_list:
-            # Count insights text
-            total_chars += sum(len(text) for text in insight.insights)
-            # Count themes
-            total_chars += sum(len(theme) for theme in insight.themes)
-            # Count actions
-            total_chars += sum(len(action) for action in insight.actions)
-            # Add metadata overhead
-            total_chars += 100  # Importance, structure, etc.
-
-        # Add prompt overhead (synthesis instructions - increased for comprehensive prompts)
-        total_chars += 3000
-
-        # Convert to tokens (standard GPT estimate)
-        # Use more conservative estimate for longer, richer outputs
-        estimated_tokens = total_chars // 3
-
-        logger.debug(
-            "Token estimation completed",
-            insights_count=len(insights_list),
-            total_chars=total_chars,
-            estimated_tokens=estimated_tokens,
-        )
-
-        return estimated_tokens
 
     async def _extract_all_insights(
         self,
@@ -320,7 +259,6 @@ class IntelligenceOrchestrator:
             for i, chunk_text in enumerate(semantic_chunks)
         ]
 
-        # Execute all tasks concurrently with simple progress tracking
         if progress_callback:
             if asyncio.iscoroutinefunction(progress_callback):
                 await progress_callback(
@@ -374,7 +312,7 @@ class IntelligenceOrchestrator:
 
         return final_insights
 
-    async def _synthesize_direct(
+    async def _synthesize(
         self, insights_list: list[ChunkInsights]
     ) -> MeetingIntelligence:
         """Direct synthesis using pure agent with detailed logging."""
@@ -458,157 +396,6 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                 synthesis_time_ms=synthesis_time,
             )
             raise
-
-    async def _synthesize_hierarchical(
-        self, insights_list: list[ChunkInsights], segment_minutes: int
-    ) -> MeetingIntelligence:
-        """Hierarchical synthesis using pure agents with temporal segmentation."""
-        logger.info(
-            "Starting hierarchical synthesis",
-            total_insights=len(insights_list),
-            segment_minutes=segment_minutes,
-        )
-
-        # Step 1: Group insights into temporal segments
-        segments = self._group_insights_by_time(insights_list, segment_minutes)
-
-        logger.info(
-            "Temporal segmentation completed",
-            segments_count=len(segments),
-            avg_insights_per_segment=sum(len(seg) for seg in segments) / len(segments)
-            if segments
-            else 0,
-        )
-
-        # Step 2: Create segment summaries using concurrent segment_synthesis_agent
-        async def synthesize_single_segment(
-            i: int, segment_insights: list[ChunkInsights]
-        ) -> tuple[int, str]:
-            """Synthesize a single segment with proper error handling."""
-            logger.info(
-                "Processing segment",
-                segment_index=i + 1,
-                insights_in_segment=len(segment_insights),
-                segment_model=settings.segment_model,
-            )
-
-            # Format insights for segment synthesis
-            segment_text = self._format_insights_for_synthesis(segment_insights)
-
-            with capture_run_messages() as segment_messages:
-                try:
-                    result = await asyncio.wait_for(
-                        segment_synthesis_agent.run(
-                            f"Summarize this meeting segment:\n\n{segment_text}"
-                        ),
-                        timeout=settings.synthesis_timeout_seconds,
-                    )
-
-                    logger.info(
-                        "Segment synthesis completed",
-                        segment_index=i + 1,
-                        summary_length=len(result.output),
-                    )
-
-                    return i, result.output
-
-                except Exception as e:
-                    logger.error(
-                        "Segment synthesis failed",
-                        message=segment_messages,
-                        segment_index=i + 1,
-                        error=str(e),
-                    )
-                    raise
-
-        # Create concurrent tasks for all segments
-        logger.info(
-            "Starting concurrent segment synthesis",
-            segments_count=len(segments),
-        )
-
-        segment_tasks = [
-            synthesize_single_segment(i, segment_insights)
-            for i, segment_insights in enumerate(segments)
-        ]
-
-        # Execute all segment synthesis tasks concurrently
-        segment_results: list[tuple[int, str] | BaseException] = await asyncio.gather(
-            *segment_tasks, return_exceptions=True
-        )
-
-        # Process segment results
-        segment_summaries: list[str | None] = [None] * len(segments)
-
-        for result in segment_results:
-            if isinstance(result, BaseException):
-                logger.error("Concurrent segment synthesis failed", error=str(result))
-                raise result
-            else:
-                # Type narrowing: result is tuple[int, str]
-                segment_index, summary = result
-                segment_summaries[segment_index] = summary
-
-        # Filter out None values
-        final_summaries: list[str] = [
-            summary for summary in segment_summaries if summary is not None
-        ]
-
-        # Step 3: Combine all segment summaries using hierarchical_synthesis_agent
-        logger.info(
-            "Starting final hierarchical synthesis",
-            segment_summaries_count=len(segment_summaries),
-            synthesis_model=settings.synthesis_model,
-        )
-
-        # Combine all segment summaries
-        combined_segments = "\n\n".join(
-            [
-                f"## Temporal Segment {i+1}\n{summary}"
-                for i, summary in enumerate(segment_summaries)
-            ]
-        )
-
-        try:
-            from pydantic_ai import capture_run_messages
-
-            with capture_run_messages() as hierarchical_messages:
-                result = await asyncio.wait_for(
-                    hierarchical_synthesis_agent.run(
-                        f"Create comprehensive meeting intelligence from these temporal segments:\n\n{combined_segments}"
-                    ),
-                    timeout=settings.synthesis_timeout_seconds,
-                )
-
-            logger.info(
-                "Hierarchical synthesis completed",
-                final_summary_length=len(result.output.summary),
-                action_items_count=len(result.output.action_items),
-            )
-
-            return result.output
-        except Exception as e:
-            logger.error("Hierarchical synthesis failed", error=str(e))
-            raise
-
-    def _group_insights_by_time(
-        self, insights_list: list[ChunkInsights], segment_minutes: int
-    ) -> list[list[ChunkInsights]]:
-        """Group insights into temporal segments."""
-        if not insights_list:
-            return []
-
-        # For simplicity, group insights by chunk order since we don't have timestamps
-        # In production, this would use actual meeting timestamps
-        insights_per_segment = max(1, len(insights_list) // 3)  # Aim for ~3 segments
-
-        segments = []
-        for i in range(0, len(insights_list), insights_per_segment):
-            segment = insights_list[i : i + insights_per_segment]
-            if segment:  # Only add non-empty segments
-                segments.append(segment)
-
-        return segments
 
     def _format_insights_for_synthesis(self, insights_list: list[ChunkInsights]) -> str:
         """Format insights for synthesis prompts."""

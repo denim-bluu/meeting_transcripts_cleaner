@@ -11,8 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-# Import enums from our cache module to avoid duplication
-from backend.models.transcript import TaskStatus, TaskType
+from backend.core.task_cache import TaskStatus, TaskType
 
 # ===============================================================================
 # Enums for Controlled Vocabularies

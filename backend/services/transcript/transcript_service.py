@@ -7,8 +7,7 @@ import time
 from asyncio_throttle.throttler import Throttler
 import structlog
 
-from backend.models.agents import CleaningResult, ReviewResult
-from backend.models.transcript import VTTChunk
+from backend.models.transcript import CleaningResult, ReviewResult, VTTChunk
 from backend.services.orchestration import IntelligenceOrchestrator
 from backend.services.transcript.cleaning_service import (
     TranscriptCleaningService,

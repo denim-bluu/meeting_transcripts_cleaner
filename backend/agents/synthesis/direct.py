@@ -11,12 +11,10 @@ import structlog
 from backend.config import settings
 from backend.models.intelligence import MeetingIntelligence
 
-# Ensure environment is loaded for API key
 load_dotenv()
 logger = structlog.get_logger(__name__)
 
-# Agent configuration as module constants - following industry best practices
-PRODUCTION_SYNTHESIS_INSTRUCTIONS = """
+INSTRUCTIONS = """
 Create a meeting summary from the extracted insights.
 
 CRITICAL RULES:
@@ -43,31 +41,18 @@ You must return BOTH a summary field and an action_items field.
 Extract action items mentioned in insights with exact context given.
 """
 
-# Pure agent definition - stateless and global
-# Using OpenAIResponsesModel for o3 models to enable thinking
 direct_synthesis_agent = Agent(
     OpenAIResponsesModel(settings.synthesis_model),
     output_type=MeetingIntelligence,
-    instructions=PRODUCTION_SYNTHESIS_INSTRUCTIONS,
-    retries=2,  # Built-in validation retries (balanced for reliability)
+    instructions=INSTRUCTIONS,
+    retries=2,
     model_settings=OpenAIResponsesModelSettings(
-        openai_reasoning_effort=(
-            settings.synthesis_reasoning_effort
-            if settings.synthesis_reasoning_effort in ("low", "medium", "high")
-            else "high"
-        ),
-        openai_reasoning_summary=(
-            "detailed"
-            if settings.synthesis_reasoning_summary == "detailed"
-            else "concise"
-            if settings.synthesis_reasoning_summary == "concise"
-            else "detailed"
-        ),
+        openai_reasoning_effort="high",
+        openai_reasoning_summary="detailed",
     ),
 )
 logger.info(
     "Direct synthesis agent configured",
     synthesis_model=settings.synthesis_model,
-    synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
-    synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
+    model_settings=direct_synthesis_agent.model_settings,
 )

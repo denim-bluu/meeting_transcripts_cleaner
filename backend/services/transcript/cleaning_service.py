@@ -6,8 +6,7 @@ import structlog
 
 from backend.agents.transcript.cleaner import cleaning_agent
 from backend.config import settings
-from backend.models.agents import CleaningResult
-from backend.models.transcript import VTTChunk
+from backend.models.transcript import CleaningResult, VTTChunk
 
 logger = structlog.get_logger(__name__)
 

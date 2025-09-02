@@ -7,7 +7,7 @@ appropriate defaults and validation.
 
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from dotenv import load_dotenv
 from pydantic import model_validator
@@ -55,9 +55,8 @@ class Settings(BaseSettings):
     review_model: str = ""
     insights_model: str = ""
     synthesis_model: str = ""
-    segment_model: str = ""
-    synthesis_reasoning_effort: str = "medium"
-    synthesis_reasoning_summary: str = "detailed"
+    synthesis_reasoning_effort: Literal["low", "medium", "high"] = "medium"
+    synthesis_reasoning_summary: Literal["detailed", "concise"] = "detailed"
     synthesis_timeout_seconds: int = 300
     openai_api_key: str = ""
 
