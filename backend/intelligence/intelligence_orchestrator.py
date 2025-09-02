@@ -357,7 +357,7 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                 try:
                     result = await asyncio.wait_for(
                         direct_synthesis_agent.run(user_prompt),
-                        timeout=30,  # 30 second timeout
+                        timeout=300,  # 300 second timeout
                     )
 
                 except Exception as e:
@@ -365,7 +365,7 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                         "Direct synthesis failed",
                         error=str(e),
                         error_type=type(e).__name__,
-                        timeout=30,  # 30 second timeout
+                        timeout=300,  # 300 second timeout
                     )
                     raise
 

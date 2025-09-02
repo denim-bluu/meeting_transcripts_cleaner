@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 # Import from domain layer
-from backend.tasks.models import TaskStatus, TaskType
+from backend.tasks.cache import TaskStatus, TaskType
 
 
 class DetailLevel(str, Enum):

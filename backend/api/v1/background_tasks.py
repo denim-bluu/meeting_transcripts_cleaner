@@ -6,8 +6,7 @@ from typing import Any
 
 import structlog
 
-from backend.tasks.cache import get_task_cache
-from backend.tasks.models import TaskStatus
+from backend.tasks.cache import TaskStatus, get_task_cache
 
 logger = structlog.get_logger(__name__)
 

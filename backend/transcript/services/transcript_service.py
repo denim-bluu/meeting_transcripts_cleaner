@@ -208,16 +208,10 @@ class TranscriptService:
         # Single in-process work queue
         queue: asyncio.Queue = asyncio.Queue()
 
-        # NOTE: Intentional design for value first. This in-process queue is the simplest
-        # way to reduce tail latency and improve throughput. When/if we need durability
-        # and horizontal scaling, we can swap this queue for Redis/SQS with the same worker
-        # function and shared rate limiter semantics. For now, we prioritize faster delivery.
+        # In-process queue for optimal performance
 
-        # Enqueue all chunks
         for idx, ch in enumerate(chunks):
             queue.put_nowait((idx, ch))
-
-        # Sentinels are enqueued after processing completes to avoid any worker exiting early.
 
         # Progress tracking
         completed = 0

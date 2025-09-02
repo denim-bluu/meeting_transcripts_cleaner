@@ -35,23 +35,7 @@ class TaskType(str, Enum):
 
 @dataclass
 class TaskEntry:
-    """
-    Simplified task entry for in-memory storage.
-
-    Attributes:
-        task_id: Unique identifier
-        task_type: Type of task being executed
-        status: Current execution status
-        created_at: When the task was created
-        updated_at: When the task was last updated
-        progress: Completion percentage (0.0 to 1.0)
-        message: Human-readable status message
-        result: Task result data (if completed)
-        error: Error message (if failed)
-        error_code: Machine-readable error code
-        metadata: Additional task metadata
-        expires_at: When this task expires from cache
-    """
+    """Task entry for in-memory storage."""
 
     task_id: str
     task_type: TaskType
@@ -86,45 +70,10 @@ class TaskEntry:
 
 
 class SimpleTaskCache:
-    """
-    Thread-safe in-memory cache for task management with automatic TTL cleanup.
-
-    This cache is designed for containerized deployments where:
-    - Tasks are short-lived (minutes to hours)
-    - Horizontal scaling is handled by container orchestration
-    - Persistence across restarts is not required
-
-    Example:
-        >>> cache = SimpleTaskCache(default_ttl_hours=2)
-        >>>
-        >>> # Store a task
-        >>> task = TaskEntry(
-        ...     task_id="abc123",
-        ...     task_type=TaskType.TRANSCRIPT_PROCESSING,
-        ...     status=TaskStatus.PROCESSING,
-        ...     created_at=datetime.now(),
-        ...     updated_at=datetime.now()
-        ... )
-        >>> await cache.store_task(task)
-        >>>
-        >>> # Retrieve the task
-        >>> retrieved = await cache.get_task("abc123")
-        >>> print(retrieved.status)  # TaskStatus.PROCESSING
-        >>>
-        >>> # Update task progress
-        >>> retrieved.progress = 0.5
-        >>> retrieved.message = "Halfway complete"
-        >>> await cache.update_task(retrieved)
-    """
+    """Thread-safe in-memory cache for task management with TTL cleanup."""
 
     def __init__(self, default_ttl_hours: int = 1, cleanup_interval_minutes: int = 10):
-        """
-        Initialize the cache.
-
-        Args:
-            default_ttl_hours: Default time-to-live for tasks in hours
-            cleanup_interval_minutes: How often to run cleanup in minutes
-        """
+        """Initialize the cache."""
         self._tasks: dict[str, TaskEntry] = {}
         self._lock = asyncio.Lock()
         self.default_ttl = timedelta(hours=default_ttl_hours)
@@ -138,18 +87,7 @@ class SimpleTaskCache:
         )
 
     async def store_task(self, task: TaskEntry) -> TaskEntry:
-        """
-        Store a task in the cache.
-
-        Args:
-            task: Task to store
-
-        Returns:
-            The stored task entry
-
-        Raises:
-            ValueError: If task_id already exists
-        """
+        """Store a task in the cache."""
         async with self._lock:
             if task.task_id in self._tasks:
                 raise ValueError(f"Task {task.task_id} already exists")
@@ -173,15 +111,7 @@ class SimpleTaskCache:
             return task
 
     async def get_task(self, task_id: str) -> TaskEntry | None:
-        """
-        Retrieve a task from the cache.
-
-        Args:
-            task_id: Unique task identifier
-
-        Returns:
-            Task entry if found and not expired, None otherwise
-        """
+        """Retrieve a task from the cache."""
         async with self._lock:
             task = self._tasks.get(task_id)
 
@@ -197,18 +127,7 @@ class SimpleTaskCache:
             return task
 
     async def update_task(self, task: TaskEntry) -> TaskEntry:
-        """
-        Update an existing task in the cache.
-
-        Args:
-            task: Updated task entry
-
-        Returns:
-            The updated task entry
-
-        Raises:
-            ValueError: If task doesn't exist
-        """
+        """Update an existing task in the cache."""
         async with self._lock:
             if task.task_id not in self._tasks:
                 raise ValueError(f"Task {task.task_id} not found")
@@ -226,15 +145,7 @@ class SimpleTaskCache:
             return task
 
     async def delete_task(self, task_id: str) -> bool:
-        """
-        Delete a task from the cache.
-
-        Args:
-            task_id: Task to delete
-
-        Returns:
-            True if task was deleted, False if not found
-        """
+        """Delete a task from the cache."""
         async with self._lock:
             if task_id in self._tasks:
                 del self._tasks[task_id]
@@ -248,17 +159,7 @@ class SimpleTaskCache:
         task_type: TaskType | None = None,
         limit: int = 100,
     ) -> list[TaskEntry]:
-        """
-        List tasks with optional filtering.
-
-        Args:
-            status: Filter by task status
-            task_type: Filter by task type
-            limit: Maximum number of tasks to return
-
-        Returns:
-            List of matching tasks, sorted by creation time (newest first)
-        """
+        """List tasks with optional filtering."""
         async with self._lock:
             # Clean up expired tasks first
             await self._cleanup_expired_tasks()
@@ -281,26 +182,13 @@ class SimpleTaskCache:
             await self._cleanup_expired_tasks()
             return len(self._tasks)
 
-    # Idempotency methods removed to fix multi-user conflicts
-
-
     async def cleanup(self) -> dict[str, int]:
-        """
-        Force cleanup of expired entries.
-
-        Returns:
-            Dictionary with cleanup statistics
-        """
+        """Force cleanup of expired entries."""
         async with self._lock:
             return await self._cleanup_expired_tasks()
 
     async def health_check(self) -> dict[str, Any]:
-        """
-        Get cache health information.
-
-        Returns:
-            Dictionary with cache statistics and health info
-        """
+        """Get cache health information."""
         async with self._lock:
             await self._cleanup_expired_tasks()
 
@@ -385,13 +273,7 @@ def get_task_cache() -> SimpleTaskCache:
 
 
 def initialize_cache(ttl_hours: int = 1, cleanup_interval_minutes: int = 10) -> None:
-    """
-    Initialize the global task cache.
-
-    Args:
-        ttl_hours: Default TTL for tasks in hours
-        cleanup_interval_minutes: Cleanup interval in minutes
-    """
+    """Initialize the global task cache."""
     global _task_cache
     _task_cache = SimpleTaskCache(
         default_ttl_hours=ttl_hours, cleanup_interval_minutes=cleanup_interval_minutes

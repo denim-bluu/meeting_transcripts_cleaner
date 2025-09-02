@@ -163,14 +163,6 @@ def process_vtt_file(uploaded_file):
             # Success message with next steps
             st.success("🎉 VTT processing completed successfully!")
 
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("👀 Review Results", type="primary"):
-                    st.switch_page("pages/2_👀_Review.py")
-            with col2:
-                if st.button("🧠 Extract Intelligence"):
-                    st.switch_page("pages/3_🧠_Intelligence.py")
-
 
 def main():
     """Main function for the Upload & Process page."""

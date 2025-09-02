@@ -5,9 +5,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 
-# Load .env file
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
+# Load .env file from backend directory
+BACKEND_DIR = Path(__file__).resolve().parent
+load_dotenv(dotenv_path=BACKEND_DIR / ".env")
+
 
 class Settings(BaseSettings):
     """Essential settings only."""
@@ -21,7 +22,7 @@ class Settings(BaseSettings):
     # Task management
     task_ttl_hours: int = 1
     cleanup_interval_minutes: int = 10
-    max_concurrent_tasks: int = 10
+    max_concurrent_tasks: int = 50
     rate_limit_per_minute: int = 50
 
     # Model configuration
@@ -56,6 +57,7 @@ class Settings(BaseSettings):
                 "allow_headers": ["*"],
             }
 
+
 settings = Settings()
 
 # Hardcoded constants
@@ -66,6 +68,7 @@ default_host = "0.0.0.0"
 default_port = 8000
 debug = not settings.is_production()
 reload = settings.environment == "development"
+
 
 def configure_structlog() -> None:
     """Simple logging setup."""

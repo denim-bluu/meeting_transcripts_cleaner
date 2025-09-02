@@ -13,8 +13,7 @@ from backend.api.v1.schemas import (
     validate_file_size,
 )
 from backend.config import settings
-from backend.tasks.cache import get_task_cache
-from backend.tasks.models import TaskEntry, TaskStatus, TaskType
+from backend.tasks.cache import TaskEntry, TaskStatus, TaskType, get_task_cache
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/v1/transcript", tags=["transcript"])

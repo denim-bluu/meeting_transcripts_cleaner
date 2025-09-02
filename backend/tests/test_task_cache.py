@@ -107,7 +107,6 @@ class TestSimpleTaskCache:
         assert cache.default_ttl == timedelta(hours=2)
         assert cache.cleanup_interval == timedelta(minutes=5)
         assert len(cache._tasks) == 0
-        assert len(cache._idempotency_keys) == 0
 
     @pytest.mark.asyncio
     async def test_store_and_retrieve_task(self, cache, sample_task):
@@ -533,7 +532,7 @@ class TestGlobalCacheFunctions:
     @pytest.mark.asyncio
     async def test_global_cleanup_function(self):
         """Test global cleanup function."""
-        from backend.services.transcript.task_cache import cleanup_cache
+        # cleanup_cache function was removed - using cache.cleanup() instead
 
         # Initialize cache
         initialize_cache()
@@ -550,8 +549,8 @@ class TestGlobalCacheFunctions:
         )
         await cache.store_task(expired_task)
 
-        # Run global cleanup
-        stats = await cleanup_cache()
+        # Run cleanup
+        stats = await cache.cleanup()
 
         assert stats["expired_tasks"] == 1
 

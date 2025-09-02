@@ -4,8 +4,7 @@ from fastapi import APIRouter, HTTPException, status
 import structlog
 
 from backend.api.v1.schemas import ErrorDetail, TaskStatusResponse
-from backend.tasks.cache import get_task_cache
-from backend.tasks.models import TaskEntry, TaskStatus
+from backend.tasks.cache import get_task_cache, TaskEntry, TaskStatus
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/v1/task", tags=["tasks"])
