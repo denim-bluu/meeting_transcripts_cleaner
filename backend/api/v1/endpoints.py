@@ -6,7 +6,7 @@ validation, error handling, and OpenAPI documentation.
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 from typing import Any
 import uuid
@@ -15,7 +15,6 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     File,
-    Header,
     HTTPException,
     UploadFile,
     status,
@@ -53,7 +52,7 @@ async def cleanup_old_tasks() -> None:
     cache = get_task_cache()
     stats = await cache.cleanup()
 
-    if stats["expired_tasks"] > 0 or stats["expired_idempotency_keys"] > 0:
+    if stats["expired_tasks"] > 0:
         logger.info("Cache cleanup completed", **stats)
 
 
@@ -100,21 +99,13 @@ async def get_task_or_404(task_id: str) -> TaskEntry:
 
 
 async def handle_idempotency(idempotency_key: str | None) -> str | None:
-    """Handle idempotency key, return existing task_id if key exists."""
-    if not idempotency_key:
-        return None
+    """Deprecated - always returns None to create new tasks.
 
-    cache = get_task_cache()
-    existing_task_id = await cache.get_task_for_idempotency_key(idempotency_key)
-
-    if existing_task_id:
-        logger.info(
-            "Idempotent request detected",
-            idempotency_key=idempotency_key,
-            existing_task_id=existing_task_id,
-        )
-
-    return existing_task_id
+    Idempotency removed to fix multi-user conflicts.
+    Each request now gets a new task_id.
+    """
+    # Always return None to force creation of new tasks
+    return None
 
 
 # ===============================================================================
@@ -166,7 +157,6 @@ async def health_check() -> HealthStatus:
             "review_model": settings.review_model,
             "insights_model": settings.insights_model,
             "synthesis_model": settings.synthesis_model,
-            "segment_model": settings.segment_model,
             "synthesis_reasoning_effort": settings.synthesis_reasoning_effort,
             "synthesis_reasoning_summary": settings.synthesis_reasoning_summary,
         },
@@ -182,9 +172,8 @@ async def health_check() -> HealthStatus:
 async def process_transcript(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="VTT transcript file to process"),
-    idempotency_key: str | None = Header(
-        None, description="Idempotency key to prevent duplicate processing"
-    ),
+    # idempotency_key removed - each upload gets a new task_id
+    # This fixes multi-user conflicts when uploading the same file
 ) -> TaskResponse:
     """
     Upload and process VTT transcript file.
@@ -193,18 +182,11 @@ async def process_transcript(
     to clean and structure the transcript using AI. Returns a task ID for polling progress.
 
     - **file**: VTT file (max 100MB)
-    - **idempotency_key**: Optional header to prevent duplicate processing
+    - Each upload gets a unique task_id (no idempotency)
     - **Returns**: Task ID for status polling
     """
-    # Check for idempotent request
-    existing_task_id = await handle_idempotency(idempotency_key)
-    if existing_task_id:
-        existing_task = await get_task_or_404(existing_task_id)
-        return TaskResponse(
-            task_id=existing_task_id,
-            status=existing_task.status,
-            message=f"Idempotent request - returning existing task (status: {existing_task.status.value})",
-        )
+    # Removed idempotency check - each upload gets a new task_id
+    # This ensures proper multi-user support
 
     # Validate file
     validate_upload_file(file)
@@ -251,17 +233,14 @@ async def process_transcript(
     cache = get_task_cache()
     await cache.store_task(task)
 
-    # Store idempotency key if provided
-    if idempotency_key:
-        expires_at = datetime.now() + timedelta(days=1)  # 24-hour expiry
-        await cache.store_idempotency_key(idempotency_key, task_id, expires_at)
+    # Idempotency key storage removed - each request gets unique task_id
 
     logger.info(
         "VTT processing task started",
         task_id=task_id,
         filename=file.filename,
         content_size=len(content_str),
-        idempotent=bool(idempotency_key),
+        # idempotent tracking removed
         cleaning_model=settings.cleaning_model,
         review_model=settings.review_model,
     )
@@ -299,15 +278,8 @@ async def extract_intelligence(
     - **detail_level**: Level of detail for extraction
     - **custom_instructions**: Optional custom AI instructions
     """
-    # Check for idempotent request
-    existing_task_id = await handle_idempotency(request.idempotency_key)
-    if existing_task_id:
-        existing_task = await get_task_or_404(existing_task_id)
-        return TaskResponse(
-            task_id=existing_task_id,
-            status=existing_task.status,
-            message=f"Idempotent request - returning existing task (status: {existing_task.status.value})",
-        )
+    # Removed idempotency check - each extraction gets a new task_id
+    # This ensures proper multi-user support
 
     # Validate transcript exists and is completed
     transcript_task = await get_task_or_404(request.transcript_id)
@@ -336,7 +308,6 @@ async def extract_intelligence(
             "models": {
                 "insights_model": settings.insights_model,
                 "synthesis_model": settings.synthesis_model,
-                "segment_model": settings.segment_model,
                 "synthesis_reasoning_effort": settings.synthesis_reasoning_effort,
                 "synthesis_reasoning_summary": settings.synthesis_reasoning_summary,
             },
@@ -347,20 +318,16 @@ async def extract_intelligence(
     cache = get_task_cache()
     await cache.store_task(task)
 
-    # Store idempotency key if provided
-    if request.idempotency_key:
-        expires_at = datetime.now() + timedelta(days=1)  # 24-hour expiry
-        await cache.store_idempotency_key(request.idempotency_key, task_id, expires_at)
+    # Idempotency key storage removed - each request gets unique task_id
 
     logger.info(
         "Intelligence extraction task started",
         task_id=task_id,
         transcript_id=request.transcript_id,
         detail_level=request.detail_level.value,
-        idempotent=bool(request.idempotency_key),
+        # idempotent tracking removed
         insights_model=settings.insights_model,
         synthesis_model=settings.synthesis_model,
-        segment_model=settings.segment_model,
         synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
         synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
     )
@@ -464,7 +431,7 @@ async def debug_list_tasks(
         "total_count": len(task_data),
         "cache_statistics": {
             "total_tasks_in_cache": cache_health.get("total_tasks", 0),
-            "total_idempotency_keys": cache_health.get("total_idempotency_keys", 0),
+            # idempotency keys removed
             "status_breakdown": cache_health.get("status_breakdown", {}),
             "expires_within_1h": cache_health.get("expires_within_1h", 0),
             "last_cleanup": cache_health.get("last_cleanup"),
@@ -631,7 +598,7 @@ async def debug_analytics() -> dict[str, Any]:
     return {
         "cache_analytics": {
             "total_tasks": total_tasks,
-            "total_idempotency_keys": health_info.get("total_idempotency_keys", 0),
+            # idempotency keys removed
             "cache_health": health_info.get("cache", "unknown"),
             "last_cleanup": health_info.get("last_cleanup", "never"),
         },

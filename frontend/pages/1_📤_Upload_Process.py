@@ -5,7 +5,6 @@ This page uses the FastAPI backend to process VTT files, with simple polling
 for progress updates. No more complex threading or direct service imports.
 """
 
-import hashlib
 import time
 
 from api_client import api_client
@@ -53,10 +52,10 @@ def process_vtt_file(uploaded_file):
 
     # Upload file to backend
     with st.status("Uploading file to backend...", expanded=True) as upload_status:
-        # Derive idempotency key from file content
-        idempotency_key = hashlib.sha256(file_content).hexdigest()
+        # Each upload gets a unique task_id (no idempotency)
+        # This ensures proper multi-user support
         success, task_id_or_error, message = api_client.upload_and_process_transcript(
-            file_content, filename, idempotency_key=idempotency_key
+            file_content, filename
         )
 
         if not success:

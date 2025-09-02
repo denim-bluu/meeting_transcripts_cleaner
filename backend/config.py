@@ -124,7 +124,6 @@ class Settings(BaseSettings):
         self.review_model = _fallback(self.review_model)
         self.insights_model = _fallback(self.insights_model)
         self.synthesis_model = _fallback(self.synthesis_model)
-        self.segment_model = _fallback(self.segment_model)
 
         return self
 

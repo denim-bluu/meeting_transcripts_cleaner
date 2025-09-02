@@ -225,9 +225,10 @@ def extract_intelligence_with_api(
     with st.status(
         "Starting intelligence extraction...", expanded=True
     ) as extract_status:
-        idempotency_key = f"{transcript_id}:{detail_level}"
+        # Each extraction gets a unique task_id (no idempotency)
+        # This ensures proper multi-user support 
         success, task_id_or_error, message = api_client.extract_intelligence(
-            transcript_id, detail_level, idempotency_key=idempotency_key
+            transcript_id, detail_level
         )
 
         if not success:

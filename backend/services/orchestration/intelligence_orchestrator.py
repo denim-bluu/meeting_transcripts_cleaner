@@ -44,7 +44,6 @@ class IntelligenceOrchestrator:
             context_limit=self.CONTEXT_LIMIT,
             insights_model=settings.insights_model,
             synthesis_model=settings.synthesis_model,
-            segment_model=settings.segment_model,
             synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
             synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
         )
@@ -68,7 +67,6 @@ class IntelligenceOrchestrator:
             vtt_chunks=len(cleaned_chunks),
             insights_model=settings.insights_model,
             synthesis_model=settings.synthesis_model,
-            segment_model=settings.segment_model,
             synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
             synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
         )

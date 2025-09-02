@@ -68,14 +68,13 @@ class BackendAPIClient:
             return False, {"error": str(e)}
 
     def upload_and_process_transcript(
-        self, file_content: bytes, filename: str, idempotency_key: str | None = None
+        self, file_content: bytes, filename: str
     ) -> tuple[bool, str, str]:
         """Upload VTT file and start processing.
 
         Args:
             file_content: VTT file content as bytes
             filename: Original filename
-            idempotency_key: Optional idempotency key to dedupe retries
 
         Returns:
             (success, task_id_or_error, message)
@@ -83,8 +82,6 @@ class BackendAPIClient:
         try:
             files = {"file": (filename, file_content, "text/vtt")}
             headers = {}
-            if idempotency_key:
-                headers["Idempotency-Key"] = idempotency_key
 
             logger.info(
                 "Uploading VTT file", filename=filename, size_bytes=len(file_content)
@@ -113,22 +110,18 @@ class BackendAPIClient:
         self,
         transcript_id: str,
         detail_level: str = "comprehensive",
-        idempotency_key: str | None = None,
     ) -> tuple[bool, str, str]:
         """Start intelligence extraction.
 
         Args:
             transcript_id: Task ID from completed transcript processing
             detail_level: One of "comprehensive", "standard", "technical_focus"
-            idempotency_key: Optional idempotency key to dedupe retries
 
         Returns:
             (success, task_id_or_error, message)
         """
         try:
             data = {"transcript_id": transcript_id, "detail_level": detail_level}
-            if idempotency_key:
-                data["idempotency_key"] = idempotency_key
 
             logger.info(
                 "Starting intelligence extraction",
@@ -137,8 +130,6 @@ class BackendAPIClient:
             )
 
             headers = {"Content-Type": "application/json"}
-            if idempotency_key:
-                headers["Idempotency-Key"] = idempotency_key
 
             response = self.session.post(
                 f"{self.base_url}/api/v1/intelligence/extract",
