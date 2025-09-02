@@ -6,7 +6,7 @@ from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModel
 import structlog
 
 from backend.config import settings
-from backend.models.transcript import ReviewResult
+from backend.transcript.models import ReviewResult
 
 logger = structlog.get_logger(__name__)
 

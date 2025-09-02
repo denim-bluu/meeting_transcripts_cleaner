@@ -1,10 +1,3 @@
-"""
-Intelligence Page - Simplified API-based intelligence extraction.
-
-This page uses the FastAPI backend to extract meeting intelligence from processed
-transcripts, with simple polling for progress updates.
-"""
-
 from datetime import datetime
 import time
 
@@ -226,7 +219,7 @@ def extract_intelligence_with_api(
         "Starting intelligence extraction...", expanded=True
     ) as extract_status:
         # Each extraction gets a unique task_id (no idempotency)
-        # This ensures proper multi-user support 
+        # This ensures proper multi-user support
         success, task_id_or_error, message = api_client.extract_intelligence(
             transcript_id, detail_level
         )

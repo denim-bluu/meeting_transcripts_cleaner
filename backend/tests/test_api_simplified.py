@@ -13,14 +13,15 @@ from fastapi import status
 from fastapi.testclient import TestClient
 import pytest
 
-# Import our application
-from backend.main import app
 from backend.core.task_cache import (
     SimpleTaskCache,
     TaskEntry,
     TaskStatus,
     TaskType,
 )
+
+# Import our application
+from backend.main import app
 
 
 @pytest.fixture
@@ -291,7 +292,7 @@ class TestIntelligenceExtractionEndpoint:
             "custom_instructions": "Focus on technical decisions and architecture discussions",
         }
 
-        with patch('backend.api.v1.endpoints.run_intelligence_extraction') as mock_run:
+        with patch('backend.api.v1.endpoints.run_intelligence_extraction'):
             response = client.post("/api/v1/intelligence/extract", json=request_data)
 
         assert response.status_code == status.HTTP_200_OK
@@ -588,7 +589,7 @@ class TestDebugEndpoints:
     def test_debug_cache_stats(self, mock_get_cache, client, mock_cache):
         """Test debug cache statistics endpoint."""
         mock_get_cache.return_value = mock_cache
-        
+
         # Mock health check
         mock_cache.health_check.return_value = {
             "cache": "healthy",
@@ -598,7 +599,7 @@ class TestDebugEndpoints:
             "expires_within_1h": 1,
             "last_cleanup": "2024-01-01T00:00:00"
         }
-        
+
         # Mock task listing for detailed stats
         mock_cache.list_tasks.return_value = [
             TaskEntry(
@@ -610,7 +611,7 @@ class TestDebugEndpoints:
                 progress=0.5,
             ),
             TaskEntry(
-                task_id="task-2", 
+                task_id="task-2",
                 task_type=TaskType.INTELLIGENCE_EXTRACTION,
                 status=TaskStatus.COMPLETED,
                 created_at=datetime.now(),
@@ -618,9 +619,9 @@ class TestDebugEndpoints:
                 progress=1.0,
             )
         ]
-        
+
         response = client.get("/api/v1/debug/cache/stats")
-        
+
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert "cache_health" in data
@@ -632,7 +633,7 @@ class TestDebugEndpoints:
     def test_debug_force_cleanup(self, mock_get_cache, client, mock_cache):
         """Test debug force cleanup endpoint."""
         mock_get_cache.return_value = mock_cache
-        
+
         # Mock cleanup stats
         mock_cache.cleanup.return_value = {
             "expired_tasks": 3,
@@ -640,16 +641,16 @@ class TestDebugEndpoints:
             "remaining_tasks": 5,
             "remaining_idempotency_keys": 2
         }
-        
+
         response = client.post("/api/v1/debug/cache/cleanup")
-        
+
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["message"] == "Cache cleanup completed"
         assert "cleanup_statistics" in data
         assert "timestamp" in data
         assert data["cleanup_statistics"]["expired_tasks"] == 3
-        
+
         # Verify cleanup was called
         mock_cache.cleanup.assert_called_once()
 
@@ -657,9 +658,9 @@ class TestDebugEndpoints:
     def test_debug_invalid_status_filter(self, mock_get_cache, client, mock_cache):
         """Test debug endpoint with invalid status filter."""
         mock_get_cache.return_value = mock_cache
-        
+
         response = client.get("/api/v1/debug/tasks?status=invalid_status")
-        
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "Invalid status" in response.json()["detail"]
 
@@ -667,9 +668,9 @@ class TestDebugEndpoints:
     def test_debug_invalid_task_type_filter(self, mock_get_cache, client, mock_cache):
         """Test debug endpoint with invalid task type filter."""
         mock_get_cache.return_value = mock_cache
-        
+
         response = client.get("/api/v1/debug/tasks?task_type=invalid_type")
-        
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "Invalid task_type" in response.json()["detail"]
 
@@ -677,7 +678,7 @@ class TestDebugEndpoints:
     def test_debug_analytics(self, mock_get_cache, client, mock_cache):
         """Test debug analytics endpoint."""
         mock_get_cache.return_value = mock_cache
-        
+
         # Mock health check
         mock_cache.health_check.return_value = {
             "cache": "healthy",
@@ -687,7 +688,7 @@ class TestDebugEndpoints:
             "expires_within_1h": 2,
             "last_cleanup": "2024-01-01T00:00:00"
         }
-        
+
         # Mock task listing for analytics
         mock_tasks = [
             TaskEntry(
@@ -708,19 +709,19 @@ class TestDebugEndpoints:
             ),
         ]
         mock_cache.list_tasks.return_value = mock_tasks
-        
+
         response = client.get("/api/v1/debug/analytics")
-        
+
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        
+
         # Check analytics structure
         assert "cache_analytics" in data
         assert "task_distribution" in data
         assert "performance_metrics" in data
         assert "system_info" in data
         assert "timestamp" in data
-        
+
         # Check specific analytics data
         assert data["cache_analytics"]["total_tasks"] == 2
         assert data["system_info"]["storage_type"] == "in_memory_cache"

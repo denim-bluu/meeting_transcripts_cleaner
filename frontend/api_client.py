@@ -204,7 +204,7 @@ class BackendAPIClient:
         task_id: str,
         progress_callback=None,
         poll_interval: float = 2.0,
-        timeout: float = 300.0,
+        timeout: float = 600.0,
     ) -> tuple[bool, dict[str, Any]]:
         """Poll task until completion or timeout.
 

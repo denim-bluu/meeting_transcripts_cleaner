@@ -4,9 +4,9 @@ import time
 
 import structlog
 
-from backend.agents.transcript.cleaner import cleaning_agent
 from backend.config import settings
-from backend.models.transcript import CleaningResult, VTTChunk
+from backend.transcript.agents.cleaner import cleaning_agent
+from backend.transcript.models import CleaningResult, VTTChunk
 
 logger = structlog.get_logger(__name__)
 

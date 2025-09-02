@@ -1,13 +1,12 @@
 """Shared test configuration and fixtures for all tests."""
 
+from collections.abc import Generator
 import os
 import tempfile
 from unittest.mock import Mock
-from typing import Generator
 
 import pytest
 import requests
-from fastapi.testclient import TestClient
 
 # Mock environment variables for testing
 os.environ["OPENAI_API_KEY"] = "test-key-123"

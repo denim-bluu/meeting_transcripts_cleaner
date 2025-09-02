@@ -7,13 +7,13 @@ import time
 from asyncio_throttle.throttler import Throttler
 import structlog
 
-from backend.models.transcript import CleaningResult, ReviewResult, VTTChunk
-from backend.services.orchestration import IntelligenceOrchestrator
-from backend.services.transcript.cleaning_service import (
+from backend.intelligence.intelligence_orchestrator import IntelligenceOrchestrator
+from backend.transcript.models import CleaningResult, ReviewResult, VTTChunk
+from backend.transcript.services.cleaning_service import (
     TranscriptCleaningService,
 )
-from backend.services.transcript.review_service import TranscriptReviewService
-from backend.services.transcript.vtt_processor import VTTProcessor
+from backend.transcript.services.review_service import TranscriptReviewService
+from backend.transcript.services.vtt_processor import VTTProcessor
 
 logger = structlog.get_logger(__name__)
 

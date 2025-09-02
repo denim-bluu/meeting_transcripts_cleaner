@@ -6,7 +6,7 @@ from pydantic_ai.models.openai import OpenAIResponsesModel
 import structlog
 
 from backend.config import settings
-from backend.models.intelligence import ChunkInsights
+from backend.intelligence.models import ChunkInsights
 
 logger = structlog.get_logger(__name__)
 

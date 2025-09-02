@@ -4,9 +4,9 @@ import time
 
 import structlog
 
-from backend.agents.transcript.reviewer import review_agent
 from backend.config import settings
-from backend.models.transcript import ReviewResult, VTTChunk
+from backend.transcript.agents.reviewer import review_agent
+from backend.transcript.models import ReviewResult, VTTChunk
 
 logger = structlog.get_logger(__name__)
 

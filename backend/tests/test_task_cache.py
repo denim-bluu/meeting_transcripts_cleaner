@@ -158,7 +158,10 @@ class TestSimpleTaskCache:
         assert updated_task.status == TaskStatus.COMPLETED
         assert updated_task.progress == 1.0
         assert updated_task.message == "Task completed successfully"
-        assert updated_task.result == {"status": "success", "output": "processed_data.json"}
+        assert updated_task.result == {
+            "status": "success",
+            "output": "processed_data.json",
+        }
         assert updated_task.updated_at > updated_task.created_at
 
     @pytest.mark.asyncio
@@ -225,7 +228,9 @@ class TestSimpleTaskCache:
         tasks = [
             TaskEntry(
                 task_id=f"task-{i}",
-                task_type=TaskType.TRANSCRIPT_PROCESSING if i % 2 == 0 else TaskType.INTELLIGENCE_EXTRACTION,
+                task_type=TaskType.TRANSCRIPT_PROCESSING
+                if i % 2 == 0
+                else TaskType.INTELLIGENCE_EXTRACTION,
                 status=TaskStatus.PROCESSING if i < 3 else TaskStatus.COMPLETED,
                 created_at=datetime.now() - timedelta(minutes=i),
                 updated_at=datetime.now() - timedelta(minutes=i),
@@ -245,7 +250,9 @@ class TestSimpleTaskCache:
         assert len(processing_tasks) == 3
 
         # List by type
-        transcript_tasks = await cache.list_tasks(task_type=TaskType.TRANSCRIPT_PROCESSING)
+        transcript_tasks = await cache.list_tasks(
+            task_type=TaskType.TRANSCRIPT_PROCESSING
+        )
         assert len(transcript_tasks) == 3  # tasks 0, 2, 4
 
         # List with limit
@@ -410,6 +417,7 @@ class TestConcurrency:
     @pytest.mark.asyncio
     async def test_concurrent_task_storage(self, cache):
         """Test concurrent task storage doesn't cause race conditions."""
+
         async def store_task(task_id: str) -> bool:
             try:
                 task = TaskEntry(

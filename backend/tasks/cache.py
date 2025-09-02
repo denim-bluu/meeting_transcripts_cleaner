@@ -283,6 +283,7 @@ class SimpleTaskCache:
 
     # Idempotency methods removed to fix multi-user conflicts
 
+
     async def cleanup(self) -> dict[str, int]:
         """
         Force cleanup of expired entries.

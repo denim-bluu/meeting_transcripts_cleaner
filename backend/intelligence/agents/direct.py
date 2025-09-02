@@ -9,7 +9,7 @@ from pydantic_ai.models.openai import (
 import structlog
 
 from backend.config import settings
-from backend.models.intelligence import MeetingIntelligence
+from backend.intelligence.models import MeetingIntelligence
 
 load_dotenv()
 logger = structlog.get_logger(__name__)

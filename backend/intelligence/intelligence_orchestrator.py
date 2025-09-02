@@ -6,12 +6,13 @@ import time
 from asyncio_throttle.throttler import Throttler
 import structlog
 
-# Use pure agents following Pydantic AI best practices
-from backend.agents.extraction.insights import chunk_extraction_agent
-from backend.agents.synthesis.direct import direct_synthesis_agent
 from backend.config import settings
-from backend.models.intelligence import ChunkInsights, MeetingIntelligence
-from backend.models.transcript import VTTChunk
+from backend.intelligence.agents.direct import direct_synthesis_agent
+
+# Use pure agents following Pydantic AI best practices
+from backend.intelligence.agents.insights import chunk_extraction_agent
+from backend.intelligence.models import ChunkInsights, MeetingIntelligence
+from backend.transcript.models import VTTChunk
 from backend.utils.semantic_chunker import SemanticChunker
 
 logger = structlog.get_logger(__name__)
@@ -35,7 +36,7 @@ class IntelligenceOrchestrator:
             1  # Include ALL contextual content for comprehensive summaries
         )
         self.CRITICAL_IMPORTANCE = 8  # Never exclude these
-        self.CONTEXT_LIMIT = settings.synthesis_context_token_limit  # Honor settings
+        self.CONTEXT_LIMIT = 100000  # Hardcoded for simplicity
         self.SEGMENT_MINUTES = 30  # Temporal segmentation
 
         logger.info(
@@ -44,8 +45,6 @@ class IntelligenceOrchestrator:
             context_limit=self.CONTEXT_LIMIT,
             insights_model=settings.insights_model,
             synthesis_model=settings.synthesis_model,
-            synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
-            synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
         )
 
     async def process_meeting(
@@ -67,8 +66,6 @@ class IntelligenceOrchestrator:
             vtt_chunks=len(cleaned_chunks),
             insights_model=settings.insights_model,
             synthesis_model=settings.synthesis_model,
-            synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
-            synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
         )
 
         # Phase 1: Semantic chunking (no API calls)
@@ -190,8 +187,8 @@ class IntelligenceOrchestrator:
         """Extract insights from all semantic chunks using concurrent processing."""
         import asyncio
 
-        semaphore = asyncio.Semaphore(settings.max_concurrent_tasks)
-        throttler = Throttler(rate_limit=settings.rate_limit_per_minute, period=60)
+        semaphore = asyncio.Semaphore(10)  # 10 concurrent tasks
+        throttler = Throttler(rate_limit=50, period=60)  # 50 requests per minute
 
         async def extract_single_chunk(
             i: int, chunk_text: str
@@ -351,18 +348,16 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                 "Calling direct synthesis agent",
                 agent_retries=2,  # Built-in Pydantic AI retries
                 synthesis_model=settings.synthesis_model,
-                synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
-                synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
             )
 
             # Use capture_run_messages to log all interactions including retries
             from pydantic_ai import capture_run_messages
 
-            with capture_run_messages() as run_messages:
+            with capture_run_messages():
                 try:
                     result = await asyncio.wait_for(
                         direct_synthesis_agent.run(user_prompt),
-                        timeout=settings.synthesis_timeout_seconds,
+                        timeout=30,  # 30 second timeout
                     )
 
                 except Exception as e:
@@ -370,7 +365,7 @@ Return both summary (detailed markdown) and action_items (structured list)."""
                         "Direct synthesis failed",
                         error=str(e),
                         error_type=type(e).__name__,
-                        timeout=settings.synthesis_timeout_seconds,
+                        timeout=30,  # 30 second timeout
                     )
                     raise
 

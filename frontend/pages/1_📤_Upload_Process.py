@@ -1,10 +1,3 @@
-"""
-Upload & Process Page - Simplified API-based VTT processing.
-
-This page uses the FastAPI backend to process VTT files, with simple polling
-for progress updates. No more complex threading or direct service imports.
-"""
-
 import time
 
 from api_client import api_client
@@ -239,14 +232,6 @@ def main():
         st.info(
             "✅ VTT transcript already processed and ready for review/intelligence extraction"
         )
-
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("👀 Go to Review", type="primary"):
-                st.switch_page("pages/2_👀_Review.py")
-        with col2:
-            if st.button("🧠 Go to Intelligence"):
-                st.switch_page("pages/3_🧠_Intelligence.py")
 
         st.markdown("---")
         st.markdown("**Or upload a new file below:**")
