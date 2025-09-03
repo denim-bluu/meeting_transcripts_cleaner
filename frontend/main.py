@@ -1,89 +1,92 @@
+"""Meeting Transcript Cleaner - Main Application.
+
+Clean architecture multi-page Streamlit application with:
+- Upload & Process: File upload and AI processing
+- Review: Quality assessment and export functionality
+- Intelligence: Meeting insights and action items
 """
-Multi-page Streamlit application for Meeting Transcript Cleaner.
 
-This is the main entry point that sets up st.navigation between pages:
-- Upload & Process: Unified workflow for file upload and AI processing
-- Review: Progressive review interface with export functionality
-"""
-
-from typing import Any
-
-from dotenv import load_dotenv
+from services.state_service import StateService
 import streamlit as st
-
-from frontend.config import configure_structlog
-
-# Configure structured logging for the entire application
-configure_structlog()
-
-# Load environment variables
-load_dotenv()
+from utils.constants import STATE_KEYS, UI_CONFIG
 
 # Configure page
 st.set_page_config(
-    page_title="Meeting Transcript Cleaner",
+    page_title=UI_CONFIG.PAGE_TITLE,
     page_icon="🎙️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 
-def init_session_state() -> None:
-    """Initialize all session state variables in one place."""
-    defaults: dict[str, Any] = {
-        "document": None,
-        "processing_complete": False,
-        "categories": [],
-        "user_decisions": {},
+def initialize_application():
+    """Initialize minimal application state."""
+    # Initialize minimal application-wide session state
+    app_state = {
+        STATE_KEYS.TRANSCRIPT_DATA: None,
+        STATE_KEYS.INTELLIGENCE_DATA: None,
+        STATE_KEYS.CURRENT_TASK_ID: None,
     }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+    StateService.initialize_page_state(app_state)
 
 
-# Initialize session state
-init_session_state()
+def render_transcript_summary():
+    """Render transcript summary if available."""
+    transcript = st.session_state.get("transcript") or st.session_state.get(
+        STATE_KEYS.TRANSCRIPT_DATA
+    )
+
+    if not transcript:
+        return
+
+    st.success("✅ Transcript processed and ready")
+
+    # Show basic metrics
+    chunks = transcript.get("chunks", [])
+    speakers = transcript.get("speakers", [])
+    duration = transcript.get("duration", 0)
+    total_entries = sum(len(chunk.get("entries", [])) for chunk in chunks)
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Chunks", len(chunks))
+    with col2:
+        st.metric("Entries", total_entries)
+    with col3:
+        st.metric("Speakers", len(speakers))
+    with col4:
+        st.metric(
+            "Duration", f"{duration/60:.1f}m" if duration > 60 else f"{duration:.1f}s"
+        )
+
+    # Show participants
+    if speakers:
+        st.info(f"**Participants:** {', '.join(speakers)}")
+
+    st.divider()
 
 
-def main() -> None:
-    """Main application with modern 2-page navigation."""
+def main():
+    """Main application with minimal design."""
+    # Initialize application
+    initialize_application()
 
-    # App header using native Streamlit components
+    # Simple header
     st.title("🎙️ Meeting Transcript Cleaner")
 
-    # Show processing summary if transcript is loaded
-    if "transcript" in st.session_state and st.session_state.transcript:
-        from utils.ui_components import render_metrics_row
+    # Show transcript summary if available
+    render_transcript_summary()
 
-        transcript = st.session_state.transcript
-        st.success("✅ VTT transcript loaded - ready for processing")
-
-        # Show transcript metrics
-        homepage_metrics = [
-            ("VTT Entries", len(transcript["entries"]), None),
-            ("Chunks", len(transcript["chunks"]), None),
-            ("Speakers", len(transcript["speakers"]), None),
-            ("Duration", f"{transcript.get('duration', 0) / 60:.1f}m", None),
-        ]
-        render_metrics_row(homepage_metrics)
-
-        # Show speakers
-        if transcript["speakers"]:
-            st.info(f"**Meeting participants:** {', '.join(transcript['speakers'])}")
-
-    # Define the 2-page structure (simplified architecture)
-    all_pages = [
+    # Define all application pages
+    pages = [
         st.Page("pages/1_📤_Upload_Process.py", title="Upload & Process", icon="📤"),
         st.Page("pages/2_👀_Review.py", title="Review", icon="👀"),
         st.Page("pages/3_🧠_Intelligence.py", title="Intelligence", icon="🧠"),
     ]
 
-    # All pages are always available (Review page shows appropriate messaging if no data)
-    available_pages = all_pages
-
     # Set up navigation
-    pg = st.navigation(available_pages)
-    pg.run()
+    navigation = st.navigation(pages)
+    navigation.run()
 
 
 if __name__ == "__main__":
