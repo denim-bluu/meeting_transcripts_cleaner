@@ -215,19 +215,6 @@ Build and run with docker-compose:
 - Backend: http://localhost:8000
 - Frontend: http://localhost:8501
 
-Stop:
-
-    just docker-stop
-
-Logs:
-
-    just docker-logs
-    # or a single service:
-    just docker-logs backend
-    just docker-logs frontend
-
-docker-compose passes backend/.env into the backend container.
-
 ---
 
 ## End-to-End Flow
@@ -282,8 +269,6 @@ Task Management
           created_at, updated_at, result, error
 - DELETE /api/v1/task/{task_id}
     - Removes task from cache (does not cancel a running background job)
-
-Important: All intelligence extraction is single-mode — there is no detail_level or custom_instructions parameter.
 
 ---
 
@@ -372,26 +357,6 @@ Completed intelligence result structure (top-level convenience fields are includ
 
 Note: There are no detail levels and no custom instruction parameters — requests only need transcript_id.
 
----
-
-## Frontend Usage
-
-- Upload & Process page:
-    - Upload a .vtt file and start processing
-    - Watch live progress and see chunk metrics
-- Review page:
-    - Compare original vs cleaned text per chunk
-    - View quality metrics and acceptance
-    - Export cleaned transcript (TXT/MD/VTT)
-- Intelligence page:
-    - Click “Extract Meeting Intelligence”
-    - View summary and action items
-    - Export intelligence (TXT/MD)
-
-The frontend uses BACKEND_URL to talk to the API:
-
-- just run-frontend sets BACKEND_URL=http://localhost:8000
-- docker-compose sets BACKEND_URL=http://backend:8000
 
 ---
 
@@ -400,9 +365,3 @@ The frontend uses BACKEND_URL to talk to the API:
 - Task state is stored in memory and expires automatically (TTL). This is perfect for local and container scenarios but not durable. Use the task ID immediately after submission to poll results.
 - OpenAPI docs are only available in non-production environments at /docs.
 - Model names default to o3-mini across the system; override via backend/.env if needed.
-
----
-
-## License
-
-MIT
