@@ -1,291 +1,408 @@
-# Meeting Intelligence System
+# Meeting Transcript Cleaner (with AI Intelligence)
 
-## About The Project
+Production-ready system that turns raw WebVTT meeting transcripts into:
 
-### The Challenge
+- Cleaned, readable transcripts with speaker attribution
+- Quality-reviewed output
+- Comprehensive meeting intelligence (summary and action items)
 
-Modern organizations generate thousands of hours of meeting recordings, but extracting actionable intelligence from transcripts remains a manual, time-intensive process. Existing solutions either lack technical depth, hallucinate information, or fail to preserve critical business context.
+The system is intentionally simplified: there are no “detail level” settings or conditional prompts. Intelligence extraction always uses a single high-quality flow.
 
-### The Solution
+---
 
-The **Meeting Intelligence System** is a production-ready, microservices-based platform that transforms raw VTT transcripts into executive-quality summaries while preserving technical accuracy and business context. Built with modern cloud-native patterns and advanced AI agents.
+## Key Features
 
-### Light Demo
-
-[streamlit-main-2025-08-17-20-08-35.webm](https://github.com/user-attachments/assets/2dd3ea7a-ee73-4c0e-98b7-1dcc9b17d73f)
-
+- FastAPI backend with async background task processing and progress polling
+- Streamlit frontend (3-step UX: Upload → Review → Intelligence)
+- Pydantic AI agents for:
+    - Cleaning speech-to-text artifacts
+    - Reviewing quality
+    - Extracting insights and synthesizing the summary
+- In-memory task cache with TTL and cleanup
+- Dockerized services and Justfile dev workflows
 
 ---
 
 ## System Architecture
 
-### High-Level Architecture
+High-level architecture
 
 ```mermaid
 graph TB
-    subgraph "External Layer"
-        UI[Client Applications]
-        LB[Load Balancer]
-    end
+  subgraph Frontend
+    UI[Streamlit App]
+    UI -->|HTTP| APIClient[BackendService]
+  end
 
-    subgraph "API Gateway Layer"
-        GW[API Gateway<br/>Rate Limiting & Auth]
-    end
+  subgraph Backend
+    RouterHealth[/api/v1/health/]
+    RouterTranscript[/api/v1/transcript/]
+    RouterIntelligence[/api/v1/intelligence/]
+    RouterTask[/api/v1/task/]
+    Background[Background Tasks]
+    Cache[(SimpleTaskCache)]
+  end
 
-    subgraph "Application Services Layer"
-        subgraph "Frontend Service :8501"
-            SF[Streamlit Web UI]
-            AC[API Client<br/>Type-Safe HTTP]
-            SM[State Management]
-        end
+  subgraph Transcript Domain
+    VTT[VTTProcessor]
+    Cleaner["TranscriptCleaningService (cleaning_agent)"]
+    Reviewer["TranscriptReviewService (review_agent)"]
+  end
 
-        subgraph "Backend Service :8000"
-            FA[FastAPI Application<br/>Async REST API]
-            BT[Background Task Queue<br/>Celery-style Processing]
-            HC[Health Check Service]
-        end
-    end
+  subgraph Intelligence Domain
+    Chunker[SemanticChunker]
+    Extractor[chunk_extraction_agent]
+    Synth[direct_synthesis_agent]
+    Orchestrator[IntelligenceOrchestrator]
+  end
 
-    subgraph "Domain Layer - AI Agent Orchestra"
-        subgraph "Pure Pydantic AI Agents"
-            CA[Cleaning Agent<br/>Grammar & Context]
-            RA[Review Agent<br/>Quality Validation]
-            EA[Extraction Agent<br/>Dynamic Instructions]
-            DSA[Direct Synthesis Agent]
-            HSA[Hierarchical Synthesis Agent]
-            SSA[Segment Synthesis Agent]
-        end
+  UI -->|HTTP JSON| RouterTranscript
+  UI -->|HTTP JSON| RouterIntelligence
+  UI -->|HTTP JSON| RouterTask
+  UI -->|HTTP JSON| RouterHealth
 
-        subgraph "Orchestration Services"
-            IO[Intelligence Orchestrator<br/>Concurrent Processing]
-            TS[Transcript Service<br/>Pipeline Management]
-        end
-    end
+  RouterTranscript --> Background
+  RouterIntelligence --> Background
 
-    subgraph "Infrastructure Layer"
-        subgraph "Task Management"
-            TC[Task Cache<br/>In-Memory TTL Storage]
-            FS[File System<br/>Transcript Storage]
-        end
+  Background --> VTT
+  VTT --> Cleaner
+  Cleaner --> Reviewer
+  Reviewer --> Cache
 
-        subgraph "External APIs"
-            OAI[OpenAI API<br/>o3/o3-mini Models]
-            LC[LangChain<br/>Semantic Processing]
-        end
+  Background --> Orchestrator
+  Orchestrator --> Chunker
+  Orchestrator --> Extractor
+  Orchestrator --> Synth
+  Orchestrator --> Cache
 
-        subgraph "Observability"
-            LOG[Structured Logging<br/>structlog]
-            MET[Metrics Collection]
-            TRC[Distributed Tracing]
-        end
-    end
+  subgraph External APIs
+    OpenAI[(OpenAI API)]
+    LangChain[(LangChain Splitter)]
+  end
 
-    %% User flow
-    UI --> LB
-    LB --> GW
-    GW --> SF
-    SF --> AC
-    AC -->|HTTP/JSON| FA
-
-    %% Backend processing flow
-    FA --> BT
-    BT --> TS
-    TS --> IO
-
-    %% Agent orchestration
-    IO --> CA
-    IO --> RA
-    IO --> EA
-    IO --> DSA
-    IO --> HSA
-    IO --> SSA
-
-    %% Data flow
-    CA --> OAI
-    RA --> OAI
-    EA --> OAI
-    DSA --> OAI
-    HSA --> OAI
-    SSA --> OAI
-
-    EA --> LC
-    TS --> TC
-    TS --> FS
-
-    %% Health and monitoring
-    FA --> HC
-    HC --> LOG
-    IO --> MET
-    BT --> TRC
-
-    %% Styling
-    classDef frontend fill:#e1f5fe,stroke:#01579b,color:#000
-    classDef backend fill:#e8f5e9,stroke:#2e7d32,color:#000
-    classDef agents fill:#fff3e0,stroke:#ef6c00,color:#000
-    classDef data fill:#f3e5f5,stroke:#7b1fa2,color:#000
-    classDef external fill:#ffebee,stroke:#c62828,color:#000
-
-    class SF,AC,SM frontend
-    class FA,BT,HC,IO,TS backend
-    class CA,RA,EA,DSA,HSA,SSA agents
-    class TC,FS data
-    class OAI,LC external
+  Cleaner --> OpenAI
+  Reviewer --> OpenAI
+  Extractor --> OpenAI
+  Synth --> OpenAI
+  Chunker --> LangChain
+  Cache -.-> RouterTask
 ```
 
-### Data Flow Architecture
+Data flow
 
 ```mermaid
 sequenceDiagram
-    participant UI as Frontend UI
-    participant API as Backend API
-    participant BG as Background Tasks
-    participant AG as Agent Orchestra
-    participant AI as OpenAI API
-    participant TC as Task Cache
+  participant FE as Frontend (Streamlit)
+  participant API as FastAPI
+  participant BG as Background Tasks
+  participant TC as Task Cache
+  participant TR as Transcript Services
+  participant IN as Intelligence Orchestrator
+  participant OA as OpenAI API
 
-    UI->>API: POST /api/v1/transcript/process
-    API->>BG: Queue transcript cleaning task
-    API-->>UI: 202 Accepted + task_id
+  FE->>API: POST /api/v1/transcript/process (multipart VTT)
+  API->>BG: run_transcript_processing(task_id, content)
+  API-->>FE: 200 TaskResponse {task_id}
+  BG->>TR: parse VTT -> chunks
+  TR->>OA: clean chunks (cleaning_agent)
+  TR->>OA: review chunks (review_agent)
+  TR->>TC: store result (COMPLETED)
 
-    BG->>AG: Initialize cleaning agent
-    AG->>AI: Clean transcript chunks
-    AI-->>AG: Cleaned content
-    AG->>TC: Store intermediate results
-    BG-->>API: Task progress update
+  FE->>API: GET /api/v1/task/{task_id}
+  API-->>FE: TaskStatusResponse (progress/result)
 
-    UI->>API: GET /api/v1/task/{task_id}
-    API-->>UI: Task status + results
+  FE->>API: POST /api/v1/intelligence/extract {transcript_id}
+  API->>BG: run_intelligence_extraction(task_id, transcript)
+  API-->>FE: 200 TaskResponse {task_id}
+  BG->>IN: process_meeting(chunks)
+  IN->>OA: extract insights (per semantic chunk)
+  IN->>OA: direct synthesis (summary + actions)
+  IN->>TC: store intelligence (COMPLETED)
 
-    UI->>API: POST /api/v1/intelligence/extract
-    API->>BG: Queue intelligence extraction
-
-    BG->>AG: Orchestrate extraction pipeline
-
-    par Concurrent Processing
-        AG->>AI: Extract insights (chunk 1)
-        AG->>AI: Extract insights (chunk 2)
-        AG->>AI: Extract insights (chunk N)
-    end
-
-    AG->>AI: Synthesize intelligence
-    AI-->>AG: Final intelligence report
-    AG->>TC: Store intelligence results
-    BG-->>API: Extraction complete
-
-    API-->>UI: Intelligence summary + actions
+  FE->>API: GET /api/v1/task/{task_id}
+  API-->>FE: TaskStatusResponse (intelligence result)
 ```
 
 ---
 
-## Getting Started
+## Prerequisites
 
-### Docker Deployment
-
-```bash
-# Build containers
-just docker-build
-
-# Start all services
-just docker-run
-
-# View logs
-just docker-logs
-
-# Stop services
-just docker-stop
-```
-
-### Access Points
-
-Once deployed, access the system at:
-
-- 🖥️ **Frontend Application**: http://localhost:8501
-- 🔧 **Backend API**: http://localhost:8000
-- 📚 **API Documentation**: http://localhost:8000/docs
-- ❤️ **Health Check**: http://localhost:8000/health
-
-<p align="right">(<a href="#top">back to top</a>)</p>
+- Python 3.11+
+- OpenAI API access
+- macOS/Linux (Windows should work but not actively tested)
+- Docker (for containerized deployment)
+- just (optional, for local dev convenience)
 
 ---
 
-## Usage
+## Configuration
 
-### Quick Start Example
+The backend reads both:
 
-1. **Upload VTT Transcript**
-    - Navigate to http://localhost:8501
-    - Upload your meeting transcript (.vtt file)
-    - Wait for cleaning and review completion
+- Environment variable OPENAI_API_KEY
+- backend/.env (loaded via pydantic-settings)
 
-2. **Extract Intelligence**
-    - Go to Intelligence tab
-    - Select detail level (Standard/Comprehensive/Technical Focus)
-    - Click "Extract Intelligence"
-    - Review generated summary and action items
+Minimal backend/.env example (create minutes_cleaner/backend/.env):
 
-### API Reference
+OPENAI_API_KEY=sk-xxx
+environment=development
+log_level=INFO
 
-#### Core Endpoints
+# Optional tuning
 
-**Upload & Process Transcript**
+task_ttl_hours=1
+cleanup_interval_minutes=10
+max_concurrent_tasks=50
+rate_limit_per_minute=50
 
-```http
-POST /api/v1/transcript/process
-Content-Type: multipart/form-data
+# Model names (default to o3-mini everywhere)
 
-Form Data:
-- file: transcript.vtt
-- detail_level: "comprehensive" (optional)
-```
+cleaning_model=o3-mini
+review_model=o3-mini
+insights_model=o3-mini
+synthesis_model=o3-mini
 
-**Extract Meeting Intelligence**
+Frontend needs BACKEND_URL set when you run it (defaults to http://localhost:8000 in dev). The just recipes and docker-compose set this for you.
 
-```http
-POST /api/v1/intelligence/extract
-Content-Type: application/json
+---
 
-{
-  "transcript_id": "uuid-task-id",
-  "detail_level": "comprehensive"
-}
-```
+## Local Development (with just)
 
-**Task Management**
+Install dependencies (uses uv):
 
-```http
-GET /api/v1/task/{task_id}
-DELETE /api/v1/task/{task_id}
-```
+    just install
+    # or, with dev deps:
+    just install-dev
 
-**System Health**
+Run backend:
 
-```http
-GET /health        # Basic health check
-GET /health/ready  # Readiness probe
-GET /docs         # OpenAPI documentation
-```
+    just run-backend
+    # Backend on http://localhost:8000
+    # OpenAPI docs at http://localhost:8000/docs (dev only)
 
-#### Response Examples
+Run frontend:
 
-**Intelligence Extraction Response:**
+    just run-frontend
+    # Frontend on http://localhost:8501
 
-```json
-{
-    "transcript_id": "abc-123",
-    "intelligence": {
-        "summary": "# Executive Summary\n\nComprehensive meeting analysis...",
-        "action_items": [
-            {
-                "description": "Complete database migration testing",
-                "owner": "Engineering Team",
-                "due_date": "Next Tuesday"
-            }
-        ],
-        "processing_stats": {
-            "chunks_processed": 12,
-            "insights_extracted": 48,
-            "processing_time_seconds": 6.2
-        }
+Run both in parallel:
+
+    just dev
+
+Health checks and status:
+
+    just health
+    just status
+
+Tests:
+
+    just test
+    just test-backend
+
+Cleanup:
+
+    just clean
+
+---
+
+## Docker
+
+Build and run with docker-compose:
+
+    just docker-build
+    just docker-run
+
+- Backend: http://localhost:8000
+- Frontend: http://localhost:8501
+
+Stop:
+
+    just docker-stop
+
+Logs:
+
+    just docker-logs
+    # or a single service:
+    just docker-logs backend
+    just docker-logs frontend
+
+docker-compose passes backend/.env into the backend container.
+
+---
+
+## End-to-End Flow
+
+1. Upload a WebVTT file in the frontend (Upload & Process page)
+2. The backend:
+    - Parses and chunks the VTT (no external API calls yet)
+    - Cleans each chunk (AI agent)
+    - Reviews each cleaned chunk (AI agent)
+    - Streams progress updates to the task cache
+3. Review the cleaned transcript (Review page)
+4. Extract Intelligence (Intelligence page)
+    - Single, comprehensive flow
+    - No detail levels or custom instruction parameters
+    - Produces summary + action_items with processing stats
+
+You can try the included sample:
+
+- minutes_cleaner/test_meeting.vtt
+
+---
+
+## API
+
+Base URL (dev): http://localhost:8000
+
+Health
+
+- GET /api/v1/health
+    - Returns overall service health and model configuration
+
+Transcript Processing
+
+- POST /api/v1/transcript/process
+    - Content-Type: multipart/form-data
+    - Form field: file=yourfile.vtt
+    - Returns TaskResponse: { task_id, status, message }
+    - Processing runs in background; poll the task for results
+
+Intelligence Extraction
+
+- POST /api/v1/intelligence/extract
+    - JSON body: { "transcript_id": "<task_id_from_transcript_processing>" }
+    - Returns TaskResponse: { task_id, status, message }
+    - Intelligence extraction runs in background; poll the task for results
+
+Task Management
+
+- GET /api/v1/task/{task_id}
+    - Returns TaskStatusResponse with fields:
+        - task_id, type, status, progress, message,
+          created_at, updated_at, result, error
+- DELETE /api/v1/task/{task_id}
+    - Removes task from cache (does not cancel a running background job)
+
+Important: All intelligence extraction is single-mode — there is no detail_level or custom_instructions parameter.
+
+---
+
+## API Examples
+
+Start transcript processing (multipart upload):
+
+    curl -s -X POST \
+      -F "file=@./test_meeting.vtt" \
+      http://localhost:8000/api/v1/transcript/process
+
+Response (TaskResponse):
+
+    {
+      "task_id": "b1d2...e3",
+      "status": "processing",
+      "message": "VTT file received, processing started"
     }
-}
-```
+
+Poll task status:
+
+    curl -s http://localhost:8000/api/v1/task/b1d2...e3
+
+If completed, result includes cleaned transcript data:
+
+    {
+      "task_id": "b1d2...e3",
+      "type": "transcript_processing",
+      "status": "completed",
+      "progress": 1.0,
+      "message": "Transcript processing completed",
+      "created_at": "...",
+      "updated_at": "...",
+      "result": {
+        "entries": [...],
+        "chunks": [...],
+        "speakers": ["John", "Sarah", "Mike"],
+        "duration": 35.0,
+        "cleaned_chunks": [...],
+        "review_results": [...],
+        "final_transcript": "...",
+        "processing_stats": { ... }
+      }
+    }
+
+Start intelligence extraction (single high-quality flow):
+
+    curl -s -X POST \
+      -H "Content-Type: application/json" \
+      -d '{"transcript_id": "b1d2...e3"}' \
+      http://localhost:8000/api/v1/intelligence/extract
+
+Response (TaskResponse):
+
+    {
+      "task_id": "c9a8...f0",
+      "status": "processing",
+      "message": "Comprehensive intelligence extraction started"
+    }
+
+Poll intelligence task:
+
+    curl -s http://localhost:8000/api/v1/task/c9a8...f0
+
+Completed intelligence result structure (top-level convenience fields are included):
+
+    {
+      "task_id": "c9a8...f0",
+      "type": "intelligence_extraction",
+      "status": "completed",
+      "result": {
+        "intelligence": {
+          "summary": "### Topic A ...",
+          "action_items": [
+            { "description": "...", "owner": "Sarah", "due_date": "Next Tuesday" }
+          ],
+          "processing_stats": { "time_ms": 6200, ... }
+        },
+        "summary": "### Topic A ...",
+        "action_items": [
+          { "description": "...", "owner": "Sarah", "due_date": "Next Tuesday" }
+        ],
+        "processing_stats": { "time_ms": 6200, ... }
+      }
+    }
+
+Note: There are no detail levels and no custom instruction parameters — requests only need transcript_id.
+
+---
+
+## Frontend Usage
+
+- Upload & Process page:
+    - Upload a .vtt file and start processing
+    - Watch live progress and see chunk metrics
+- Review page:
+    - Compare original vs cleaned text per chunk
+    - View quality metrics and acceptance
+    - Export cleaned transcript (TXT/MD/VTT)
+- Intelligence page:
+    - Click “Extract Meeting Intelligence”
+    - View summary and action items
+    - Export intelligence (TXT/MD)
+
+The frontend uses BACKEND_URL to talk to the API:
+
+- just run-frontend sets BACKEND_URL=http://localhost:8000
+- docker-compose sets BACKEND_URL=http://backend:8000
+
+---
+
+## Notes and Limitations
+
+- Task state is stored in memory and expires automatically (TTL). This is perfect for local and container scenarios but not durable. Use the task ID immediately after submission to poll results.
+- OpenAPI docs are only available in non-production environments at /docs.
+- Model names default to o3-mini across the system; override via backend/.env if needed.
+
+---
+
+## License
+
+MIT
