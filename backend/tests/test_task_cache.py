@@ -107,7 +107,6 @@ class TestSimpleTaskCache:
         assert cache.default_ttl == timedelta(hours=2)
         assert cache.cleanup_interval == timedelta(minutes=5)
         assert len(cache._tasks) == 0
-        assert len(cache._idempotency_keys) == 0
 
     @pytest.mark.asyncio
     async def test_store_and_retrieve_task(self, cache, sample_task):
@@ -158,7 +157,10 @@ class TestSimpleTaskCache:
         assert updated_task.status == TaskStatus.COMPLETED
         assert updated_task.progress == 1.0
         assert updated_task.message == "Task completed successfully"
-        assert updated_task.result == {"status": "success", "output": "processed_data.json"}
+        assert updated_task.result == {
+            "status": "success",
+            "output": "processed_data.json",
+        }
         assert updated_task.updated_at > updated_task.created_at
 
     @pytest.mark.asyncio
@@ -225,7 +227,9 @@ class TestSimpleTaskCache:
         tasks = [
             TaskEntry(
                 task_id=f"task-{i}",
-                task_type=TaskType.TRANSCRIPT_PROCESSING if i % 2 == 0 else TaskType.INTELLIGENCE_EXTRACTION,
+                task_type=TaskType.TRANSCRIPT_PROCESSING
+                if i % 2 == 0
+                else TaskType.INTELLIGENCE_EXTRACTION,
                 status=TaskStatus.PROCESSING if i < 3 else TaskStatus.COMPLETED,
                 created_at=datetime.now() - timedelta(minutes=i),
                 updated_at=datetime.now() - timedelta(minutes=i),
@@ -245,7 +249,9 @@ class TestSimpleTaskCache:
         assert len(processing_tasks) == 3
 
         # List by type
-        transcript_tasks = await cache.list_tasks(task_type=TaskType.TRANSCRIPT_PROCESSING)
+        transcript_tasks = await cache.list_tasks(
+            task_type=TaskType.TRANSCRIPT_PROCESSING
+        )
         assert len(transcript_tasks) == 3  # tasks 0, 2, 4
 
         # List with limit
@@ -410,6 +416,7 @@ class TestConcurrency:
     @pytest.mark.asyncio
     async def test_concurrent_task_storage(self, cache):
         """Test concurrent task storage doesn't cause race conditions."""
+
         async def store_task(task_id: str) -> bool:
             try:
                 task = TaskEntry(
@@ -525,7 +532,7 @@ class TestGlobalCacheFunctions:
     @pytest.mark.asyncio
     async def test_global_cleanup_function(self):
         """Test global cleanup function."""
-        from backend.services.transcript.task_cache import cleanup_cache
+        # cleanup_cache function was removed - using cache.cleanup() instead
 
         # Initialize cache
         initialize_cache()
@@ -542,8 +549,8 @@ class TestGlobalCacheFunctions:
         )
         await cache.store_task(expired_task)
 
-        # Run global cleanup
-        stats = await cleanup_cache()
+        # Run cleanup
+        stats = await cache.cleanup()
 
         assert stats["expired_tasks"] == 1
 

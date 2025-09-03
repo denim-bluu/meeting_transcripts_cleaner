@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Copy project source code
 COPY frontend/ ./frontend/
-COPY backend/models/ ./models/
+
 
 # Production stage
 FROM python:3.11-slim
@@ -49,19 +49,19 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 # Streamlit configuration
 RUN echo '[server]\n\
-headless = true\n\
-port = 8501\n\
-address = "0.0.0.0"\n\
-enableStaticServing = false\n\
-\n\
-[browser]\n\
-gatherUsageStats = false\n\
-\n\
-[theme]\n\
-primaryColor = "#1f77b4"\n\
-backgroundColor = "#ffffff"\n\
-secondaryBackgroundColor = "#f0f2f6"\n\
-textColor = "#262730"\n' > /app/.streamlit/config.toml
+    headless = true\n\
+    port = 8501\n\
+    address = "0.0.0.0"\n\
+    enableStaticServing = false\n\
+    \n\
+    [browser]\n\
+    gatherUsageStats = false\n\
+    \n\
+    [theme]\n\
+    primaryColor = "#1f77b4"\n\
+    backgroundColor = "#ffffff"\n\
+    secondaryBackgroundColor = "#f0f2f6"\n\
+    textColor = "#262730"\n' > /app/.streamlit/config.toml
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

@@ -1,268 +1,61 @@
-"""
-Upload & Process Page - Simplified API-based VTT processing.
+"""Upload and Process VTT Files - Refactored with clean architecture."""
 
-This page uses the FastAPI backend to process VTT files, with simple polling
-for progress updates. No more complex threading or direct service imports.
-"""
-
-import hashlib
-import time
-
-from api_client import api_client
-from config import configure_structlog
+from components.error_display import (
+    display_error,
+    display_validation_errors,
+)
+from components.health_check import require_healthy_backend
+from components.progress_tracker import ProgressTracker
+from services.backend_service import BackendService
+from services.state_service import StateService
+from services.task_service import TaskService
 import streamlit as st
-import structlog
-from utils.ui_components import render_metrics_row
+from utils.constants import STATE_KEYS
+from utils.helpers import format_file_size, validate_file
 
-# Configure structured logging
-configure_structlog()
-logger = structlog.get_logger(__name__)
-
-logger.info("Upload & Process page initialized", streamlit_page=True, mode="api_client")
+# Page configuration
+st.set_page_config(page_title="Upload & Process", page_icon="📤", layout="wide")
 
 
-def check_backend_health():
-    """Check if backend is available and show status."""
-    is_healthy, health_data = api_client.health_check()
-
-    if not is_healthy:
-        st.error("❌ Backend service is not available")
-        st.error(f"Error: {health_data.get('error', 'Unknown error')}")
-        st.info("Make sure the FastAPI backend is running at the configured URL")
-        st.code(f"Backend URL: {api_client.base_url}")
-        return False
-
-    # Show backend status
-    st.success(f"✅ Backend connected: {health_data.get('service', 'Unknown')}")
-    if "tasks_in_memory" in health_data:
-        st.info(f"Active tasks: {health_data['tasks_in_memory']}")
-
-    return True
+def initialize_services():
+    """Initialize all required services."""
+    backend = BackendService()
+    task_service = TaskService(backend)
+    progress_tracker = ProgressTracker(task_service)
+    return backend, task_service, progress_tracker
 
 
-def process_vtt_file(uploaded_file):
-    """Process VTT file using the backend API with real-time progress."""
-
-    # Upload and start processing
-    file_content = uploaded_file.getvalue()
-    filename = uploaded_file.name
-
-    logger.info(
-        "Starting VTT processing", filename=filename, size_bytes=len(file_content)
-    )
-
-    # Upload file to backend
-    with st.status("Uploading file to backend...", expanded=True) as upload_status:
-        # Derive idempotency key from file content
-        idempotency_key = hashlib.sha256(file_content).hexdigest()
-        success, task_id_or_error, message = api_client.upload_and_process_transcript(
-            file_content, filename, idempotency_key=idempotency_key
-        )
-
-        if not success:
-            upload_status.update(label="❌ Upload failed", state="error")
-            st.error(task_id_or_error)
-            return
-
-        task_id = task_id_or_error
-
-        # Persist task_id in URL so we can resume after refresh
-        q = st.query_params
-        q["task"] = task_id
-        st.query_params = q
-
-        upload_status.update(label="✅ Upload successful", state="complete")
-        st.info(f"Task ID: {task_id}")
-
-    # Poll for completion with progress updates
-    with st.status("Processing VTT file...", expanded=True) as process_status:
-        progress_bar = st.progress(0.0)
-        status_text = st.empty()
-
-        # Metrics for live updates
-        metrics_cols = st.columns(4)
-        with metrics_cols[0]:
-            progress_metric = st.empty()
-        with metrics_cols[1]:
-            status_metric = st.empty()
-        with metrics_cols[2]:
-            time_metric = st.empty()
-        with metrics_cols[3]:
-            task_metric = st.empty()
-
-        start_time = time.time()
-
-        def update_progress(progress: float, message: str):
-            """Update the UI with current progress."""
-            progress_bar.progress(progress)
-            status_text.text(message)
-
-            # Try to extract ETA seconds from backend status string e.g. "... • ETA: 12.3s"
-            eta_seconds = None
-            marker = "ETA:"
-            if marker in message:
-                try:
-                    after = message.split(marker, 1)[1].strip()
-                    num = ""
-                    for ch in after:
-                        if ch.isdigit() or ch == ".":
-                            num += ch
-                        else:
-                            break
-                    if num:
-                        eta_seconds = float(num)
-                except Exception:
-                    eta_seconds = None
-
-            # Update metrics
-            progress_metric.metric("Progress", f"{progress*100:.1f}%")
-            status_metric.metric("Status", "Processing", delta=message)
-
-            elapsed = time.time() - start_time
-            if eta_seconds is not None:
-                time_metric.metric(
-                    "Elapsed", f"{elapsed:.1f}s", delta=f"ETA {eta_seconds:.1f}s"
-                )
-            else:
-                time_metric.metric("Elapsed", f"{elapsed:.1f}s")
-            task_metric.metric("Task", task_id[:8])
-
-        # Poll until complete
-        success, final_data = api_client.poll_until_complete(
-            task_id,
-            progress_callback=update_progress,
-            poll_interval=2.0,
-            timeout=300.0,  # 5 minutes max
-        )
-
-        if not success:
-            process_status.update(label="❌ Processing failed", state="error")
-            error = final_data.get("error", "Unknown error")
-            st.error(f"Processing failed: {error}")
-            return
-
-        # Success!
-        process_status.update(label="✅ Processing completed", state="complete")
-        result = final_data.get("result")
-
-        if result:
-            # Store in session state for other pages
-            st.session_state.transcript = result
-            st.session_state.transcript_task_id = (
-                task_id  # Store task_id for intelligence extraction
-            )
-            st.session_state.processing_complete = True
-
-            # Show success metrics
-            transcript = result
-            metrics = [
-                ("VTT Entries", len(transcript.get("entries", [])), None),
-                ("Chunks", len(transcript.get("chunks", [])), None),
-                ("Speakers", len(transcript.get("speakers", [])), None),
-                ("Duration", f"{transcript.get('duration', 0):.1f}s", None),
-            ]
-            render_metrics_row(metrics)
-
-            # Show speakers
-            speakers = transcript.get("speakers", [])
-            if speakers:
-                st.markdown(f"**Speakers:** {', '.join(speakers)}")
-
-            # Success message with next steps
-            st.success("🎉 VTT processing completed successfully!")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("👀 Review Results", type="primary"):
-                    st.switch_page("pages/2_👀_Review.py")
-            with col2:
-                if st.button("🧠 Extract Intelligence"):
-                    st.switch_page("pages/3_🧠_Intelligence.py")
+def initialize_page_state():
+    """Initialize page-specific session state."""
+    required_state = {
+        STATE_KEYS.CURRENT_TASK_ID: None,
+        STATE_KEYS.PROCESSING_STATUS: "idle",
+        STATE_KEYS.TRANSCRIPT_DATA: None,
+        "upload_file": None,
+        "processing_complete": False,
+    }
+    StateService.initialize_page_state(required_state)
 
 
-def main():
-    """Main function for the Upload & Process page."""
-    st.set_page_config(page_title="Upload & Process", page_icon="📤", layout="wide")
-
-    st.title("📤 Upload & Process VTT Files")
-    st.markdown(
-        "Upload your VTT meeting transcript for AI-powered cleaning and processing."
-    )
-
-    # Check backend health first
-    if not check_backend_health():
-        st.stop()
-
-    # Resume ongoing task from URL if present
-    q = st.query_params
-    task_in_url = q.get("task")
-    if task_in_url and not st.session_state.get("transcript"):
-        # Verify the task type before resuming to avoid attaching wrong task
-        success, status_data = api_client.get_task_status(task_in_url)
-        if not success:
-            st.warning("Could not look up task from URL. It may have expired.")
-        else:
-            if status_data.get("type") != "transcript_processing":
-                st.info("Task in URL is not a transcript-processing task. Ignoring.")
-                # Optionally clear the param to avoid repeated attempts
-                q.pop("task", None)
-                st.query_params = q
-            else:
-                with st.status(
-                    "Resuming ongoing processing task...", expanded=True
-                ) as resume_status:
-                    progress_text = st.empty()
-
-                    def _resume_progress(p, m):
-                        progress_text.text(f"{p*100:.1f}% - {m}")
-
-                    ok, data = api_client.poll_until_complete(
-                        task_in_url,
-                        progress_callback=_resume_progress,
-                        poll_interval=2.0,
-                        timeout=300.0,
-                    )
-                    if ok:
-                        result = data.get("result")
-                        if result:
-                            st.session_state.transcript = result
-                            st.session_state.transcript_task_id = task_in_url
-                            st.session_state.processing_complete = True
-                            resume_status.update(
-                                label="✅ Task resumed and completed", state="complete"
-                            )
-                            # Clear task param now that it's done
-                            q.pop("task", None)
-                            st.query_params = q
-
-    # Show current status if we have a transcript
-    if hasattr(st.session_state, "transcript") and st.session_state.transcript:
-        st.info(
-            "✅ VTT transcript already processed and ready for review/intelligence extraction"
-        )
-
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("👀 Go to Review", type="primary"):
-                st.switch_page("pages/2_👀_Review.py")
-        with col2:
-            if st.button("🧠 Go to Intelligence"):
-                st.switch_page("pages/3_🧠_Intelligence.py")
-
-        st.markdown("---")
-        st.markdown("**Or upload a new file below:**")
-
-    # File upload section
-    st.subheader("📎 File Upload")
+def render_file_upload_section():
+    """Render file upload interface."""
+    st.subheader("📎 Select VTT File")
 
     uploaded_file = st.file_uploader(
-        "Choose a VTT file",
+        "Choose a VTT transcript file",
         type=["vtt"],
-        help="Upload a VTT (WebVTT) transcript file from your meeting recording",
-        accept_multiple_files=False,
+        help="Upload your meeting transcript file (.vtt format)",
+        key="file_uploader",
     )
 
-    if uploaded_file is not None:
+    if uploaded_file:
+        # Validate file
+        is_valid, error_message = validate_file(uploaded_file)
+
+        if not is_valid:
+            display_validation_errors([error_message])
+            return None
+
         # Show file info
         st.markdown("### 📄 File Information")
         col1, col2, col3 = st.columns(3)
@@ -271,7 +64,7 @@ def main():
             st.metric("Filename", uploaded_file.name)
         with col2:
             file_size = len(uploaded_file.getvalue())
-            st.metric("Size", f"{file_size:,} bytes")
+            st.metric("Size", format_file_size(file_size))
         with col3:
             st.metric("Type", uploaded_file.type or "text/vtt")
 
@@ -279,7 +72,6 @@ def main():
         with st.expander("🔍 Preview File Content"):
             try:
                 content = uploaded_file.getvalue().decode("utf-8")
-                # Show first 1000 characters
                 preview = content[:1000]
                 if len(content) > 1000:
                     preview += "\n\n... (truncated)"
@@ -287,30 +79,206 @@ def main():
             except Exception as e:
                 st.error(f"Could not preview file: {e}")
 
-        # Process button
-        st.markdown("### 🚀 Start Processing")
-
-        if st.button("🔄 Process VTT File", type="primary", use_container_width=True):
-            process_vtt_file(uploaded_file)
-
+        return uploaded_file
     else:
-        # Show what we can do
-        st.markdown("### What happens when you upload?")
-        st.markdown("1. **📤 Upload**: File is securely sent to our processing backend")
-        st.markdown(
-            "2. **🔧 Parse**: VTT content is parsed and chunked for AI processing"
-        )
-        st.markdown(
-            "3. **🤖 Clean**: AI agents clean speech-to-text errors while preserving meaning"
-        )
-        st.markdown("4. **📊 Review**: Quality review ensures 95%+ accuracy")
-        st.markdown(
-            "5. **✅ Complete**: Cleaned transcript ready for review and intelligence extraction"
-        )
+        # Show what happens during processing
+        st.markdown("### 🔄 Processing Steps")
+        st.markdown("1. **📤 Upload**: File securely sent to processing backend")
+        st.markdown("2. **🔧 Parse**: VTT content parsed and chunked for AI processing")
+        st.markdown("3. **🤖 Clean**: AI agents clean speech-to-text errors")
+        st.markdown("4. **📊 Review**: Quality review ensures high accuracy")
+        st.markdown("5. **✅ Complete**: Cleaned transcript ready for review")
 
         st.info(
-            "💡 **Tip**: VTT files are generated by most meeting recording platforms (Zoom, Teams, Google Meet)"
+            "💡 **Tip**: VTT files are generated by most meeting platforms (Zoom, Teams, Google Meet)"
         )
+
+    return None
+
+
+def process_file(
+    backend: BackendService, progress_tracker: ProgressTracker, uploaded_file
+) -> bool:
+    """Process uploaded file with progress tracking."""
+
+    def on_success(task_data):
+        """Handle successful processing."""
+        result = task_data.get("result", {})
+        st.session_state[STATE_KEYS.TRANSCRIPT_DATA] = result
+        st.session_state["transcript"] = result  # For backward compatibility
+        st.session_state["transcript_task_id"] = st.session_state[
+            STATE_KEYS.CURRENT_TASK_ID
+        ]
+        st.session_state["processing_complete"] = True
+        st.session_state[STATE_KEYS.PROCESSING_STATUS] = "completed"
+
+        # Show success message and metrics
+        st.success("🎉 VTT processing completed successfully!")
+
+        # Show basic processing metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("VTT Entries", len(result.get("entries", [])))
+        with col2:
+            st.metric("Chunks", len(result.get("chunks", [])))
+        with col3:
+            st.metric("Speakers", len(result.get("speakers", [])))
+        with col4:
+            st.metric("Duration", f"{result.get('duration', 0):.1f}s")
+
+        # Show speakers
+        speakers = result.get("speakers", [])
+        if speakers:
+            st.markdown(f"**Speakers:** {', '.join(speakers)}")
+
+    def on_error(error_message):
+        """Handle processing error."""
+        st.session_state[STATE_KEYS.PROCESSING_STATUS] = "failed"
+        display_error("processing_failed", error_message)
+
+    # Start upload
+    st.session_state[STATE_KEYS.PROCESSING_STATUS] = "uploading"
+
+    file_content = uploaded_file.getvalue()
+    success, response = backend.upload_file(file_content, uploaded_file.name)
+
+    if not success:
+        error_msg = response.get("error", "Upload failed")
+        display_error("upload_failed", error_msg)
+        return False
+
+    # Get task ID and start tracking
+    task_id = response.get("task_id")
+    if not task_id:
+        display_error("upload_failed", "No task ID received")
+        return False
+
+    st.session_state[STATE_KEYS.CURRENT_TASK_ID] = task_id
+    StateService.set_url_param("task_id", task_id)
+
+    # Track processing
+    st.session_state[STATE_KEYS.PROCESSING_STATUS] = "processing"
+
+    return progress_tracker.track_task(
+        task_id=task_id,
+        title="🔄 Processing VTT File",
+        success_callback=on_success,
+        error_callback=on_error,
+    )
+
+
+def render_results_section():
+    """Render processing results and next steps."""
+    transcript_data = st.session_state.get(STATE_KEYS.TRANSCRIPT_DATA)
+
+    if not transcript_data:
+        return
+
+    st.success("✅ File processed successfully!")
+
+    # Show basic metrics
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.markdown("### 📊 Processing Results")
+        # Show basic processing metrics
+        col_a, col_b, col_c, col_d = st.columns(4)
+        with col_a:
+            st.metric("VTT Entries", len(transcript_data.get("entries", [])))
+        with col_b:
+            st.metric("Chunks", len(transcript_data.get("chunks", [])))
+        with col_c:
+            st.metric("Speakers", len(transcript_data.get("speakers", [])))
+        with col_d:
+            st.metric("Duration", f"{transcript_data.get('duration', 0):.1f}s")
+
+    with col2:
+        st.markdown("### 🎯 Next Steps")
+        if st.button("👀 Review Results", use_container_width=True, type="primary"):
+            st.switch_page("pages/2_👀_Review.py")
+
+        if st.button("🧠 Extract Intelligence", use_container_width=True):
+            st.switch_page("pages/3_🧠_Intelligence.py")
+
+
+def handle_task_resumption(backend: BackendService, task_service: TaskService):
+    """Handle resumption of existing task from URL."""
+    task_id = StateService.handle_task_resumption()
+
+    if not task_id:
+        return
+
+    st.info(f"🔄 Resuming task: {task_id[:8]}...")
+
+    # Get task result
+    result = task_service.get_task_result(task_id)
+
+    if result:
+        st.session_state[STATE_KEYS.TRANSCRIPT_DATA] = result
+        st.session_state["transcript"] = result  # For backward compatibility
+        st.session_state[STATE_KEYS.CURRENT_TASK_ID] = task_id
+        st.session_state["processing_complete"] = True
+        st.success("✅ Task resumed successfully!")
+        StateService.clear_url_params(["task_id"])
+    else:
+        display_error("task_not_found")
+        StateService.clear_url_params(["task_id"])
+
+
+def main():
+    """Main page logic."""
+    # Initialize
+    backend, task_service, progress_tracker = initialize_services()
+    initialize_page_state()
+
+    st.title("📤 Upload & Process VTT Files")
+    st.markdown(
+        "Upload your VTT meeting transcript for AI-powered cleaning and processing."
+    )
+
+    # Require healthy backend
+    require_healthy_backend(backend)
+
+    # Handle task resumption
+    handle_task_resumption(backend, task_service)
+
+    # Check if already completed
+    if st.session_state.get("processing_complete"):
+        render_results_section()
+        st.markdown("---")
+        st.markdown("**Or upload a new file below:**")
+
+    # Check if currently processing
+    status = st.session_state[STATE_KEYS.PROCESSING_STATUS]
+
+    if status == "processing":
+        task_id = st.session_state[STATE_KEYS.CURRENT_TASK_ID]
+        if task_id:
+            st.info("🔄 Processing in progress...")
+            success = progress_tracker.track_task(
+                task_id=task_id,
+                title="🔄 Resuming Processing...",
+                success_callback=lambda data: setattr(
+                    st.session_state, "processing_complete", True
+                ),
+                error_callback=lambda error: setattr(
+                    st.session_state, STATE_KEYS.PROCESSING_STATUS, "failed"
+                ),
+            )
+            if success:
+                st.rerun()
+        return
+
+    # File upload section
+    uploaded_file = render_file_upload_section()
+
+    if uploaded_file:
+        st.markdown("### 🚀 Start Processing")
+        if st.button("🔄 Process VTT File", type="primary", use_container_width=True):
+            st.session_state["upload_file"] = {"name": uploaded_file.name}
+            success = process_file(backend, progress_tracker, uploaded_file)
+            if success:
+                st.rerun()
 
 
 if __name__ == "__main__":

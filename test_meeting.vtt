@@ -1,0 +1,29 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:05.000
+John: Good morning everyone, welcome to our quarterly planning meeting.
+
+2
+00:00:05.000 --> 00:00:10.000
+Sarah: Thank you John. I'd like to discuss our budget allocation for Q3.
+
+3
+00:00:10.000 --> 00:00:15.000
+John: Absolutely. I propose we increase the infrastructure budget by 15%.
+
+4
+00:00:15.000 --> 00:00:20.000
+Mike: That sounds reasonable. What about the PostgreSQL migration we discussed?
+
+5
+00:00:20.000 --> 00:00:25.000
+Sarah: Good point. The migration should be prioritized. I can lead that effort.
+
+6
+00:00:25.000 --> 00:00:30.000
+John: Perfect. Mike, can you handle the API documentation update?
+
+7
+00:00:30.000 --> 00:00:35.000
+Mike: Sure, I'll have it completed by next Tuesday.

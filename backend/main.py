@@ -12,11 +12,24 @@ from fastapi.middleware.cors import CORSMiddleware
 import structlog
 
 # Import API routes and cache
-from backend.api.v1.endpoints import router as api_v1_router
+from backend.api.v1.routers.health import router as health_router
+from backend.api.v1.routers.intelligence import router as intelligence_router
+from backend.api.v1.routers.tasks import router as tasks_router
+from backend.api.v1.routers.transcript import router as transcript_router
 
 # Configure structured logging first
-from backend.config import configure_structlog, settings
-from backend.services.transcript.task_cache import initialize_cache
+from backend.config import (
+    api_title,
+    api_version,
+    configure_structlog,
+    debug,
+    default_host,
+    default_port,
+    max_file_size_mb,
+    reload,
+    settings,
+)
+from backend.tasks.cache import initialize_cache
 
 configure_structlog()
 logger = structlog.get_logger(__name__)
@@ -28,9 +41,9 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info(
         "Meeting Transcript API starting up",
-        version=settings.api_version,
+        version=api_version,
         environment=settings.get_environment_display(),
-        debug=settings.debug,
+        debug=debug,
     )
 
     # Initialize task cache
@@ -58,9 +71,6 @@ async def lifespan(app: FastAPI):
         review_model=settings.review_model,
         insights_model=settings.insights_model,
         synthesis_model=settings.synthesis_model,
-        segment_model=settings.segment_model,
-        synthesis_reasoning_effort=settings.synthesis_reasoning_effort,
-        synthesis_reasoning_summary=settings.synthesis_reasoning_summary,
     )
 
     yield
@@ -71,7 +81,7 @@ async def lifespan(app: FastAPI):
 
 # FastAPI app setup with environment-aware configuration
 app = FastAPI(
-    title=settings.api_title,
+    title=api_title,
     description=f"""
     **AI-Powered Meeting Transcript Processing Service**
 
@@ -94,7 +104,7 @@ app = FastAPI(
 
     ## Rate Limits
 
-    - File uploads: {settings.max_file_size_mb}MB max size
+    - File uploads: {max_file_size_mb}MB max size
     - Concurrent tasks: {settings.max_concurrent_tasks} per instance
     - Request rate: {settings.rate_limit_per_minute} requests/minute per client
 
@@ -102,8 +112,8 @@ app = FastAPI(
 
     For issues or questions, see the project documentation.
     """,
-    version=settings.api_version,
-    debug=settings.debug,
+    version=api_version,
+    debug=debug,
     lifespan=lifespan,
     # API documentation configuration
     docs_url="/docs"
@@ -123,7 +133,7 @@ app = FastAPI(
     # Add server info for different environments
     servers=[
         {
-            "url": f"http://{settings.host}:{settings.port}",
+            "url": f"http://{default_host}:{default_port}",
             "description": f"{settings.get_environment_display()} server",
         },
     ]
@@ -141,7 +151,10 @@ cors_config = settings.get_cors_config()
 app.add_middleware(CORSMiddleware, **cors_config)
 
 # Include API routes
-app.include_router(api_v1_router, tags=["API v1"])
+app.include_router(health_router)
+app.include_router(transcript_router)
+app.include_router(intelligence_router)
+app.include_router(tasks_router)
 
 
 # Root endpoint for basic health check
@@ -153,8 +166,8 @@ async def root():
     Use `/api/v1/health` for detailed health checks.
     """
     return {
-        "service": settings.api_title,
-        "version": settings.api_version,
+        "service": api_title,
+        "version": api_version,
         "environment": settings.get_environment_display(),
         "status": "operational",
         "docs": "/docs" if not settings.is_production() else "disabled",
@@ -168,8 +181,8 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "main:app",
-        host=settings.host,
-        port=settings.port,
-        reload=settings.reload,
+        host=default_host,
+        port=default_port,
+        reload=reload,
         log_config=None,  # Use our structured logging
     )

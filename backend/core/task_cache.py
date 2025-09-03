@@ -126,8 +126,6 @@ class SimpleTaskCache:
             cleanup_interval_minutes: How often to run cleanup in minutes
         """
         self._tasks: dict[str, TaskEntry] = {}
-        self._idempotency_keys: dict[str, str] = {}  # key -> task_id
-        self._idempotency_expires: dict[str, datetime] = {}  # key -> expire_time
         self._lock = asyncio.Lock()
         self.default_ttl = timedelta(hours=default_ttl_hours)
         self.cleanup_interval = timedelta(minutes=cleanup_interval_minutes)
@@ -283,59 +281,7 @@ class SimpleTaskCache:
             await self._cleanup_expired_tasks()
             return len(self._tasks)
 
-    async def store_idempotency_key(
-        self, key: str, task_id: str, expires_at: datetime
-    ) -> bool:
-        """
-        Store an idempotency key mapping.
-
-        Args:
-            key: Idempotency key
-            task_id: Associated task ID
-            expires_at: When this mapping expires
-
-        Returns:
-            True if stored, False if key already exists
-        """
-        async with self._lock:
-            if key in self._idempotency_keys:
-                return False
-
-            self._idempotency_keys[key] = task_id
-            self._idempotency_expires[key] = expires_at
-
-            logger.debug(
-                "Idempotency key stored",
-                key=key,
-                task_id=task_id,
-                expires_at=expires_at,
-            )
-
-            return True
-
-    async def get_task_for_idempotency_key(self, key: str) -> str | None:
-        """
-        Get task ID for an idempotency key if not expired.
-
-        Args:
-            key: Idempotency key
-
-        Returns:
-            Task ID if key exists and not expired, None otherwise
-        """
-        async with self._lock:
-            if key not in self._idempotency_keys:
-                return None
-
-            # Check if expired
-            expires_at = self._idempotency_expires.get(key)
-            if expires_at and datetime.now() > expires_at:
-                logger.debug("Idempotency key expired, removing", key=key)
-                del self._idempotency_keys[key]
-                del self._idempotency_expires[key]
-                return None
-
-            return self._idempotency_keys[key]
+    # Idempotency methods removed to fix multi-user conflicts
 
     async def cleanup(self) -> dict[str, int]:
         """
@@ -368,7 +314,7 @@ class SimpleTaskCache:
             return {
                 "cache": "healthy",
                 "total_tasks": total_tasks,
-                "total_idempotency_keys": len(self._idempotency_keys),
+                # idempotency keys removed
                 "status_breakdown": status_counts,
                 "last_cleanup": self._last_cleanup.isoformat(),
                 "memory_usage": "lightweight",  # In-memory cache
@@ -386,7 +332,7 @@ class SimpleTaskCache:
 
     async def _cleanup_expired_tasks(self) -> dict[str, int]:
         """
-        Clean up expired tasks and idempotency keys.
+        Clean up expired tasks.
 
         Returns:
             Cleanup statistics
@@ -403,33 +349,18 @@ class SimpleTaskCache:
         for task_id in expired_tasks:
             del self._tasks[task_id]
 
-        # Clean up expired idempotency keys
-        expired_keys = [
-            key
-            for key, expires_at in self._idempotency_expires.items()
-            if expires_at <= now
-        ]
-
-        for key in expired_keys:
-            del self._idempotency_keys[key]
-            del self._idempotency_expires[key]
-
         self._last_cleanup = now
 
-        if expired_tasks or expired_keys:
+        if expired_tasks:
             logger.info(
                 "Cache cleanup completed",
                 expired_tasks=len(expired_tasks),
-                expired_idempotency_keys=len(expired_keys),
                 remaining_tasks=len(self._tasks),
-                remaining_keys=len(self._idempotency_keys),
             )
 
         return {
             "expired_tasks": len(expired_tasks),
-            "expired_idempotency_keys": len(expired_keys),
             "remaining_tasks": len(self._tasks),
-            "remaining_idempotency_keys": len(self._idempotency_keys),
         }
 
 

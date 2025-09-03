@@ -12,7 +12,7 @@ from .task_cache import (
 
 __all__ = [
     "SimpleTaskCache",
-    "TaskEntry", 
+    "TaskEntry",
     "TaskStatus",
     "TaskType",
     "get_task_cache",

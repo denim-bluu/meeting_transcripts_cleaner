@@ -1,7 +1,7 @@
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import structlog
 
-from backend.models.transcript import VTTChunk
+from backend.transcript.models import VTTChunk
 
 logger = structlog.get_logger(__name__)
 

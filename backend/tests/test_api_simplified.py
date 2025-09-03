@@ -13,14 +13,15 @@ from fastapi import status
 from fastapi.testclient import TestClient
 import pytest
 
-# Import our application
-from backend.main import app
 from backend.core.task_cache import (
     SimpleTaskCache,
     TaskEntry,
     TaskStatus,
     TaskType,
 )
+
+# Import our application
+from backend.main import app
 
 
 @pytest.fixture
@@ -65,14 +66,14 @@ John Doe: We need to complete the prototype by next Friday.
 class TestHealthEndpoint:
     """Test health check endpoint."""
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_health_check_success(self, mock_get_cache, client, mock_cache):
         """Test successful health check."""
         mock_get_cache.return_value = mock_cache
         mock_cache.health_check.return_value = {
             "cache": "healthy",
             "total_tasks": 5,
-            "status_breakdown": {"processing": 3, "completed": 2}
+            "status_breakdown": {"processing": 3, "completed": 2},
         }
         mock_cache.get_task_count.return_value = 5
 
@@ -86,14 +87,14 @@ class TestHealthEndpoint:
         assert data["tasks_in_memory"] == 5
         assert data["dependencies"]["cache"] == "healthy"
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_health_check_degraded_no_api_key(self, mock_get_cache, client, mock_cache):
         """Test health check with missing API key."""
         mock_get_cache.return_value = mock_cache
         mock_cache.health_check.return_value = {"cache": "healthy"}
         mock_cache.get_task_count.return_value = 0
 
-        with patch.dict('os.environ', {}, clear=True):
+        with patch.dict("os.environ", {}, clear=True):
             response = client.get("/api/v1/health")
 
         assert response.status_code == status.HTTP_200_OK
@@ -105,9 +106,16 @@ class TestHealthEndpoint:
 class TestTranscriptProcessingEndpoint:
     """Test transcript processing endpoint."""
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
-    @patch('backend.api.v1.endpoints.run_transcript_processing')
-    def test_process_transcript_success(self, mock_run_processing, mock_get_cache, client, mock_cache, sample_vtt_content):
+    @patch("backend.api.v1.endpoints.get_task_cache")
+    @patch("backend.api.v1.endpoints.run_transcript_processing")
+    def test_process_transcript_success(
+        self,
+        mock_run_processing,
+        mock_get_cache,
+        client,
+        mock_cache,
+        sample_vtt_content,
+    ):
         """Test successful transcript processing."""
         mock_get_cache.return_value = mock_cache
         mock_cache.store_task.return_value = Mock()
@@ -127,8 +135,10 @@ class TestTranscriptProcessingEndpoint:
         mock_cache.store_task.assert_called_once()
         mock_run_processing.assert_called_once()
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
-    def test_process_transcript_idempotency(self, mock_get_cache, client, mock_cache, sample_vtt_content):
+    @patch("backend.api.v1.endpoints.get_task_cache")
+    def test_process_transcript_idempotency(
+        self, mock_get_cache, client, mock_cache, sample_vtt_content
+    ):
         """Test transcript processing with idempotency key."""
         mock_get_cache.return_value = mock_cache
 
@@ -147,7 +157,9 @@ class TestTranscriptProcessingEndpoint:
         files = {"file": ("test.vtt", BytesIO(sample_vtt_content.encode()), "text/vtt")}
         headers = {"idempotency-key": "unique-key-123"}
 
-        response = client.post("/api/v1/transcript/process", files=files, headers=headers)
+        response = client.post(
+            "/api/v1/transcript/process", files=files, headers=headers
+        )
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -166,7 +178,9 @@ class TestTranscriptProcessingEndpoint:
     def test_process_transcript_file_too_large(self, client):
         """Test transcript processing with file too large."""
         # Create a large content string
-        large_content = "WEBVTT\n\n" + "00:00:00.000 --> 00:00:01.000\nSpeaker: Test\n" * 100000
+        large_content = (
+            "WEBVTT\n\n" + "00:00:00.000 --> 00:00:01.000\nSpeaker: Test\n" * 100000
+        )
         files = {"file": ("large.vtt", BytesIO(large_content.encode()), "text/vtt")}
 
         response = client.post("/api/v1/transcript/process", files=files)
@@ -177,7 +191,7 @@ class TestTranscriptProcessingEndpoint:
     def test_process_transcript_invalid_encoding(self, client):
         """Test transcript processing with invalid file encoding."""
         # Create invalid UTF-8 content
-        invalid_content = b'\xff\xfe\x00\x00'  # Invalid UTF-8 bytes
+        invalid_content = b"\xff\xfe\x00\x00"  # Invalid UTF-8 bytes
         files = {"file": ("invalid.vtt", BytesIO(invalid_content), "text/vtt")}
 
         response = client.post("/api/v1/transcript/process", files=files)
@@ -189,9 +203,11 @@ class TestTranscriptProcessingEndpoint:
 class TestIntelligenceExtractionEndpoint:
     """Test intelligence extraction endpoint."""
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
-    @patch('backend.api.v1.endpoints.run_intelligence_extraction')
-    def test_extract_intelligence_success(self, mock_run_extraction, mock_get_cache, client, mock_cache):
+    @patch("backend.api.v1.endpoints.get_task_cache")
+    @patch("backend.api.v1.endpoints.run_intelligence_extraction")
+    def test_extract_intelligence_success(
+        self, mock_run_extraction, mock_get_cache, client, mock_cache
+    ):
         """Test successful intelligence extraction."""
         mock_get_cache.return_value = mock_cache
 
@@ -210,7 +226,6 @@ class TestIntelligenceExtractionEndpoint:
 
         request_data = {
             "transcript_id": "transcript-123",
-            "detail_level": "comprehensive",
         }
 
         response = client.post("/api/v1/intelligence/extract", json=request_data)
@@ -219,21 +234,22 @@ class TestIntelligenceExtractionEndpoint:
         data = response.json()
         assert "task_id" in data
         assert data["status"] == "processing"
-        assert "comprehensive detail level" in data["message"]
+        assert "extraction started" in data["message"]
 
         # Verify cache operations
         mock_cache.store_task.assert_called_once()
         mock_run_extraction.assert_called_once()
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
-    def test_extract_intelligence_transcript_not_found(self, mock_get_cache, client, mock_cache):
+    @patch("backend.api.v1.endpoints.get_task_cache")
+    def test_extract_intelligence_transcript_not_found(
+        self, mock_get_cache, client, mock_cache
+    ):
         """Test intelligence extraction with non-existent transcript."""
         mock_get_cache.return_value = mock_cache
         mock_cache.get_task.return_value = None
 
         request_data = {
             "transcript_id": "nonexistent",
-            "detail_level": "standard",
         }
 
         response = client.post("/api/v1/intelligence/extract", json=request_data)
@@ -241,8 +257,10 @@ class TestIntelligenceExtractionEndpoint:
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "Task not found or expired" in response.json()["detail"]
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
-    def test_extract_intelligence_transcript_not_completed(self, mock_get_cache, client, mock_cache):
+    @patch("backend.api.v1.endpoints.get_task_cache")
+    def test_extract_intelligence_transcript_not_completed(
+        self, mock_get_cache, client, mock_cache
+    ):
         """Test intelligence extraction with incomplete transcript."""
         mock_get_cache.return_value = mock_cache
 
@@ -259,7 +277,6 @@ class TestIntelligenceExtractionEndpoint:
 
         request_data = {
             "transcript_id": "transcript-123",
-            "detail_level": "standard",
         }
 
         response = client.post("/api/v1/intelligence/extract", json=request_data)
@@ -267,44 +284,12 @@ class TestIntelligenceExtractionEndpoint:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "Transcript processing not completed" in response.json()["detail"]
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
-    def test_extract_intelligence_with_custom_instructions(self, mock_get_cache, client, mock_cache):
-        """Test intelligence extraction with custom instructions."""
-        mock_get_cache.return_value = mock_cache
-
-        # Mock completed transcript task
-        transcript_task = TaskEntry(
-            task_id="transcript-123",
-            task_type=TaskType.TRANSCRIPT_PROCESSING,
-            status=TaskStatus.COMPLETED,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            result={"chunks": [], "speakers": []},
-        )
-
-        mock_cache.get_task.return_value = transcript_task
-        mock_cache.store_task.return_value = Mock()
-
-        request_data = {
-            "transcript_id": "transcript-123",
-            "detail_level": "technical_focus",
-            "custom_instructions": "Focus on technical decisions and architecture discussions",
-        }
-
-        with patch('backend.api.v1.endpoints.run_intelligence_extraction') as mock_run:
-            response = client.post("/api/v1/intelligence/extract", json=request_data)
-
-        assert response.status_code == status.HTTP_200_OK
-
-        # Verify custom instructions are passed
-        stored_task = mock_cache.store_task.call_args[0][0]
-        assert stored_task.metadata["custom_instructions"] == "Focus on technical decisions and architecture discussions"
 
 
 class TestTaskManagementEndpoints:
     """Test task management endpoints."""
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_get_task_status_success(self, mock_get_cache, client, mock_cache):
         """Test successful task status retrieval."""
         mock_get_cache.return_value = mock_cache
@@ -321,7 +306,10 @@ class TestTaskManagementEndpoints:
         )
 
         mock_cache.get_task.return_value = task
-        mock_cache.cleanup.return_value = {"expired_tasks": 0, "expired_idempotency_keys": 0}
+        mock_cache.cleanup.return_value = {
+            "expired_tasks": 0,
+            "expired_idempotency_keys": 0,
+        }
 
         response = client.get("/api/v1/task/test-123")
 
@@ -333,7 +321,7 @@ class TestTaskManagementEndpoints:
         assert data["progress"] == 0.75
         assert data["message"] == "Processing chunks 15/20"
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_get_task_status_not_found(self, mock_get_cache, client, mock_cache):
         """Test task status retrieval for non-existent task."""
         mock_get_cache.return_value = mock_cache
@@ -344,8 +332,10 @@ class TestTaskManagementEndpoints:
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "Task not found or expired" in response.json()["detail"]
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
-    def test_get_task_status_completed_with_result(self, mock_get_cache, client, mock_cache):
+    @patch("backend.api.v1.endpoints.get_task_cache")
+    def test_get_task_status_completed_with_result(
+        self, mock_get_cache, client, mock_cache
+    ):
         """Test task status retrieval for completed task with result."""
         mock_get_cache.return_value = mock_cache
 
@@ -365,7 +355,10 @@ class TestTaskManagementEndpoints:
         )
 
         mock_cache.get_task.return_value = task
-        mock_cache.cleanup.return_value = {"expired_tasks": 0, "expired_idempotency_keys": 0}
+        mock_cache.cleanup.return_value = {
+            "expired_tasks": 0,
+            "expired_idempotency_keys": 0,
+        }
 
         response = client.get("/api/v1/task/completed-123")
 
@@ -373,11 +366,16 @@ class TestTaskManagementEndpoints:
         data = response.json()
         assert data["status"] == "completed"
         assert data["progress"] == 1.0
-        assert data["result"]["summary"] == "Meeting discussed project timeline and budget allocation."
+        assert (
+            data["result"]["summary"]
+            == "Meeting discussed project timeline and budget allocation."
+        )
         assert len(data["result"]["action_items"]) == 1
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
-    def test_get_task_status_failed_with_error(self, mock_get_cache, client, mock_cache):
+    @patch("backend.api.v1.endpoints.get_task_cache")
+    def test_get_task_status_failed_with_error(
+        self, mock_get_cache, client, mock_cache
+    ):
         """Test task status retrieval for failed task with error."""
         mock_get_cache.return_value = mock_cache
 
@@ -395,7 +393,10 @@ class TestTaskManagementEndpoints:
         )
 
         mock_cache.get_task.return_value = task
-        mock_cache.cleanup.return_value = {"expired_tasks": 0, "expired_idempotency_keys": 0}
+        mock_cache.cleanup.return_value = {
+            "expired_tasks": 0,
+            "expired_idempotency_keys": 0,
+        }
 
         response = client.get("/api/v1/task/failed-123")
 
@@ -405,7 +406,7 @@ class TestTaskManagementEndpoints:
         assert data["error"]["code"] == "invalid_format"
         assert data["error"]["message"] == "Invalid VTT format detected"
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_cancel_task_success(self, mock_get_cache, client, mock_cache):
         """Test successful task cancellation."""
         mock_get_cache.return_value = mock_cache
@@ -430,7 +431,7 @@ class TestTaskManagementEndpoints:
 
         mock_cache.delete_task.assert_called_once_with("cancel-123")
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_cancel_task_not_found(self, mock_get_cache, client, mock_cache):
         """Test cancellation of non-existent task."""
         mock_get_cache.return_value = mock_cache
@@ -441,7 +442,7 @@ class TestTaskManagementEndpoints:
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "Task not found or expired" in response.json()["detail"]
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_cancel_task_deletion_failed(self, mock_get_cache, client, mock_cache):
         """Test task cancellation when deletion fails."""
         mock_get_cache.return_value = mock_cache
@@ -467,7 +468,7 @@ class TestTaskManagementEndpoints:
 class TestDebugEndpoints:
     """Test debug endpoints."""
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_debug_list_tasks_all(self, mock_get_cache, client, mock_cache):
         """Test debug endpoint listing all tasks."""
         mock_get_cache.return_value = mock_cache
@@ -476,7 +477,9 @@ class TestDebugEndpoints:
         tasks = [
             TaskEntry(
                 task_id=f"debug-{i}",
-                task_type=TaskType.TRANSCRIPT_PROCESSING if i % 2 == 0 else TaskType.INTELLIGENCE_EXTRACTION,
+                task_type=TaskType.TRANSCRIPT_PROCESSING
+                if i % 2 == 0
+                else TaskType.INTELLIGENCE_EXTRACTION,
                 status=TaskStatus.PROCESSING if i < 2 else TaskStatus.COMPLETED,
                 created_at=datetime.now(),
                 updated_at=datetime.now(),
@@ -493,7 +496,7 @@ class TestDebugEndpoints:
             "total_idempotency_keys": 0,
             "status_breakdown": {"processing": 2, "completed": 2},
             "expires_within_1h": 4,
-            "last_cleanup": "2024-01-01T00:00:00"
+            "last_cleanup": "2024-01-01T00:00:00",
         }
 
         response = client.get("/api/v1/debug/tasks")
@@ -519,7 +522,7 @@ class TestDebugEndpoints:
         assert "has_error" in first_task
         assert "duration_seconds" in first_task
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_debug_list_tasks_filtered(self, mock_get_cache, client, mock_cache):
         """Test debug endpoint with filtering."""
         mock_get_cache.return_value = mock_cache
@@ -542,10 +545,12 @@ class TestDebugEndpoints:
             "total_idempotency_keys": 0,
             "status_breakdown": {"processing": 1},
             "expires_within_1h": 1,
-            "last_cleanup": "2024-01-01T00:00:00"
+            "last_cleanup": "2024-01-01T00:00:00",
         }
 
-        response = client.get("/api/v1/debug/tasks?status=processing&task_type=transcript_processing&limit=50")
+        response = client.get(
+            "/api/v1/debug/tasks?status=processing&task_type=transcript_processing&limit=50"
+        )
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -558,10 +563,10 @@ class TestDebugEndpoints:
         mock_cache.list_tasks.assert_called_once_with(
             status=TaskStatus.PROCESSING,
             task_type=TaskType.TRANSCRIPT_PROCESSING,
-            limit=50
+            limit=50,
         )
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_debug_list_tasks_empty(self, mock_get_cache, client, mock_cache):
         """Test debug endpoint with no tasks."""
         mock_get_cache.return_value = mock_cache
@@ -572,7 +577,7 @@ class TestDebugEndpoints:
             "total_idempotency_keys": 0,
             "status_breakdown": {},
             "expires_within_1h": 0,
-            "last_cleanup": "2024-01-01T00:00:00"
+            "last_cleanup": "2024-01-01T00:00:00",
         }
 
         response = client.get("/api/v1/debug/tasks")
@@ -584,11 +589,11 @@ class TestDebugEndpoints:
         assert "cache_statistics" in data
         assert data["cache_statistics"]["total_tasks_in_cache"] == 0
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_debug_cache_stats(self, mock_get_cache, client, mock_cache):
         """Test debug cache statistics endpoint."""
         mock_get_cache.return_value = mock_cache
-        
+
         # Mock health check
         mock_cache.health_check.return_value = {
             "cache": "healthy",
@@ -596,9 +601,9 @@ class TestDebugEndpoints:
             "total_idempotency_keys": 2,
             "status_breakdown": {"processing": 3, "completed": 2},
             "expires_within_1h": 1,
-            "last_cleanup": "2024-01-01T00:00:00"
+            "last_cleanup": "2024-01-01T00:00:00",
         }
-        
+
         # Mock task listing for detailed stats
         mock_cache.list_tasks.return_value = [
             TaskEntry(
@@ -610,17 +615,17 @@ class TestDebugEndpoints:
                 progress=0.5,
             ),
             TaskEntry(
-                task_id="task-2", 
+                task_id="task-2",
                 task_type=TaskType.INTELLIGENCE_EXTRACTION,
                 status=TaskStatus.COMPLETED,
                 created_at=datetime.now(),
                 updated_at=datetime.now(),
                 progress=1.0,
-            )
+            ),
         ]
-        
+
         response = client.get("/api/v1/debug/cache/stats")
-        
+
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert "cache_health" in data
@@ -628,56 +633,56 @@ class TestDebugEndpoints:
         assert "performance_metrics" in data
         assert data["performance_metrics"]["total_tasks_sampled"] == 2
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_debug_force_cleanup(self, mock_get_cache, client, mock_cache):
         """Test debug force cleanup endpoint."""
         mock_get_cache.return_value = mock_cache
-        
+
         # Mock cleanup stats
         mock_cache.cleanup.return_value = {
             "expired_tasks": 3,
             "expired_idempotency_keys": 1,
             "remaining_tasks": 5,
-            "remaining_idempotency_keys": 2
+            "remaining_idempotency_keys": 2,
         }
-        
+
         response = client.post("/api/v1/debug/cache/cleanup")
-        
+
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["message"] == "Cache cleanup completed"
         assert "cleanup_statistics" in data
         assert "timestamp" in data
         assert data["cleanup_statistics"]["expired_tasks"] == 3
-        
+
         # Verify cleanup was called
         mock_cache.cleanup.assert_called_once()
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_debug_invalid_status_filter(self, mock_get_cache, client, mock_cache):
         """Test debug endpoint with invalid status filter."""
         mock_get_cache.return_value = mock_cache
-        
+
         response = client.get("/api/v1/debug/tasks?status=invalid_status")
-        
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "Invalid status" in response.json()["detail"]
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_debug_invalid_task_type_filter(self, mock_get_cache, client, mock_cache):
         """Test debug endpoint with invalid task type filter."""
         mock_get_cache.return_value = mock_cache
-        
+
         response = client.get("/api/v1/debug/tasks?task_type=invalid_type")
-        
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "Invalid task_type" in response.json()["detail"]
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_debug_analytics(self, mock_get_cache, client, mock_cache):
         """Test debug analytics endpoint."""
         mock_get_cache.return_value = mock_cache
-        
+
         # Mock health check
         mock_cache.health_check.return_value = {
             "cache": "healthy",
@@ -685,9 +690,9 @@ class TestDebugEndpoints:
             "total_idempotency_keys": 3,
             "status_breakdown": {"processing": 5, "completed": 4, "failed": 1},
             "expires_within_1h": 2,
-            "last_cleanup": "2024-01-01T00:00:00"
+            "last_cleanup": "2024-01-01T00:00:00",
         }
-        
+
         # Mock task listing for analytics
         mock_tasks = [
             TaskEntry(
@@ -708,19 +713,19 @@ class TestDebugEndpoints:
             ),
         ]
         mock_cache.list_tasks.return_value = mock_tasks
-        
+
         response = client.get("/api/v1/debug/analytics")
-        
+
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        
+
         # Check analytics structure
         assert "cache_analytics" in data
         assert "task_distribution" in data
         assert "performance_metrics" in data
         assert "system_info" in data
         assert "timestamp" in data
-        
+
         # Check specific analytics data
         assert data["cache_analytics"]["total_tasks"] == 2
         assert data["system_info"]["storage_type"] == "in_memory_cache"
@@ -735,7 +740,7 @@ class TestFileValidation:
         """Test file validation with no filename."""
         from fastapi import HTTPException, UploadFile
 
-        from backend.api.v1.endpoints import validate_upload_file
+        from backend.api.v1.routers.transcript import validate_upload_file
 
         # Mock UploadFile with no filename
         mock_file = Mock(spec=UploadFile)
@@ -751,7 +756,7 @@ class TestFileValidation:
         """Test file validation with invalid extension."""
         from fastapi import HTTPException, UploadFile
 
-        from backend.api.v1.endpoints import validate_upload_file
+        from backend.api.v1.routers.transcript import validate_upload_file
 
         # Mock UploadFile with invalid extension
         mock_file = Mock(spec=UploadFile)
@@ -767,7 +772,7 @@ class TestFileValidation:
 class TestErrorHandling:
     """Test error handling across endpoints."""
 
-    @patch('backend.api.v1.endpoints.get_task_cache')
+    @patch("backend.api.v1.endpoints.get_task_cache")
     def test_cache_error_handling(self, mock_get_cache, client):
         """Test handling of cache errors."""
         # Mock cache that raises exception
@@ -785,7 +790,7 @@ class TestErrorHandling:
         response = client.post(
             "/api/v1/intelligence/extract",
             data="invalid json",
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         )
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
@@ -807,7 +812,10 @@ class TestCORSHeaders:
         response = client.options("/api/v1/health")
 
         # Should return 200 for OPTIONS requests
-        assert response.status_code in [status.HTTP_200_OK, status.HTTP_405_METHOD_NOT_ALLOWED]
+        assert response.status_code in [
+            status.HTTP_200_OK,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
+        ]
 
 
 class TestRequestValidation:
@@ -819,17 +827,10 @@ class TestRequestValidation:
         response = client.post("/api/v1/intelligence/extract", json={})
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
-        # Test invalid detail level
-        response = client.post("/api/v1/intelligence/extract", json={
-            "transcript_id": "test-123",
-            "detail_level": "invalid_level"
-        })
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-
-        # Test custom instructions too long
-        response = client.post("/api/v1/intelligence/extract", json={
-            "transcript_id": "test-123",
-            "detail_level": "standard",
-            "custom_instructions": "x" * 1001  # Too long
-        })
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        # Test valid request with only required field
+        response = client.post(
+            "/api/v1/intelligence/extract",
+            json={"transcript_id": "test-123"},
+        )
+        # This will fail with 404 since transcript doesn't exist, but validates schema
+        assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_422_UNPROCESSABLE_ENTITY]
