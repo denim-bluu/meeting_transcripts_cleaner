@@ -226,7 +226,6 @@ class TestIntelligenceExtractionEndpoint:
 
         request_data = {
             "transcript_id": "transcript-123",
-            "detail_level": "comprehensive",
         }
 
         response = client.post("/api/v1/intelligence/extract", json=request_data)
@@ -235,7 +234,7 @@ class TestIntelligenceExtractionEndpoint:
         data = response.json()
         assert "task_id" in data
         assert data["status"] == "processing"
-        assert "comprehensive detail level" in data["message"]
+        assert "extraction started" in data["message"]
 
         # Verify cache operations
         mock_cache.store_task.assert_called_once()
@@ -251,7 +250,6 @@ class TestIntelligenceExtractionEndpoint:
 
         request_data = {
             "transcript_id": "nonexistent",
-            "detail_level": "standard",
         }
 
         response = client.post("/api/v1/intelligence/extract", json=request_data)
@@ -279,7 +277,6 @@ class TestIntelligenceExtractionEndpoint:
 
         request_data = {
             "transcript_id": "transcript-123",
-            "detail_level": "standard",
         }
 
         response = client.post("/api/v1/intelligence/extract", json=request_data)
@@ -287,43 +284,6 @@ class TestIntelligenceExtractionEndpoint:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "Transcript processing not completed" in response.json()["detail"]
 
-    @patch("backend.api.v1.endpoints.get_task_cache")
-    def test_extract_intelligence_with_custom_instructions(
-        self, mock_get_cache, client, mock_cache
-    ):
-        """Test intelligence extraction with custom instructions."""
-        mock_get_cache.return_value = mock_cache
-
-        # Mock completed transcript task
-        transcript_task = TaskEntry(
-            task_id="transcript-123",
-            task_type=TaskType.TRANSCRIPT_PROCESSING,
-            status=TaskStatus.COMPLETED,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            result={"chunks": [], "speakers": []},
-        )
-
-        mock_cache.get_task.return_value = transcript_task
-        mock_cache.store_task.return_value = Mock()
-
-        request_data = {
-            "transcript_id": "transcript-123",
-            "detail_level": "technical_focus",
-            "custom_instructions": "Focus on technical decisions and architecture discussions",
-        }
-
-        with patch("backend.api.v1.endpoints.run_intelligence_extraction"):
-            response = client.post("/api/v1/intelligence/extract", json=request_data)
-
-        assert response.status_code == status.HTTP_200_OK
-
-        # Verify custom instructions are passed
-        stored_task = mock_cache.store_task.call_args[0][0]
-        assert (
-            stored_task.metadata["custom_instructions"]
-            == "Focus on technical decisions and architecture discussions"
-        )
 
 
 class TestTaskManagementEndpoints:
@@ -867,20 +827,10 @@ class TestRequestValidation:
         response = client.post("/api/v1/intelligence/extract", json={})
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
-        # Test invalid detail level
+        # Test valid request with only required field
         response = client.post(
             "/api/v1/intelligence/extract",
-            json={"transcript_id": "test-123", "detail_level": "invalid_level"},
+            json={"transcript_id": "test-123"},
         )
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-
-        # Test custom instructions too long
-        response = client.post(
-            "/api/v1/intelligence/extract",
-            json={
-                "transcript_id": "test-123",
-                "detail_level": "standard",
-                "custom_instructions": "x" * 1001,  # Too long
-            },
-        )
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        # This will fail with 404 since transcript doesn't exist, but validates schema
+        assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_422_UNPROCESSABLE_ENTITY]

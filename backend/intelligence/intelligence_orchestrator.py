@@ -50,7 +50,6 @@ class IntelligenceOrchestrator:
     async def process_meeting(
         self,
         cleaned_chunks: list[VTTChunk],
-        detail_level: str = "comprehensive",
         progress_callback=None,
     ) -> MeetingIntelligence:
         """
@@ -104,7 +103,7 @@ class IntelligenceOrchestrator:
         )
         phase2_start = time.time()
         insights_list = await self._extract_all_insights(
-            semantic_chunks, detail_level, progress_callback
+            semantic_chunks, progress_callback
         )
         phase2_time = int((time.time() - phase2_start) * 1000)
         logger.info(
@@ -181,7 +180,6 @@ class IntelligenceOrchestrator:
     async def _extract_all_insights(
         self,
         semantic_chunks: list[str],
-        detail_level: str = "comprehensive",
         progress_callback=None,
     ) -> list[ChunkInsights]:
         """Extract insights from all semantic chunks using concurrent processing."""
@@ -194,18 +192,6 @@ class IntelligenceOrchestrator:
             i: int, chunk_text: str
         ) -> tuple[int, ChunkInsights]:
             """Extract insights from a single chunk with proper error handling."""
-            # Create context for dynamic instructions
-            context = {
-                "position": "start"
-                if i == 0
-                else "end"
-                if i == len(semantic_chunks) - 1
-                else "middle",
-                "chunk_index": i,
-                "total_chunks": len(semantic_chunks),
-                "detail_level": detail_level,  # Industry-standard detail level control
-            }
-
             user_prompt = f"Extract comprehensive insights from this conversation segment:\n\n{chunk_text}"
 
             try:
@@ -214,12 +200,11 @@ class IntelligenceOrchestrator:
                     chunk_index=i + 1,
                     total_chunks=len(semantic_chunks),
                     chunk_size_chars=len(chunk_text),
-                    position=context.get("position", "middle"),
                     insights_model=settings.insights_model,
                 )
 
                 async with semaphore, throttler:
-                    result = await chunk_extraction_agent.run(user_prompt, deps=context)
+                    result = await chunk_extraction_agent.run(user_prompt)
 
                 logger.info(
                     "Chunk extraction completed",
@@ -246,7 +231,6 @@ class IntelligenceOrchestrator:
         logger.info(
             "Starting concurrent insight extraction",
             total_chunks=len(semantic_chunks),
-            detail_level=detail_level,
         )
 
         tasks = [

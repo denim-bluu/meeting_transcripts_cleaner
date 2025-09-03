@@ -160,8 +160,6 @@ async def run_transcript_processing(task_id: str, content: str) -> None:
 async def run_intelligence_extraction(
     task_id: str,
     transcript_data: dict[str, Any] | None,
-    detail_level: str,
-    custom_instructions: str | None = None,
 ) -> None:
     """Background task for intelligence extraction using existing orchestrator."""
     cache = get_task_cache()
@@ -217,7 +215,6 @@ async def run_intelligence_extraction(
         # Extract intelligence with proper VTTChunk objects
         intelligence = await orchestrator.process_meeting(
             vtt_chunks,
-            detail_level=detail_level,
             progress_callback=update_progress,
         )
 
@@ -234,7 +231,6 @@ async def run_intelligence_extraction(
                     item.model_dump() for item in intelligence.action_items
                 ],
                 "processing_stats": intelligence.processing_stats,
-                "detail_level": detail_level,
             }
             await cache.update_task(task)
 
@@ -242,7 +238,6 @@ async def run_intelligence_extraction(
             "Intelligence extraction completed",
             task_id=task_id,
             action_items=len(intelligence.action_items),
-            detail_level=detail_level,
         )
 
     except Exception as e:

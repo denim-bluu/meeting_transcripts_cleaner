@@ -64,11 +64,9 @@ async def extract_intelligence(
         created_at=datetime.now(),
         updated_at=datetime.now(),
         progress=0.0,
-        message=f"Starting intelligence extraction with {request.detail_level} detail level...",
+        message="Starting comprehensive intelligence extraction...",
         metadata={
-            "detail_level": request.detail_level.value,
             "transcript_id": request.transcript_id,
-            "custom_instructions": request.custom_instructions,
             "models": {
                 "insights_model": settings.insights_model,
                 "synthesis_model": settings.synthesis_model,
@@ -83,7 +81,6 @@ async def extract_intelligence(
         "Intelligence extraction task started",
         task_id=task_id,
         transcript_id=request.transcript_id,
-        detail_level=request.detail_level.value,
     )
 
     # Extract in background
@@ -93,12 +90,10 @@ async def extract_intelligence(
         run_intelligence_extraction,
         task_id,
         transcript_task.result,
-        request.detail_level.value,
-        request.custom_instructions,
     )
 
     return TaskResponse(
         task_id=task_id,
         status=TaskStatus.PROCESSING,
-        message=f"Intelligence extraction started with {request.detail_level.value} detail level",
+        message="Comprehensive intelligence extraction started",
     )

@@ -73,12 +73,6 @@ class UI_CONFIG:
     PROGRESS_UPDATE_INTERVAL = 0.5
 
 
-# Detail Levels
-DETAIL_LEVELS = {
-    "standard": "Standard - Key decisions and action items",
-    "comprehensive": "Comprehensive - Detailed discussion and context",
-    "technical_focus": "Technical Focus - Maximum technical detail preservation",
-}
 
 # Export Formats
 EXPORT_FORMATS = ["txt", "md", "json"]

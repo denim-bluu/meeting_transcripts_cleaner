@@ -7,7 +7,7 @@ from services.backend_service import BackendService
 from services.state_service import StateService
 from services.task_service import TaskService
 import streamlit as st
-from utils.constants import DETAIL_LEVELS, STATE_KEYS
+from utils.constants import STATE_KEYS
 
 # Page configuration
 st.set_page_config(page_title="Meeting Intelligence", page_icon="🧠", layout="wide")
@@ -113,7 +113,6 @@ def extract_intelligence_with_progress(
     backend: BackendService,
     progress_tracker: ProgressTracker,
     transcript_id: str,
-    detail_level: str,
 ) -> dict | None:
     """Extract intelligence using backend service with progress tracking.
 
@@ -144,7 +143,7 @@ def extract_intelligence_with_progress(
         return None
 
     # Start extraction
-    success, response = backend.extract_intelligence(transcript_id, detail_level)
+    success, response = backend.extract_intelligence(transcript_id)
 
     if not success:
         error_msg = response.get("error", "Extraction failed")
@@ -173,30 +172,6 @@ def extract_intelligence_with_progress(
     return None
 
 
-def render_detail_level_selector(key_suffix: str = "") -> str:
-    """Render detail level selector with descriptions.
-
-    Logic:
-    1. Show selectbox with available detail levels
-    2. Provide helpful descriptions for each level
-    3. Return selected detail level
-    """
-    detail_level = st.selectbox(
-        "📊 Summary Detail Level",
-        options=list(DETAIL_LEVELS.keys()),
-        format_func=lambda x: DETAIL_LEVELS[x],
-        index=1,  # Default to comprehensive
-        key=f"detail_level_{key_suffix}",
-        help="""
-        Choose the level of detail for your meeting summary:
-        • Standard: Key decisions and action items
-        • Comprehensive: Full context and discussion details
-        • Technical Focus: Maximum technical detail preservation
-        """,
-    )
-    return detail_level
-
-
 def render_intelligence_extraction_section(
     backend: BackendService, progress_tracker: ProgressTracker
 ):
@@ -204,15 +179,11 @@ def render_intelligence_extraction_section(
 
     Logic:
     1. Check if transcript is available for extraction
-    2. Show detail level selector
-    3. Handle extraction process
-    4. Provide user guidance
+    2. Handle extraction process
+    3. Provide user guidance
     """
     st.info("🧠 Intelligence not yet extracted from this transcript.")
     st.divider()
-
-    # Detail level selector
-    detail_level = render_detail_level_selector()
 
     # Extract intelligence button
     if st.button(
@@ -229,7 +200,7 @@ def render_intelligence_extraction_section(
 
         # Extract intelligence
         intelligence_data = extract_intelligence_with_progress(
-            backend, progress_tracker, transcript_task_id, detail_level
+            backend, progress_tracker, transcript_task_id
         )
 
         if intelligence_data:
@@ -237,10 +208,9 @@ def render_intelligence_extraction_section(
 
     # Show what will be extracted
     st.markdown("**This will:**")
-    st.markdown("• 📋 Generate executive and detailed summaries")
+    st.markdown("• 📋 Generate comprehensive executive and detailed summaries")
     st.markdown("• 🎯 Identify action items with owners and deadlines")
     st.markdown("• 🔍 Extract key decisions and topics")
-    st.markdown("• ⚡ Process using parallel AI agents for speed")
 
 
 def handle_task_resumption(backend: BackendService, task_service: TaskService):
@@ -306,7 +276,7 @@ def render_intelligence_results(intelligence_data: dict):
     st.divider()
 
     # Main content in tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 Summary", "🎯 Action Items", "📤 Export"])
+    tab1, tab2, tab3 = st.tabs(["📋 Summary", "🎯 Action Items", "📤 Export"])
 
     with tab1:
         render_summary_section(intelligence_data)
@@ -318,57 +288,6 @@ def render_intelligence_results(intelligence_data: dict):
         ExportHandler.render_intelligence_export_section(
             intelligence_data, original_filename, "intelligence"
         )
-
-
-def render_re_extraction_section(
-    backend: BackendService, progress_tracker: ProgressTracker
-):
-    """Render re-extraction interface with different detail levels.
-
-    Logic:
-    1. Show expandable re-extraction section
-    2. Allow selection of new detail level
-    3. Handle re-extraction process
-    """
-    with st.expander("🔄 Re-extract Intelligence with Different Detail Level"):
-        col1, col2 = st.columns([2, 1])
-
-        with col1:
-            # Detail level selector for re-extraction
-            re_detail_level = render_detail_level_selector("re_extract")
-
-        with col2:
-            if st.button(
-                "🔄 Re-extract Intelligence",
-                type="secondary",
-                use_container_width=True,
-                key="re_extract_button",
-            ):
-                # Clear existing intelligence
-                if STATE_KEYS.INTELLIGENCE_DATA in st.session_state:
-                    del st.session_state[STATE_KEYS.INTELLIGENCE_DATA]
-                if (
-                    "transcript" in st.session_state
-                    and "intelligence" in st.session_state.transcript
-                ):
-                    del st.session_state.transcript["intelligence"]
-
-                # Get transcript task_id
-                transcript_task_id = st.session_state.get("transcript_task_id")
-
-                if not transcript_task_id:
-                    st.error(
-                        "❌ No transcript task ID found. Please re-process your transcript."
-                    )
-                    return
-
-                # Re-extract with new detail level
-                intelligence_data = extract_intelligence_with_progress(
-                    backend, progress_tracker, transcript_task_id, re_detail_level
-                )
-
-                if intelligence_data:
-                    st.rerun()
 
 
 def main():
@@ -436,10 +355,6 @@ def main():
 
     # Display intelligence results
     render_intelligence_results(intelligence_data)
-
-    # Re-extraction option
-    st.divider()
-    render_re_extraction_section(backend, progress_tracker)
 
     st.markdown(
         "*Intelligence extracted from processed transcript. Results are AI-generated and may need review.*"

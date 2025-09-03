@@ -1,21 +1,12 @@
 """Pydantic schemas for API v1 - Simple DTOs only."""
 
 from datetime import datetime
-from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 # Import from domain layer
 from backend.tasks.cache import TaskStatus, TaskType
-
-
-class DetailLevel(str, Enum):
-    """Intelligence extraction detail levels."""
-
-    STANDARD = "standard"
-    COMPREHENSIVE = "comprehensive"
-    TECHNICAL_FOCUS = "technical_focus"
 
 
 class ErrorDetail(BaseModel):
@@ -65,8 +56,6 @@ class IntelligenceExtractionRequest(BaseModel):
     """Intelligence extraction request."""
 
     transcript_id: str
-    detail_level: DetailLevel = DetailLevel.COMPREHENSIVE
-    custom_instructions: str | None = Field(None, max_length=1000)
 
 
 # File validation constants (move to domain)

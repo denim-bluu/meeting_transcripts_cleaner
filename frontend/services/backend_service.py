@@ -72,9 +72,8 @@ class BackendService:
         except requests.RequestException as e:
             return False, {"error": str(e)}
     
-    def extract_intelligence(self, transcript_id: str, detail_level: str, 
-                           custom_instructions: Optional[str] = None) -> Tuple[bool, Dict[str, Any]]:
-        """Extract meeting intelligence.
+    def extract_intelligence(self, transcript_id: str) -> Tuple[bool, Dict[str, Any]]:
+        """Extract meeting intelligence using comprehensive approach.
         
         Logic:
         1. Prepare intelligence extraction request
@@ -83,11 +82,8 @@ class BackendService:
         """
         try:
             payload = {
-                "transcript_id": transcript_id,
-                "detail_level": detail_level
+                "transcript_id": transcript_id
             }
-            if custom_instructions:
-                payload["custom_instructions"] = custom_instructions
                 
             response = requests.post(
                 f"{self.base_url}{API_ENDPOINTS.INTELLIGENCE_EXTRACT}",
