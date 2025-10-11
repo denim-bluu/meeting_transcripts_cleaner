@@ -1,5 +1,3 @@
-"""Pure direct synthesis agent - stateless and global following Pydantic AI best practices."""
-
 from dotenv import load_dotenv
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import (

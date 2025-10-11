@@ -12,10 +12,6 @@ from utils.constants import STATE_KEYS
 st.set_page_config(page_title="Review Results", page_icon="👀", layout="wide")
 
 
-def initialize_services():
-    """No backend service in Streamlit-only mode."""
-    return None
-
 
 def initialize_page_state():
     """Initialize page-specific session state."""
@@ -86,6 +82,7 @@ def render_detailed_review_section(transcript_data: dict) -> None:
                                 height=150,
                                 key=f"original_{i}",
                                 help="Original text before cleaning",
+                                disabled=True,
                             )
 
                     with col2:
@@ -99,6 +96,7 @@ def render_detailed_review_section(transcript_data: dict) -> None:
                             height=150,
                             key=f"cleaned_{i}",
                             help="Text after AI cleaning and processing",
+                            disabled=True,
                         )
 
                     # Quality metrics row
@@ -156,6 +154,7 @@ def render_detailed_review_section(transcript_data: dict) -> None:
                 value=final_transcript,
                 height=400,
                 help="Complete cleaned transcript ready for export",
+                disabled=True,
             )
         else:
             # Fallback to original content
@@ -172,13 +171,13 @@ def render_detailed_review_section(transcript_data: dict) -> None:
                 value=full_text,
                 height=400,
                 help="Complete transcript text",
+                disabled=True,
             )
 
 
 def main():
     """Main page logic."""
     # Initialize
-    backend = initialize_services()
     initialize_page_state()
 
     st.title("👀 Review Cleaned Transcript")
@@ -189,9 +188,7 @@ def main():
     # No backend health check in Streamlit-only mode
 
     # Check if we have processed transcript
-    transcript = st.session_state.get("transcript") or st.session_state.get(
-        STATE_KEYS.TRANSCRIPT_DATA
-    )
+    transcript = st.session_state.get(STATE_KEYS.TRANSCRIPT_DATA)
 
     if not transcript:
         st.warning(

@@ -6,58 +6,6 @@ from pydantic import BaseModel, Field, field_validator
 from pydantic_ai import ModelRetry
 
 
-class ChunkInsights(BaseModel):
-    """Universal extraction model for any meeting type - max 5 fields to avoid timeouts."""
-
-    insights: list[str] = Field(
-        ...,
-        min_length=1,  # Dramatically reduced from 5 to 1
-        max_length=25,  # Keep max for performance
-        description="Important statements with speaker attribution and context",
-    )
-    importance: int = Field(
-        ...,
-        ge=1,
-        le=10,
-        description="Importance rating based on decisions, commitments, strategic value",
-    )
-    themes: list[str] = Field(
-        ...,
-        min_length=1,
-        max_length=3,
-        description="Broad themes discussed, not micro-topics",
-    )
-    actions: list[str] = Field(
-        default_factory=list, description="Action items with owner if mentioned"
-    )
-
-    @field_validator("insights")
-    @classmethod
-    def validate_insights_quality(cls, v: list[str]) -> list[str]:
-        """Minimal validation - just check insights exist."""
-        if not v:
-            raise ModelRetry(
-                "No insights provided. Extract important statements from the conversation."
-            )
-
-        return v
-
-    @field_validator("actions")
-    @classmethod
-    def validate_actions_quality(cls, v: list[str]) -> list[str]:
-        """Minimal validation - accept any actions."""
-        return v  # Actions are optional and any format is acceptable
-
-    @field_validator("themes")
-    @classmethod
-    def validate_themes_quality(cls, v: list[str]) -> list[str]:
-        """Minimal validation - just check themes exist."""
-        if not v:
-            raise ModelRetry("No themes provided. Identify discussion themes.")
-
-        return v
-
-
 class ActionItem(BaseModel):
     """Simple structured action item."""
 

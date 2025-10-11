@@ -27,9 +27,16 @@ def validate_file(file) -> tuple[bool, str]:
             f"Invalid file type. Allowed: {', '.join(FILE_CONSTRAINTS.ALLOWED_EXTENSIONS)}",
         )
 
-    # Check size
-    if hasattr(file, "size") and file.size > FILE_CONSTRAINTS.MAX_SIZE_BYTES:
-        return False, f"File too large. Maximum: {FILE_CONSTRAINTS.MAX_SIZE_MB}MB"
+    # Check size (fallback to buffer length if .size not available)
+    try:
+        size_bytes = getattr(file, "size", None)
+        if size_bytes is None and hasattr(file, "getvalue"):
+            size_bytes = len(file.getvalue())
+        if size_bytes is not None and size_bytes > FILE_CONSTRAINTS.MAX_SIZE_BYTES:
+            return False, f"File too large. Maximum: {FILE_CONSTRAINTS.MAX_SIZE_MB}MB"
+    except Exception:
+        # If size cannot be determined, allow and rely on downstream handling
+        pass
 
     return True, ""
 

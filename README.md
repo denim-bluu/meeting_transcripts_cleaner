@@ -22,17 +22,17 @@ The app is a single Streamlit service that calls the domain services directly (n
 
 ---
 
-## Architecture (Now Simplified)
+## Architecture (Simplified)
 
 - UI (Streamlit): Orchestrates the flow and shows progress
 - Transcript Domain: VTT parsing and chunking; AI cleaning and review
-- Intelligence Domain: Semantic chunking (LangChain) → per-chunk insight extraction → direct synthesis
+- Intelligence Domain: Direct synthesis over the cleaned transcript (no semantic chunking or multi-step extraction)
 - Settings & Logging: `backend/config.py` provides environment, model names, concurrency limits, and structlog setup
 
 Data Flow
 1) Upload .vtt → parse + chunk → async clean + review (progress shown inline)
 2) Review cleaned transcript → export TXT/MD/VTT
-3) Extract intelligence → insights + summary/action items (progress shown inline)
+3) Extract intelligence → direct synthesis produces summary + action items (progress shown inline)
 
 ---
 
@@ -54,18 +54,18 @@ Example `backend/.env`:
 
 ```
 OPENAI_API_KEY=sk-xxx
-environment=development
-log_level=INFO
+ENVIRONMENT=development
+LOG_LEVEL=INFO
 
 # Optional tuning
-max_concurrent_tasks=50
-rate_limit_per_minute=50
+MAX_CONCURRENT_TASKS=50
+RATE_LIMIT_PER_MINUTE=50
 
 # Model names (default to o3-mini everywhere)
-cleaning_model=o3-mini
-review_model=o3-mini
-insights_model=o3-mini
-synthesis_model=o3-mini
+CLEANING_MODEL=o3-mini
+REVIEW_MODEL=o3-mini
+INSIGHTS_MODEL=o3-mini
+SYNTHESIS_MODEL=o3-mini
 ```
 
 ---
@@ -135,15 +135,6 @@ Sample VTT: `test_meeting.vtt`
 
 ## Notes and Limitations
 
-- There is no public API layer in this prototype. The UI calls the domain services directly.
-- State is session-scoped; results can be exported for persistence.
-- Concurrency and rate limits are enforced inside the services.
-
-
----
-
-## Notes and Limitations
-
-- Task state is stored in memory and expires automatically (TTL). This is perfect for local and container scenarios but not durable. Use the task ID immediately after submission to poll results.
-- OpenAPI docs are only available in non-production environments at /docs.
-- Model names default to o3-mini across the system; override via backend/.env if needed.
+- There is no public API layer in this prototype; the UI calls domain services directly.
+- State is session-scoped; export results to persist them.
+- Concurrency and rate limits are enforced within the services.

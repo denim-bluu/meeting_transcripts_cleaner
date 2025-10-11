@@ -35,16 +35,13 @@ def initialize_application():
     app_state = {
         STATE_KEYS.TRANSCRIPT_DATA: None,
         STATE_KEYS.INTELLIGENCE_DATA: None,
-        STATE_KEYS.CURRENT_TASK_ID: None,
     }
     StateService.initialize_page_state(app_state)
 
 
 def render_transcript_summary():
     """Render transcript summary if available."""
-    transcript = st.session_state.get("transcript") or st.session_state.get(
-        STATE_KEYS.TRANSCRIPT_DATA
-    )
+    transcript = st.session_state.get(STATE_KEYS.TRANSCRIPT_DATA)
 
     if not transcript:
         return

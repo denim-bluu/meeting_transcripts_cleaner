@@ -14,17 +14,11 @@ class Settings(BaseSettings):
     """Essential settings for domain services and logging."""
 
     # Environment + logging
-    environment: str = "development"
     log_level: str = "INFO"
-
-    # Concurrency and rate limits for provider calls
-    max_concurrent_tasks: int = 50
-    rate_limit_per_minute: int = 50
 
     # Model configuration
     cleaning_model: str = "o3-mini"
     review_model: str = "o3-mini"
-    insights_model: str = "o3-mini"
     synthesis_model: str = "o3-mini"
 
 

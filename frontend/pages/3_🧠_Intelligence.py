@@ -1,4 +1,5 @@
 from components.export_handlers import ExportHandler
+from components.error_display import display_error
 from services.pipeline import run_intelligence_pipeline
 from services.state_service import StateService
 import streamlit as st
@@ -7,20 +8,12 @@ from utils.constants import STATE_KEYS
 # Page configuration
 st.set_page_config(page_title="Meeting Intelligence", page_icon="🧠", layout="wide")
 
-
-def initialize_services():
-    """No backend services in Streamlit-only mode."""
-    return None, None, None
-
-
 def initialize_page_state():
     """Initialize page-specific session state."""
     required_state = {
         STATE_KEYS.TRANSCRIPT_DATA: None,
         STATE_KEYS.INTELLIGENCE_DATA: None,
-        STATE_KEYS.CURRENT_TASK_ID: None,
         "intelligence_extracted": False,
-        "transcript_task_id": None,
     }
     StateService.initialize_page_state(required_state)
 
@@ -110,19 +103,18 @@ def extract_intelligence_with_progress(transcript: dict) -> dict | None:
         bar_ph.progress(pct)
         status_ph.text(f"{int(pct * 100)}% • {message}")
 
-    try:
-        chunks = transcript.get("chunks", [])
-        result = run_intelligence_pipeline(chunks, on_progress)
-    except Exception as e:
-        st.error(f"Intelligence extraction failed: {e}")
-        return None
+    with st.spinner("Extracting meeting intelligence..."):
+        try:
+            chunks = transcript.get("chunks", [])
+            result = run_intelligence_pipeline(chunks, on_progress)
+        except Exception as e:
+            display_error("processing_failed", f"Intelligence extraction failed: {e}")
+            return None
 
     st.session_state[STATE_KEYS.INTELLIGENCE_DATA] = result
     st.session_state["intelligence_extracted"] = True
 
-    if "transcript" not in st.session_state:
-        st.session_state.transcript = {}
-    st.session_state.transcript["intelligence"] = result
+    # Only use standardized session keys
 
     st.success("🎉 Meeting intelligence extracted successfully!")
     return result
@@ -145,8 +137,9 @@ def render_intelligence_extraction_section():
     ):
         transcript = st.session_state.get(STATE_KEYS.TRANSCRIPT_DATA)
         if not transcript:
-            st.error(
-                "❌ No transcript found in session. Please process a VTT file first."
+            display_error(
+                "missing_data",
+                "No transcript found in session. Please process a VTT file first.",
             )
             return
 
@@ -159,23 +152,6 @@ def render_intelligence_extraction_section():
     st.markdown("• 📋 Generate comprehensive executive and detailed summaries")
     st.markdown("• 🎯 Identify action items with owners and deadlines")
     st.markdown("• 🔍 Extract key decisions and topics")
-
-
-def handle_task_resumption(backend, task_service):
-    """Handle resumption of intelligence extraction task from URL.
-
-    Logic:
-    1. Check URL for existing task ID
-    2. Verify task is intelligence extraction type
-    3. Resume task if valid
-    4. Store results in session state
-    """
-    task_id = StateService.get_url_param("task")
-    if not task_id:
-        return
-
-    st.info(f"Task resumption not supported in Streamlit-only mode: {task_id}")
-    StateService.clear_url_params(["task"])
 
 
 def render_intelligence_results(intelligence_data: dict):
@@ -215,7 +191,9 @@ def render_intelligence_results(intelligence_data: dict):
     with tab2:
         render_action_items(action_items)
     with tab3:
-        original_filename = "meeting_transcript"  # Could be from session state
+        original_filename = (
+            st.session_state.get("upload_file", {}).get("name", "transcript.vtt")
+        )
         ExportHandler.render_intelligence_export_section(
             intelligence_data, original_filename, "intelligence"
         )
@@ -224,7 +202,6 @@ def render_intelligence_results(intelligence_data: dict):
 def main():
     """Main page logic."""
     # Initialize services
-    backend, task_service, progress_tracker = initialize_services()
     initialize_page_state()
 
     st.title("🧠 Meeting Intelligence")
@@ -232,15 +209,8 @@ def main():
         "Extract and view meeting summaries, action items, and key insights using AI."
     )
 
-    # No backend health check in Streamlit-only mode
-
-    # Handle task resumption
-    handle_task_resumption(backend, task_service)
-
-    # Check for transcript data (from session state or legacy format)
-    transcript = st.session_state.get("transcript") or st.session_state.get(
-        STATE_KEYS.TRANSCRIPT_DATA
-    )
+    # Check for transcript data
+    transcript = st.session_state.get(STATE_KEYS.TRANSCRIPT_DATA)
 
     if not transcript:
         st.warning(
@@ -275,9 +245,7 @@ def main():
         return
 
     # Check if intelligence has been extracted
-    intelligence_data = st.session_state.get(STATE_KEYS.INTELLIGENCE_DATA) or (
-        transcript.get("intelligence") if isinstance(transcript, dict) else None
-    )
+    intelligence_data = st.session_state.get(STATE_KEYS.INTELLIGENCE_DATA)
 
     if not intelligence_data:
         render_intelligence_extraction_section()

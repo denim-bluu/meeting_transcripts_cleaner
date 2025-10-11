@@ -5,18 +5,14 @@ from typing import Any
 
 # Session State Keys
 class STATE_KEYS:
-    CURRENT_TASK_ID = "current_task_id"
     TRANSCRIPT_DATA = "transcript_data"
     INTELLIGENCE_DATA = "intelligence_data"
-    PROCESSING_STATUS = "processing_status"
 
 
 # Default Values
 DEFAULT_VALUES: dict[str, Any] = {
-    STATE_KEYS.CURRENT_TASK_ID: None,
     STATE_KEYS.TRANSCRIPT_DATA: None,
     STATE_KEYS.INTELLIGENCE_DATA: None,
-    STATE_KEYS.PROCESSING_STATUS: "idle",
 }
 
 

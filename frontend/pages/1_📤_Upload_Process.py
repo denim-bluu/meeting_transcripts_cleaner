@@ -2,6 +2,7 @@ from components.error_display import (
     display_error,
     display_validation_errors,
 )
+from components.metrics_display import render_transcript_summary_metrics
 from services.pipeline import run_transcript_pipeline
 from services.state_service import StateService
 import streamlit as st
@@ -12,16 +13,9 @@ from utils.helpers import format_file_size, validate_file
 st.set_page_config(page_title="Upload & Process", page_icon="📤", layout="wide")
 
 
-def initialize_services():
-    """No backend services needed for Streamlit-only mode."""
-    return None, None, None
-
-
 def initialize_page_state():
     """Initialize page-specific session state."""
     required_state = {
-        STATE_KEYS.CURRENT_TASK_ID: None,
-        STATE_KEYS.PROCESSING_STATUS: "idle",
         STATE_KEYS.TRANSCRIPT_DATA: None,
         "upload_file": None,
         "processing_complete": False,
@@ -53,12 +47,12 @@ def render_file_upload_section():
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.metric("Filename", uploaded_file.name)
+            st.metric("Filename", uploaded_file.name, border=True)
         with col2:
             file_size = len(uploaded_file.getvalue())
-            st.metric("Size", format_file_size(file_size))
+            st.metric("Size", format_file_size(file_size), border=True)
         with col3:
-            st.metric("Type", uploaded_file.type or "text/vtt")
+            st.metric("Type", uploaded_file.type or "text/vtt", border=True)
 
         # Preview content
         with st.expander("🔍 Preview File Content"):
@@ -75,7 +69,7 @@ def render_file_upload_section():
     else:
         # Show what happens during processing
         st.markdown("### 🔄 Processing Steps")
-        st.markdown("1. **📤 Upload**: File securely sent to processing backend")
+        st.markdown("1. **📤 Upload**: File loaded into the app")
         st.markdown("2. **🔧 Parse**: VTT content parsed and chunked for AI processing")
         st.markdown("3. **🤖 Clean**: AI agents clean speech-to-text errors")
         st.markdown("4. **📊 Review**: Quality review ensures high accuracy")
@@ -88,7 +82,7 @@ def render_file_upload_section():
     return None
 
 
-def process_file(backend, progress_tracker, uploaded_file) -> bool:
+def process_file(uploaded_file) -> bool:
     """Process uploaded file with progress tracking."""
     status_ph = st.empty()
     bar_ph = st.progress(0.0)
@@ -106,31 +100,16 @@ def process_file(backend, progress_tracker, uploaded_file) -> bool:
     try:
         result = run_transcript_pipeline(content, on_progress)
     except Exception as e:
-        st.session_state[STATE_KEYS.PROCESSING_STATUS] = "failed"
         display_error("processing_failed", str(e))
         return False
 
     st.session_state[STATE_KEYS.TRANSCRIPT_DATA] = result
-    st.session_state["transcript"] = result
     st.session_state["processing_complete"] = True
-    st.session_state[STATE_KEYS.PROCESSING_STATUS] = "completed"
 
     # Show success message and metrics
     st.success("🎉 VTT processing completed successfully!")
 
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("VTT Entries", len(result.get("entries", [])))
-    with col2:
-        st.metric("Chunks", len(result.get("chunks", [])))
-    with col3:
-        st.metric("Speakers", len(result.get("speakers", [])))
-    with col4:
-        st.metric("Duration", f"{result.get('duration', 0):.1f}s")
-
-    speakers = result.get("speakers", [])
-    if speakers:
-        st.markdown(f"**Speakers:** {', '.join(speakers)}")
+    render_transcript_summary_metrics(result)
 
     return True
 
@@ -149,16 +128,7 @@ def render_results_section():
 
     with col1:
         st.markdown("### 📊 Processing Results")
-        # Show basic processing metrics
-        col_a, col_b, col_c, col_d = st.columns(4)
-        with col_a:
-            st.metric("VTT Entries", len(transcript_data.get("entries", [])))
-        with col_b:
-            st.metric("Chunks", len(transcript_data.get("chunks", [])))
-        with col_c:
-            st.metric("Speakers", len(transcript_data.get("speakers", [])))
-        with col_d:
-            st.metric("Duration", f"{transcript_data.get('duration', 0):.1f}s")
+        render_transcript_summary_metrics(transcript_data)
 
     with col2:
         st.markdown("### 🎯 Next Steps")
@@ -169,36 +139,24 @@ def render_results_section():
             st.switch_page("pages/3_🧠_Intelligence.py")
 
 
-def handle_task_resumption(backend, task_service):
-    """No-op for Streamlit-only mode. Kept for compatibility."""
-    task_id = StateService.handle_task_resumption()
-
-    if not task_id:
-        return
-
-    st.info(
-        f"🔄 Task resumption not supported in Streamlit-only mode (id: {task_id[:8]})"
-    )
-    StateService.clear_url_params(["task_id"])
+def handle_task_resumption():
+    """Deprecated: task resumption via URL is not supported in Streamlit-only mode."""
+    return
 
 
 def main():
     """Main page logic."""
     # Initialize
-    backend, task_service, progress_tracker = initialize_services()
     initialize_page_state()
 
     # Handle task resumption
-    handle_task_resumption(backend, task_service)
+    handle_task_resumption()
 
     # Check if already completed
     if st.session_state.get("processing_complete"):
         render_results_section()
         st.markdown("---")
         st.markdown("**Or upload a new file below:**")
-
-    # Check if currently processing
-    status = st.session_state[STATE_KEYS.PROCESSING_STATUS]
 
     # File upload section
     uploaded_file = render_file_upload_section()
@@ -207,7 +165,7 @@ def main():
         st.markdown("### 🚀 Start Processing")
         if st.button("🔄 Process VTT File", type="primary", use_container_width=True):
             st.session_state["upload_file"] = {"name": uploaded_file.name}
-            success = process_file(backend, progress_tracker, uploaded_file)
+            success = process_file(uploaded_file)
             if success:
                 st.rerun()
 

@@ -35,10 +35,13 @@ def render_quality_metrics(quality_data: dict[str, Any]) -> None:
     categories = quality_data.get("improvement_categories", [])
     if categories:
         st.caption("**Improvement Categories:**")
-        cols = st.columns(len(categories))
-        for i, category in enumerate(categories):
-            with cols[i]:
-                st.success(category)
+        max_cols = 4
+        for start in range(0, len(categories), max_cols):
+            row = categories[start : start + max_cols]
+            cols = st.columns(len(row))
+            for i, category in enumerate(row):
+                with cols[i]:
+                    st.success(category)
 
 
 def render_review_quality_distribution(review_results: list[dict[str, Any]]) -> None:

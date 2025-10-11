@@ -129,7 +129,6 @@ class ExportHandler:
         vtt_content = "WEBVTT\n\n"
 
         chunks = data.get("chunks", [])
-        cleaned_chunks = data.get("cleaned_chunks", [])
 
         for i, chunk in enumerate(chunks):
             entries = chunk.get("entries", [])
