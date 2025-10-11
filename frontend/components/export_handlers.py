@@ -1,5 +1,3 @@
-"""Export functionality components."""
-
 from datetime import datetime
 import json
 from typing import Any

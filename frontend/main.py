@@ -6,9 +6,12 @@ Clean architecture multi-page Streamlit application with:
 - Intelligence: Meeting insights and action items
 """
 
+from dotenv import load_dotenv
 from services.state_service import StateService
 import streamlit as st
 from utils.constants import STATE_KEYS, UI_CONFIG
+
+from backend.config import configure_structlog
 
 # Configure page
 st.set_page_config(
@@ -21,6 +24,13 @@ st.set_page_config(
 
 def initialize_application():
     """Initialize minimal application state."""
+    # Load environment and configure logging once
+    load_dotenv()
+    try:
+        configure_structlog()
+    except Exception:
+        pass
+
     # Initialize minimal application-wide session state
     app_state = {
         STATE_KEYS.TRANSCRIPT_DATA: None,

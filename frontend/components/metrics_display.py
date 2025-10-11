@@ -1,5 +1,3 @@
-"""Standardized metrics display components."""
-
 from typing import Any
 
 import streamlit as st

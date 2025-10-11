@@ -1,14 +1,9 @@
-"""Upload and Process VTT Files - Refactored with clean architecture."""
-
 from components.error_display import (
     display_error,
     display_validation_errors,
 )
-from components.health_check import require_healthy_backend
-from components.progress_tracker import ProgressTracker
-from services.backend_service import BackendService
+from services.pipeline import run_transcript_pipeline
 from services.state_service import StateService
-from services.task_service import TaskService
 import streamlit as st
 from utils.constants import STATE_KEYS
 from utils.helpers import format_file_size, validate_file
@@ -18,11 +13,8 @@ st.set_page_config(page_title="Upload & Process", page_icon="📤", layout="wide
 
 
 def initialize_services():
-    """Initialize all required services."""
-    backend = BackendService()
-    task_service = TaskService(backend)
-    progress_tracker = ProgressTracker(task_service)
-    return backend, task_service, progress_tracker
+    """No backend services needed for Streamlit-only mode."""
+    return None, None, None
 
 
 def initialize_page_state():
@@ -96,75 +88,51 @@ def render_file_upload_section():
     return None
 
 
-def process_file(
-    backend: BackendService, progress_tracker: ProgressTracker, uploaded_file
-) -> bool:
+def process_file(backend, progress_tracker, uploaded_file) -> bool:
     """Process uploaded file with progress tracking."""
+    status_ph = st.empty()
+    bar_ph = st.progress(0.0)
 
-    def on_success(task_data):
-        """Handle successful processing."""
-        result = task_data.get("result", {})
-        st.session_state[STATE_KEYS.TRANSCRIPT_DATA] = result
-        st.session_state["transcript"] = result  # For backward compatibility
-        st.session_state["transcript_task_id"] = st.session_state[
-            STATE_KEYS.CURRENT_TASK_ID
-        ]
-        st.session_state["processing_complete"] = True
-        st.session_state[STATE_KEYS.PROCESSING_STATUS] = "completed"
+    def on_progress(pct: float, message: str) -> None:
+        bar_ph.progress(pct)
+        status_ph.text(f"{int(pct * 100)}% • {message}")
 
-        # Show success message and metrics
-        st.success("🎉 VTT processing completed successfully!")
+    try:
+        content = uploaded_file.getvalue().decode("utf-8")
+    except Exception as e:
+        display_error("processing_failed", f"Failed to read file: {e}")
+        return False
 
-        # Show basic processing metrics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("VTT Entries", len(result.get("entries", [])))
-        with col2:
-            st.metric("Chunks", len(result.get("chunks", [])))
-        with col3:
-            st.metric("Speakers", len(result.get("speakers", [])))
-        with col4:
-            st.metric("Duration", f"{result.get('duration', 0):.1f}s")
-
-        # Show speakers
-        speakers = result.get("speakers", [])
-        if speakers:
-            st.markdown(f"**Speakers:** {', '.join(speakers)}")
-
-    def on_error(error_message):
-        """Handle processing error."""
+    try:
+        result = run_transcript_pipeline(content, on_progress)
+    except Exception as e:
         st.session_state[STATE_KEYS.PROCESSING_STATUS] = "failed"
-        display_error("processing_failed", error_message)
-
-    # Start upload
-    st.session_state[STATE_KEYS.PROCESSING_STATUS] = "uploading"
-
-    file_content = uploaded_file.getvalue()
-    success, response = backend.upload_file(file_content, uploaded_file.name)
-
-    if not success:
-        error_msg = response.get("error", "Upload failed")
-        display_error("upload_failed", error_msg)
+        display_error("processing_failed", str(e))
         return False
 
-    # Get task ID and start tracking
-    task_id = response.get("task_id")
-    if not task_id:
-        display_error("upload_failed", "No task ID received")
-        return False
+    st.session_state[STATE_KEYS.TRANSCRIPT_DATA] = result
+    st.session_state["transcript"] = result
+    st.session_state["processing_complete"] = True
+    st.session_state[STATE_KEYS.PROCESSING_STATUS] = "completed"
 
-    st.session_state[STATE_KEYS.CURRENT_TASK_ID] = task_id
-    StateService.set_url_param("task_id", task_id)
+    # Show success message and metrics
+    st.success("🎉 VTT processing completed successfully!")
 
-    # Track processing
-    st.session_state[STATE_KEYS.PROCESSING_STATUS] = "processing"
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("VTT Entries", len(result.get("entries", [])))
+    with col2:
+        st.metric("Chunks", len(result.get("chunks", [])))
+    with col3:
+        st.metric("Speakers", len(result.get("speakers", [])))
+    with col4:
+        st.metric("Duration", f"{result.get('duration', 0):.1f}s")
 
-    return progress_tracker.track_task(
-        task_id=task_id,
-        title="🔄 Processing VTT File",
-        success_callback=on_success,
-        error_callback=on_error,
-    )
+    speakers = result.get("speakers", [])
+    if speakers:
+        st.markdown(f"**Speakers:** {', '.join(speakers)}")
+
+    return True
 
 
 def render_results_section():
@@ -201,28 +169,17 @@ def render_results_section():
             st.switch_page("pages/3_🧠_Intelligence.py")
 
 
-def handle_task_resumption(backend: BackendService, task_service: TaskService):
-    """Handle resumption of existing task from URL."""
+def handle_task_resumption(backend, task_service):
+    """No-op for Streamlit-only mode. Kept for compatibility."""
     task_id = StateService.handle_task_resumption()
 
     if not task_id:
         return
 
-    st.info(f"🔄 Resuming task: {task_id[:8]}...")
-
-    # Get task result
-    result = task_service.get_task_result(task_id)
-
-    if result:
-        st.session_state[STATE_KEYS.TRANSCRIPT_DATA] = result
-        st.session_state["transcript"] = result  # For backward compatibility
-        st.session_state[STATE_KEYS.CURRENT_TASK_ID] = task_id
-        st.session_state["processing_complete"] = True
-        st.success("✅ Task resumed successfully!")
-        StateService.clear_url_params(["task_id"])
-    else:
-        display_error("task_not_found")
-        StateService.clear_url_params(["task_id"])
+    st.info(
+        f"🔄 Task resumption not supported in Streamlit-only mode (id: {task_id[:8]})"
+    )
+    StateService.clear_url_params(["task_id"])
 
 
 def main():
@@ -230,14 +187,6 @@ def main():
     # Initialize
     backend, task_service, progress_tracker = initialize_services()
     initialize_page_state()
-
-    st.title("📤 Upload & Process VTT Files")
-    st.markdown(
-        "Upload your VTT meeting transcript for AI-powered cleaning and processing."
-    )
-
-    # Require healthy backend
-    require_healthy_backend(backend)
 
     # Handle task resumption
     handle_task_resumption(backend, task_service)
@@ -250,24 +199,6 @@ def main():
 
     # Check if currently processing
     status = st.session_state[STATE_KEYS.PROCESSING_STATUS]
-
-    if status == "processing":
-        task_id = st.session_state[STATE_KEYS.CURRENT_TASK_ID]
-        if task_id:
-            st.info("🔄 Processing in progress...")
-            success = progress_tracker.track_task(
-                task_id=task_id,
-                title="🔄 Resuming Processing...",
-                success_callback=lambda data: setattr(
-                    st.session_state, "processing_complete", True
-                ),
-                error_callback=lambda error: setattr(
-                    st.session_state, STATE_KEYS.PROCESSING_STATUS, "failed"
-                ),
-            )
-            if success:
-                st.rerun()
-        return
 
     # File upload section
     uploaded_file = render_file_upload_section()

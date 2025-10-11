@@ -1,13 +1,9 @@
-"""Review Cleaned Transcript - Refactored with clean architecture."""
-
 from components.export_handlers import ExportHandler
-from components.health_check import require_healthy_backend
 from components.metrics_display import (
     get_quality_status,
     render_review_quality_distribution,
     render_transcript_summary_metrics,
 )
-from services.backend_service import BackendService
 from services.state_service import StateService
 import streamlit as st
 from utils.constants import STATE_KEYS
@@ -17,9 +13,8 @@ st.set_page_config(page_title="Review Results", page_icon="👀", layout="wide")
 
 
 def initialize_services():
-    """Initialize required services."""
-    backend = BackendService()
-    return backend
+    """No backend service in Streamlit-only mode."""
+    return None
 
 
 def initialize_page_state():
@@ -191,8 +186,7 @@ def main():
         "Review your processed transcript with quality assessment and export options."
     )
 
-    # Require healthy backend
-    require_healthy_backend(backend)
+    # No backend health check in Streamlit-only mode
 
     # Check if we have processed transcript
     transcript = st.session_state.get("transcript") or st.session_state.get(

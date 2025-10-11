@@ -1,11 +1,17 @@
-"""Services package for centralized business logic."""
+"""Services package for centralized business logic (Streamlit-only)."""
 
-from .backend_service import BackendService
 from .state_service import StateService
-from .task_service import TaskService
+from .pipeline import (
+    run_transcript_pipeline,
+    run_intelligence_pipeline,
+    rehydrate_vtt_chunks,
+)
+from .runtime import run_async
 
 __all__ = [
-    "BackendService",
-    "StateService", 
-    "TaskService"
+    "StateService",
+    "run_transcript_pipeline",
+    "run_intelligence_pipeline",
+    "rehydrate_vtt_chunks",
+    "run_async",
 ]

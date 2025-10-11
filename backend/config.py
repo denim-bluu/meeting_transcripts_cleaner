@@ -1,4 +1,4 @@
-"""Minimal configuration for Meeting Transcript API."""
+"""Minimal settings + logging for Streamlit prototype."""
 
 from pathlib import Path
 
@@ -11,17 +11,13 @@ load_dotenv(dotenv_path=BACKEND_DIR / ".env")
 
 
 class Settings(BaseSettings):
-    """Essential settings only."""
+    """Essential settings for domain services and logging."""
 
-    # Environment
+    # Environment + logging
     environment: str = "development"
+    log_level: str = "INFO"
 
-    # Essential API settings
-    openai_api_key: str = ""
-
-    # Task management
-    task_ttl_hours: int = 1
-    cleanup_interval_minutes: int = 10
+    # Concurrency and rate limits for provider calls
     max_concurrent_tasks: int = 50
     rate_limit_per_minute: int = 50
 
@@ -31,43 +27,8 @@ class Settings(BaseSettings):
     insights_model: str = "o3-mini"
     synthesis_model: str = "o3-mini"
 
-    # Logging
-    log_level: str = "INFO"
-
-    def is_production(self) -> bool:
-        return self.environment == "production"
-
-    def get_environment_display(self) -> str:
-        return self.environment.title()
-
-    def get_cors_config(self) -> dict:
-        """Simple CORS config."""
-        if self.is_production():
-            return {
-                "allow_origins": ["https://your-domain.com"],
-                "allow_credentials": True,
-                "allow_methods": ["GET", "POST", "DELETE"],
-                "allow_headers": ["*"],
-            }
-        else:
-            return {
-                "allow_origins": ["*"],
-                "allow_credentials": True,
-                "allow_methods": ["*"],
-                "allow_headers": ["*"],
-            }
-
 
 settings = Settings()
-
-# Hardcoded constants
-api_title = "Meeting Transcript API"
-api_version = "1.0.0"
-max_file_size_mb = 100
-default_host = "0.0.0.0"
-default_port = 8000
-debug = not settings.is_production()
-reload = settings.environment == "development"
 
 
 def configure_structlog() -> None:

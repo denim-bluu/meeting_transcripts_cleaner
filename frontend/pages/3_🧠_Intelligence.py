@@ -1,11 +1,6 @@
-"""Meeting Intelligence Extraction - Refactored with clean architecture."""
-
 from components.export_handlers import ExportHandler
-from components.health_check import require_healthy_backend
-from components.progress_tracker import ProgressTracker
-from services.backend_service import BackendService
+from services.pipeline import run_intelligence_pipeline
 from services.state_service import StateService
-from services.task_service import TaskService
 import streamlit as st
 from utils.constants import STATE_KEYS
 
@@ -14,11 +9,8 @@ st.set_page_config(page_title="Meeting Intelligence", page_icon="🧠", layout="
 
 
 def initialize_services():
-    """Initialize required services."""
-    backend = BackendService()
-    task_service = TaskService(backend)
-    progress_tracker = ProgressTracker(task_service)
-    return backend, task_service, progress_tracker
+    """No backend services in Streamlit-only mode."""
+    return None, None, None
 
 
 def initialize_page_state():
@@ -109,72 +101,34 @@ def render_summary_section(intelligence_data: dict):
     st.markdown(summary)
 
 
-def extract_intelligence_with_progress(
-    backend: BackendService,
-    progress_tracker: ProgressTracker,
-    transcript_id: str,
-) -> dict | None:
-    """Extract intelligence using backend service with progress tracking.
+def extract_intelligence_with_progress(transcript: dict) -> dict | None:
+    """Extract intelligence directly via the pipeline with inline progress."""
+    status_ph = st.empty()
+    bar_ph = st.progress(0.0)
 
-    Logic:
-    1. Start intelligence extraction request
-    2. Track progress with UI updates
-    3. Handle success/error states
-    4. Return intelligence data or None
-    """
+    def on_progress(pct: float, message: str) -> None:
+        bar_ph.progress(pct)
+        status_ph.text(f"{int(pct * 100)}% • {message}")
 
-    def on_success(task_data):
-        """Handle successful intelligence extraction."""
-        result = task_data.get("result", {})
-        st.session_state[STATE_KEYS.INTELLIGENCE_DATA] = result
-        st.session_state["intelligence_extracted"] = True
-
-        # Also store in legacy format for compatibility
-        if "transcript" not in st.session_state:
-            st.session_state.transcript = {}
-        st.session_state.transcript["intelligence"] = result
-
-        st.success("🎉 Meeting intelligence extracted successfully!")
-        return result
-
-    def on_error(error_message):
-        """Handle intelligence extraction error."""
-        st.error(f"Intelligence extraction failed: {error_message}")
+    try:
+        chunks = transcript.get("chunks", [])
+        result = run_intelligence_pipeline(chunks, on_progress)
+    except Exception as e:
+        st.error(f"Intelligence extraction failed: {e}")
         return None
 
-    # Start extraction
-    success, response = backend.extract_intelligence(transcript_id)
+    st.session_state[STATE_KEYS.INTELLIGENCE_DATA] = result
+    st.session_state["intelligence_extracted"] = True
 
-    if not success:
-        error_msg = response.get("error", "Extraction failed")
-        st.error(f"❌ Failed to start extraction: {error_msg}")
-        return None
+    if "transcript" not in st.session_state:
+        st.session_state.transcript = {}
+    st.session_state.transcript["intelligence"] = result
 
-    # Get task ID and track progress
-    task_id = response.get("task_id")
-    if not task_id:
-        st.error("No task ID received")
-        return None
-
-    st.session_state[STATE_KEYS.CURRENT_TASK_ID] = task_id
-    StateService.set_url_param("task", task_id)
-
-    # Track progress
-    success = progress_tracker.track_task(
-        task_id=task_id,
-        title="🧠 Extracting Meeting Intelligence",
-        success_callback=on_success,
-        error_callback=on_error,
-    )
-
-    if success:
-        return st.session_state.get(STATE_KEYS.INTELLIGENCE_DATA)
-    return None
+    st.success("🎉 Meeting intelligence extracted successfully!")
+    return result
 
 
-def render_intelligence_extraction_section(
-    backend: BackendService, progress_tracker: ProgressTracker
-):
+def render_intelligence_extraction_section():
     """Render intelligence extraction interface.
 
     Logic:
@@ -189,22 +143,16 @@ def render_intelligence_extraction_section(
     if st.button(
         "🧠 Extract Meeting Intelligence", type="primary", use_container_width=True
     ):
-        # Get the transcript task_id from session state
-        transcript_task_id = st.session_state.get("transcript_task_id")
-
-        if not transcript_task_id:
+        transcript = st.session_state.get(STATE_KEYS.TRANSCRIPT_DATA)
+        if not transcript:
             st.error(
-                "❌ No transcript task ID found. Please re-process your transcript."
+                "❌ No transcript found in session. Please process a VTT file first."
             )
             return
 
-        # Extract intelligence
-        intelligence_data = extract_intelligence_with_progress(
-            backend, progress_tracker, transcript_task_id
-        )
-
+        intelligence_data = extract_intelligence_with_progress(transcript)
         if intelligence_data:
-            st.rerun()  # Refresh to show results
+            st.rerun()
 
     # Show what will be extracted
     st.markdown("**This will:**")
@@ -213,7 +161,7 @@ def render_intelligence_extraction_section(
     st.markdown("• 🔍 Extract key decisions and topics")
 
 
-def handle_task_resumption(backend: BackendService, task_service: TaskService):
+def handle_task_resumption(backend, task_service):
     """Handle resumption of intelligence extraction task from URL.
 
     Logic:
@@ -226,25 +174,8 @@ def handle_task_resumption(backend: BackendService, task_service: TaskService):
     if not task_id:
         return
 
-    st.info(f"Resuming intelligence task: {task_id}")
-
-    # Get task result
-    result = task_service.get_task_result(task_id)
-
-    if result:
-        st.session_state[STATE_KEYS.INTELLIGENCE_DATA] = result
-        st.session_state["intelligence_extracted"] = True
-
-        # Also store in legacy format for compatibility
-        if "transcript" not in st.session_state:
-            st.session_state.transcript = {}
-        st.session_state.transcript["intelligence"] = result
-
-        st.success("✅ Intelligence task resumed successfully!")
-        StateService.clear_url_params(["task"])
-    else:
-        st.warning("Task not found or expired")
-        StateService.clear_url_params(["task"])
+    st.info(f"Task resumption not supported in Streamlit-only mode: {task_id}")
+    StateService.clear_url_params(["task"])
 
 
 def render_intelligence_results(intelligence_data: dict):
@@ -301,8 +232,7 @@ def main():
         "Extract and view meeting summaries, action items, and key insights using AI."
     )
 
-    # Require healthy backend
-    require_healthy_backend(backend)
+    # No backend health check in Streamlit-only mode
 
     # Handle task resumption
     handle_task_resumption(backend, task_service)
@@ -350,7 +280,7 @@ def main():
     )
 
     if not intelligence_data:
-        render_intelligence_extraction_section(backend, progress_tracker)
+        render_intelligence_extraction_section()
         return
 
     # Display intelligence results
