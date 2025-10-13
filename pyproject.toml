@@ -5,42 +5,22 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "meeting-transcript-cleaner"
 version = "0.1.0"
-description = "Decoupled meeting transcript processing system with intelligent extraction"
-readme = { file = "README.md", content-type = "text/markdown" }
+description = "Agentic application to clean and summarize meeting transcripts using LLMs."
 requires-python = ">=3.11"
 license = "MIT"
-authors = [{ name = "Meeting Transcript Cleaner", email = "dev@example.com" }]
-keywords = ["meeting", "transcript", "cleaning", "ai", "agents"]
-classifiers = [
-  "Development Status :: 3 - Alpha",
-  "Intended Audience :: Developers",
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Topic :: Text Processing",
-  "Topic :: Office/Business",
-]
+
 dependencies = [
   # Core AI and processing
   "openai>=1.50.0",
   "pydantic>=2.9.0",
   "pydantic-ai>=0.0.13",
   "pydantic-settings>=2.0.0",
-  "tenacity>=8.2.0",
-  "tiktoken>=0.8.0",
   "langchain>=0.3.27",
-  # Web framework and API
-  "fastapi>=0.104.0",
-  "uvicorn>=0.24.0",
+  # Frontend and client utilities
   "streamlit>=1.39.0",
   "requests>=2.31.0",
-  # Storage (simplified in-memory)
-  # Utilities
-  "aiofiles>=24.1.0",
+  # Async coordination and logging
   "asyncio-throttle>=1.0.2",
-  "cachetools>=5.5.0",
-  "pyyaml>=6.0.0",
-  "chardet>=5.2.0",
   "structlog>=25.4.0",
   "python-dotenv>=1.1.1",
 ]
