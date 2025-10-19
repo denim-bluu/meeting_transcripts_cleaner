@@ -13,6 +13,7 @@ from backend.intelligence.chunk_processing import ChunkProcessor
 from backend.intelligence.models import (
     AggregationAgentPayload,
     AggregationArtifacts,
+    IntermediateSummary,
     MeetingIntelligence,
     ValidationResult,
 )
@@ -31,7 +32,6 @@ class IntelligenceOrchestrator:
         self._validator = ValidationService()
         logger.info(
             "IntelligenceOrchestrator initialized",
-            synthesis_model=settings.synthesis_model,
             chunk_model=getattr(settings, "chunk_model", None),
             aggregation_model=getattr(settings, "aggregation_model", None),
         )
@@ -58,7 +58,8 @@ class IntelligenceOrchestrator:
         stage1_time = int((time.time() - stage1_start) * 1000)
         logger.info(
             "Chunk processing completed",
-            summaries=len(summaries),
+            summaries=[i.model_dump() for i in summaries],
+            conversation_state=conversation_state.model_dump(),
             stage_time_ms=stage1_time,
         )
 
@@ -72,7 +73,7 @@ class IntelligenceOrchestrator:
         stage2_time = int((time.time() - stage2_start) * 1000)
         logger.info(
             "Aggregation completed",
-            key_areas=len(aggregation_payload.key_areas),
+            key_areas=aggregation_payload.key_areas,
             timeline_events=len(aggregation_payload.timeline_events),
             stage_time_ms=stage2_time,
         )
@@ -102,6 +103,7 @@ class IntelligenceOrchestrator:
                 "aggregation_ms": stage2_time,
                 "validation_ms": stage3_time,
             },
+            summaries=summaries,
         )
 
         total_time = int((time.time() - start_time) * 1000)
@@ -129,6 +131,7 @@ class IntelligenceOrchestrator:
         validation_result: ValidationResult,
         total_chunks: int,
         stage_times: dict[str, int],
+        summaries: list[IntermediateSummary],
     ) -> MeetingIntelligence:
         """Compose final MeetingIntelligence object."""
         base_confidence = aggregation_payload.confidence or 0.6
@@ -146,7 +149,11 @@ class IntelligenceOrchestrator:
         }
 
         intelligence = MeetingIntelligence(
-            summary=aggregation_payload.summary_markdown,
+            summary=self._compose_summary_markdown(
+                aggregation_payload.sections,
+                aggregation_payload.key_areas,
+                summaries,
+            ),
             action_items=aggregation_payload.consolidated_action_items,
             key_areas=aggregation_payload.key_areas,
             aggregation_artifacts=aggregation_artifacts,
@@ -155,6 +162,46 @@ class IntelligenceOrchestrator:
         )
 
         return intelligence
+
+    def _compose_summary_markdown(
+        self,
+        sections: list[AggregationAgentPayload.NarrativeSection],
+        key_areas,
+        summaries: list[IntermediateSummary],
+    ) -> str:
+        """Deterministically render meeting summary from structured sections."""
+        chunk_lookup: dict[int, tuple[str, str]] = {
+            summary.chunk_id: (summary.speaker, summary.time_range)
+            for summary in summaries
+        }
+        lines: list[str] = []
+        for section in sections:
+            lines.append(f"### **{section.title.strip()}**")
+            lines.append(section.overview.strip())
+            lines.append("")
+            for bullet in section.bullet_points:
+                lines.append(f"- {bullet.strip()}")
+            if section.related_chunks:
+                references: list[str] = []
+                for cid in section.related_chunks:
+                    meta = chunk_lookup.get(cid)
+                    if meta:
+                        speaker, time_range = meta
+                        references.append(f"{speaker} ({time_range})")
+                    else:
+                        references.append(f"Chunk {cid}")
+                if references:
+                    lines.append(f"_Related: {', '.join(references)}_")
+            lines.append("")
+
+        if key_areas:
+            lines.append("### **Key Area Highlights**")
+            for area in key_areas:
+                summary_line = area.summary.strip()
+                lines.append(f"- **{area.title.strip()}** — {summary_line}")
+            lines.append("")
+
+        return "\n".join(line for line in lines if line).strip()
 
 
 async def _maybe_call(callback, progress: float, message: str) -> None:

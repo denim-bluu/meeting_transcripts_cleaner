@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal, Self
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_ai import ModelRetry
 
 
@@ -118,6 +118,22 @@ class ChunkAgentPayload(BaseModel):
         description="Agent-rated confidence in the extracted data",
     )
 
+    @model_validator(mode="after")
+    def ensure_content_density(self) -> Self:
+        """Require meaningful structured content for aggregation."""
+        if not self.key_concepts and not self.decisions and not self.action_items:
+            raise ModelRetry(
+                "Provide at least one key_concept, decision, or action_item extracted from the speaker turn."
+            )
+        if self.key_concepts and len(self.key_concepts) < 2:
+            # Allow single concept only when no other structured elements exist
+            if self.decisions or self.action_items:
+                return self
+            raise ModelRetry(
+                "Return at least two key_concepts when the speaker covers multiple points."
+            )
+        return self
+
 
 class IntermediateSummary(BaseModel):
     """Chunk-level structured output prior to aggregation."""
@@ -194,7 +210,36 @@ class ValidationResult(BaseModel):
 class AggregationAgentPayload(BaseModel):
     """Schema expected from the aggregation agent."""
 
-    summary_markdown: str = Field(..., min_length=20)
+    REQUIRED_SECTION_TITLES: ClassVar[set[str]] = {
+        "key decisions & outcomes",
+        "priorities & projects",
+        "action items & ownership",
+    }
+
+    class NarrativeSection(BaseModel):
+        """Structured section used to deterministically compose markdown."""
+
+        title: str = Field(..., min_length=3)
+        overview: str = Field(..., min_length=15)
+        bullet_points: list[str] = Field(
+            ..., min_length=1, description="At least one highlight bullet per section"
+        )
+        related_chunks: list[int] = Field(default_factory=list)
+
+        @field_validator("bullet_points")
+        @classmethod
+        def validate_bullets(cls, value: list[str]) -> list[str]:
+            if len(value) < 2:
+                raise ModelRetry(
+                    "Each narrative section should contain at least two bullet_points."
+                )
+            return value
+
+    sections: list[NarrativeSection] = Field(
+        ...,
+        min_length=3,
+        description="Ordered sections describing the meeting story for deterministic rendering",
+    )
     key_areas: list[KeyArea] = Field(default_factory=list)
     consolidated_action_items: list[ActionItem] = Field(default_factory=list)
     timeline_events: list[str] = Field(default_factory=list)
@@ -206,6 +251,20 @@ class AggregationAgentPayload(BaseModel):
         le=1.0,
         description="Confidence rating for the aggregated output",
     )
+
+    @model_validator(mode="after")
+    def ensure_sections_present(self) -> Self:
+        if len(self.sections) < len(self.REQUIRED_SECTION_TITLES):
+            raise ModelRetry(
+                "Provide the required narrative sections: 'Key Decisions & Outcomes', 'Priorities & Projects', and 'Action Items & Ownership'."
+            )
+        titles = {section.title.strip().lower() for section in self.sections}
+        missing = [req for req in self.REQUIRED_SECTION_TITLES if req not in titles]
+        if missing:
+            raise ModelRetry(
+                "Provide the required narrative sections: 'Key Decisions & Outcomes', 'Priorities & Projects', and 'Action Items & Ownership'."
+            )
+        return self
 
 
 class ConversationState(BaseModel):

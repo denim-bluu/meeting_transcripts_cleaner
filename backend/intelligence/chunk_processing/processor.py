@@ -73,13 +73,20 @@ class ChunkProcessor:
     ) -> ChunkAgentPayload:
         """Call the chunk processing agent with contextual data."""
         transcript_text = chunk.to_transcript_text()
-        speaker = chunk.entries[0].speaker if chunk.entries else "Unknown Speaker"
-        speaker_role = self._infer_speaker_role(speaker)
+        primary_speaker = chunk.entries[0].speaker if chunk.entries else "Unknown Speaker"
+        speakers_in_chunk = sorted({entry.speaker for entry in chunk.entries if entry.speaker}) or [primary_speaker]
+        speaker_label = ", ".join(speakers_in_chunk)
+        speaker_role = None
+        for name in speakers_in_chunk:
+            inferred = self._infer_speaker_role(name)
+            if inferred:
+                speaker_role = inferred
+                break
 
         request_payload = {
             "chunk_id": chunk.chunk_id,
             "time_range": _chunk_time_range(chunk),
-            "speaker": speaker,
+            "speaker": speaker_label,
             "speaker_role": speaker_role,
             "transcript": transcript_text,
             "previous_summary": prior_summary.narrative_summary
@@ -98,7 +105,7 @@ class ChunkProcessor:
         self._logger.debug(
             "Running chunk agent",
             chunk_id=chunk.chunk_id,
-            speaker=speaker,
+            speakers=speaker_label,
             speaker_role=speaker_role,
             entry_count=len(chunk.entries),
         )
@@ -113,13 +120,20 @@ class ChunkProcessor:
         payload: ChunkAgentPayload,
     ) -> IntermediateSummary:
         """Populate metadata around the agent payload."""
-        speaker = chunk.entries[0].speaker if chunk.entries else "Unknown Speaker"
+        speakers_in_chunk = sorted({entry.speaker for entry in chunk.entries if entry.speaker})
+        speaker = ", ".join(speakers_in_chunk) if speakers_in_chunk else "Unknown Speaker"
+        speaker_role = None
+        for name in speakers_in_chunk:
+            inferred = self._infer_speaker_role(name)
+            if inferred:
+                speaker_role = inferred
+                break
 
         return IntermediateSummary(
             chunk_id=chunk.chunk_id,
             time_range=_chunk_time_range(chunk),
             speaker=speaker,
-            speaker_role=self._infer_speaker_role(speaker),
+            speaker_role=speaker_role,
             narrative_summary=payload.narrative_summary,
             key_concepts=payload.key_concepts,
             decisions=payload.decisions,
@@ -144,7 +158,7 @@ class ChunkProcessor:
         for decision in summary.decisions:
             new_state.key_decisions[decision.statement] = decision
 
-        unresolved = {item for item in new_state.unresolved_items}
+        unresolved = set(new_state.unresolved_items)
         for action in summary.action_items:
             if action.owner:
                 unresolved.discard(action.description)

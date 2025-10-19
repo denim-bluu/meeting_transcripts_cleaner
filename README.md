@@ -1,140 +1,167 @@
-# Meeting Transcript Cleaner (Streamlit Prototype)
+# Minutes Cleaner – Meeting Intelligence Prototype
 
-This prototype turns raw WebVTT meeting transcripts into:
-
-- Cleaned, readable transcripts with speaker attribution
-- Quality-reviewed output
-- Comprehensive meeting intelligence (summary and action items)
-
-The app is a single Streamlit service that calls the domain services directly (no separate FastAPI backend or HTTP polling). Intelligence extraction always uses a single high-quality flow—no “detail levels” or conditional prompts.
+Minutes Cleaner is a Streamlit-driven experience that transforms raw WebVTT meeting transcripts into cleaned text, quality assessments, and rich meeting intelligence. The application keeps everything in a single process: the UI orchestrates domain services directly, and the AI pipeline lives entirely in Python, making iteration fast while remaining production-conscious.
 
 ---
 
-## Key Features
+## Contents
 
-- Single Streamlit app (3-step UX: Upload → Review → Intelligence)
-- Pydantic AI agents for:
-  - Cleaning speech-to-text artifacts
-  - Reviewing quality
-  - Extracting insights and synthesizing the summary
-- Inline progress updates using callbacks (no task polling)
-- Dockerized app and Justfile dev workflows
-
----
-
-## Architecture (Simplified)
-
-- UI (Streamlit): Orchestrates the flow and shows progress
-- Transcript Domain: VTT parsing and chunking; AI cleaning and review
-- Intelligence Domain: Direct synthesis over the cleaned transcript (no semantic chunking or multi-step extraction)
-- Settings & Logging: `backend/config.py` provides environment, model names, concurrency limits, and structlog setup
-
-Data Flow
-1) Upload .vtt → parse + chunk → async clean + review (progress shown inline)
-2) Review cleaned transcript → export TXT/MD/VTT
-3) Extract intelligence → direct synthesis produces summary + action items (progress shown inline)
+- [Minutes Cleaner – Meeting Intelligence Prototype](#minutes-cleaner--meeting-intelligence-prototype)
+  - [Contents](#contents)
+  - [Feature Overview](#feature-overview)
+  - [System Architecture](#system-architecture)
+  - [Intelligence Pipeline](#intelligence-pipeline)
+  - [Configuration](#configuration)
+  - [Local Development](#local-development)
+    - [Prerequisites](#prerequisites)
+    - [Install Dependencies](#install-dependencies)
+    - [Run Streamlit](#run-streamlit)
+    - [Tests \& Linters](#tests--linters)
+  - [Docker Support](#docker-support)
+  - [Usage Walkthrough](#usage-walkthrough)
+  - [Notes \& Limitations](#notes--limitations)
 
 ---
 
-## Prerequisites
+## Feature Overview
 
-- Python 3.11+
-- OpenAI API access (`OPENAI_API_KEY`)
-- macOS/Linux (Windows should work but not actively tested)
-- Docker (optional)
-- just (optional, for local dev convenience)
+- **Three-step UX** – Upload transcripts, review the cleaned output, then generate intelligence.  
+- **AI-assisted transcript grooming** – Automatic noise removal and quality scoring for long-form meetings.  
+- **Meeting intelligence** – Authority-aware extraction of key themes, decisions, and action items with validation signals.  
+- **Inline progress feedback** – Long-running tasks stream progress back to the UI without external job runners.  
+- **Export-ready artifacts** – Downloadable packages in TXT, Markdown, or WebVTT.
+
+---
+
+## System Architecture
+
+The app follows a layered but tightly integrated architecture:
+
+```mermaid
+flowchart TD
+    UI["Streamlit UI<br/>(session state &amp; progress displays)"]
+    Services["Domain Services<br/>(transcript &amp; intelligence layers)"]
+    Agents["Pydantic AI Agents<br/>(OpenAI models)"]
+    Validation["Automated Validation<br/>(confidence &amp; issue tracking)"]
+    Outputs["Meeting Intelligence Package<br/>(summary, key areas, actions)"]
+
+    UI -->|Uploads & commands| Services
+    Services -->|Prepares prompts| Agents
+    Agents -->|Responses & metadata| Services
+    Services -->|Quality checks| Validation
+    Validation -->|Confidence + issues| Services
+    Services -->|Structured results| UI
+    UI -->|Exports| Outputs
+```
+
+- **Streamlit UI** handles user interaction, progress bars, and exports.  
+- **Domain services** encapsulate the business logic for transcript processing and intelligence generation. They are invoked directly from the UI.  
+- **AI agents** (powered by OpenAI via Pydantic AI) are stateless wrappers that accept structured prompts and return typed outputs.  
+- **Validation layer** enforces conversation-aware rules and computes confidence adjustments before returning results.  
+- **Outputs** are serialized summaries, action item lists, thematic clusters, and validation artifacts ready for downstream consumption.
+
+---
+
+## Intelligence Pipeline
+
+The intelligence system is designed as a multi-stage AI workflow that respects meeting structure and speaker authority. Recent refactors added deterministic rendering, higher-density prompts, and stricter validation so exported summaries stay consistent across runs.
+
+```mermaid
+flowchart LR
+    C["VTT Chunks"] --> CP["Chunk Processing<br/>speaker-aware extraction"]
+    CP --> IS["Intermediate Summaries<br/>narrative • decisions • actions"]
+    IS --> AGG["Semantic Aggregation<br/>cross-chunk clustering"]
+    AGG --> VAL["Validation Gates<br/>chunk • aggregation • output"]
+    VAL --> MI["Meeting Intelligence<br/>summary • key areas • confidence"]
+```
+
+- **Chunk Processing** – Each speaker turn is analyzed with access to rolling conversation context. Prompts now require explicit capture of numerical proposals, due dates, and at least two key concepts when multiple points are discussed.
+- **Semantic Aggregation** – Ordered summaries are merged into themes and cascaded decisions. Aggregation must emit three canonical sections (“Key Decisions & Outcomes”, “Priorities & Projects”, “Action Items & Ownership”) and populate supporting chunk references for every bullet.
+- **Validation** – Dedicated gates check ownership, rationale, consistency, and duplication before results are released. Confidence scores are adjusted based on findings, and thin responses are retried automatically.
+- **Deterministic Rendering** – Final markdown is assembled in code from structured sections and key areas, producing stable summaries with speaker/time references.
+- **Meeting Intelligence Output** – The final package contains narrative markdown, thematic key areas with supporting evidence, consolidated actions, timeline highlights, unresolved topics, validation notes, and per-item traceability.
 
 ---
 
 ## Configuration
 
-Environment variables are read via dotenv at app start (see `backend/.env`).
+The application reads environment variables at startup. Chunk and aggregation stages now use dedicated model settings—there is no `SYNTHESIS_MODEL` fallback—so be sure both are defined. A typical `.env` file might look like:
 
-Example `backend/.env`:
-
-```
+```env
 OPENAI_API_KEY=sk-xxx
-ENVIRONMENT=development
 LOG_LEVEL=INFO
 
-# Optional tuning
-MAX_CONCURRENT_TASKS=50
-RATE_LIMIT_PER_MINUTE=50
-
-# Model names (default to o3-mini everywhere)
+# Model selection (chunk + aggregation are required)
 CLEANING_MODEL=o3-mini
 REVIEW_MODEL=o3-mini
-INSIGHTS_MODEL=o3-mini
-SYNTHESIS_MODEL=o3-mini
+CHUNK_MODEL=o3-mini
+AGGREGATION_MODEL=gpt-4o
 ```
+
+All services share the same configuration layer, so updating model names or rate limits requires only environment changes.
 
 ---
 
-## Local Development (with just)
+## Local Development
 
-Install dependencies (uses uv):
+### Prerequisites
 
+- Python 3.11+
+- OpenAI API key
+- `just` (optional) for helper commands
+- Docker (optional for container workflows)
+
+### Install Dependencies
+
+```bash
+just install          # or use pip directly
+just install-dev      # include development extras
 ```
-just install
-# or, with dev deps:
-just install-dev
+
+### Run Streamlit
+
+```bash
+just run-app          # launches http://localhost:8501
 ```
 
-Run the app:
+### Tests & Linters
 
-```
-just run-app
-# Streamlit on http://localhost:8501
-```
-
-Run tests and linters:
-
-```
+```bash
 just test
 just lint
 just format
 ```
 
-Cleanup:
-
-```
-just clean
-```
-
 ---
 
-## Docker
+## Docker Support
 
-Build and run with docker-compose (single service):
+Build and run the containerised app:
 
-```
+```bash
 just docker-build
 just docker-run
 ```
 
-App is available at http://localhost:8501
-
-To check health quickly:
-
-```
-just status
-```
+The Streamlit UI will be available at `http://localhost:8501`. Use `just status` for a quick health check.
 
 ---
 
-## Using the App
+## Usage Walkthrough
 
-1. Upload a WebVTT file in “Upload & Process”
-2. Watch inline progress; review metrics and participants
-3. See detailed review by chunk or full cleaned transcript; export TXT/MD/VTT
-4. Go to “Intelligence” and extract a summary + action items; export TXT/MD
+1. **Upload & Process** – Provide a `.vtt` transcript and watch the real-time cleaning and review metrics update.  
+2. **Review** – Inspect the cleaned transcript, compare against original cues, and export in your preferred format.  
+3. **Intelligence** – Trigger the meeting intelligence pipeline to reveal summary markdown, thematic clusters, action items, validation insights, and confidence scores—then export the package.
 
-Sample VTT: `test_meeting.vtt`
+The sample file `test_meeting.vtt` is included for quick experiments.
 
 ---
 
-## Notes and Limitations
+## Notes & Limitations
 
-- There is no public API layer in this prototype; the UI calls domain services directly.
-- State is session-scoped; export results to persist them.
-- Concurrency and rate limits are enforced within the services.
+- There is no external API layer; Streamlit talks directly to domain services.  
+- Session data is ephemeral. Export results if you need persistence.  
+- The intelligence pipeline makes one model call per chunk plus a larger aggregation call. Expect costs to scale with meeting length.  
+- Model choices matter: the defaults target OpenAI’s `o3-mini` family, but you can swap models through environment variables as needed.
+
+For deeper design rationale, see the target design document in the intelligence domain.

@@ -16,27 +16,28 @@ from backend.intelligence.models import AggregationAgentPayload
 load_dotenv()
 logger = structlog.get_logger(__name__)
 
-AGGREGATION_MODEL_NAME = getattr(settings, "aggregation_model", None) or settings.synthesis_model
+AGGREGATION_MODEL_NAME = settings.aggregation_model
 
 AGGREGATION_INSTRUCTIONS = """
 You synthesize meeting intelligence from structured chunk summaries.
 
 Input: JSON array of IntermediateSummary objects along with conversation state and guidance.
 Goals:
-- Merge related concepts into meeting-specific key areas.
-- Preserve temporal order and note decision cascades.
-- Ensure each decision retains rationale and ownership (who confirmed it).
-- Consolidate action items, merging duplicates while preserving owners.
-- Flag contradictions or unresolved items in validation_notes.
+- Create 3-5 narrative sections that walk through the meeting chronologically.
+- Merge related concepts into meeting-specific key areas with decision cascades and action ownership.
+- Consolidate action items, merging duplicates while preserving owners and due dates.
+- Flag contradictions or unresolved items in validation_notes so downstream validation can act.
+- Skip standalone sections that only cover greetings, pleasantries, or scheduling notes unless they directly influence later decisions.
 
-Output must conform to AggregationAgentPayload.
-- summary_markdown: multi-section markdown telling the meeting story in order.
+Output must conform to AggregationAgentPayload with these expectations:
+- sections: ordered list of narrative blocks. Required titles (case-insensitive): "Key Decisions & Outcomes", "Priorities & Projects", and "Action Items & Ownership". Each block needs a title, 2-4 bullet_points, and an overview paragraph.
+- For every section and bullet, populate related_chunks with the chunk ids (or ids of the speakers' turns) that back the statement.
 - key_areas: 3-6 clusters, each with summary, bullet_points, decisions, action_items, supporting_chunks, temporal_span, confidence.
-- consolidated_action_items: deduplicated list across the meeting.
-- timeline_events: short bullet timeline with timestamps or chunk ids.
-- unresolved_topics: questions or issues still open at end of meeting.
-- validation_notes: any concerns about missing context or ambiguity.
-- confidence: overall confidence (0-1).
+- consolidated_action_items: deduplicated list across the meeting with owners and due dates when present.
+- timeline_events: short bullet timeline anchored by timestamps or chunk ids.
+- unresolved_topics: explicit questions or TODOs that remained open.
+- validation_notes: concerns about missing context, contradictions, or weak evidence.
+- confidence: overall confidence (0-1) in the aggregated interpretation.
 """
 
 

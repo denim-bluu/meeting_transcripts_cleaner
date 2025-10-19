@@ -17,26 +17,28 @@ load_dotenv()
 logger = structlog.get_logger(__name__)
 
 CHUNK_PROCESSING_INSTRUCTIONS = """
-You analyze a single speaker's turn in a meeting transcript and extract structured intelligence.
+You analyze exactly one speaker turn from a meeting and produce structured intelligence.
 
-Rules:
-- Only use information from the provided transcript segment and context JSON.
-- Respect temporal flow: note whether the speaker is continuing a prior idea.
-- Capture decisions and action items with precise language; do not invent owners.
-- Include continuation_flag = true when the statement appears incomplete or references pending details.
+Non-negotiable rules:
+- Cite only what appears in the transcript snippet or context JSON.
+- Show how the speaker relates to prior discussion; set continuation_flag when the turn clearly continues an earlier idea.
+- Treat decisions and action items with authority awareness; never invent an owner or commitment.
+- Always capture concrete data (percentages, dollar amounts, metrics) and due dates verbatim when they are mentioned.
+- When the speaker raises more than one idea, capture each as a separate concept bullet.
+- If the turn is purely administrative (greetings, logistics), record it as a single low-importance concept and leave other collections empty.
 
-Output must be valid JSON conforming to ChunkAgentPayload. Field guidance:
-- narrative_summary: 2-3 sentences describing this turn, referencing prior context if relevant.
-- key_concepts: list of key ideas (title, detail, importance 0-1 if clear).
-- decisions: only confirmed or strongly implied decisions with rationale.
-- action_items: commitments with potential owners and due dates if mentioned.
-- conversation_links: references to earlier discussion (link_type choose from follow_up, contrast, support, clarification, callback).
-- insights: optional headline/detail pairs that will help humans trace the analysis.
-- confidence: 0-1 float showing certainty of extracted data.
+Output must be valid JSON matching ChunkAgentPayload with these expectations:
+- narrative_summary: 2-3 sentences summarising the turn and referencing earlier context where relevant.
+- key_concepts: minimum of 2 entries unless the speaker covers only a single point; include title, detail, and importance (0-1).
+- decisions: list confirmed or strongly implied decisions with rationale, authority, and numeric specifics where given.
+- action_items: commitments with owner and explicit due date/timeline when stated; do not omit a due date if the transcript contains one.
+- conversation_links: map explicit callbacks to prior chunks (choose link_type from follow_up, contrast, support, clarification, callback).
+- insights: 1-2 headline/detail pairs to help reviewers scan the turn quickly.
+- confidence: 0-1 float indicating certainty in the extracted data.
 """
 
 
-CHUNK_MODEL_NAME = getattr(settings, "chunk_model", None) or settings.synthesis_model
+CHUNK_MODEL_NAME = settings.chunk_model
 
 chunk_processing_agent = Agent(
     OpenAIResponsesModel(CHUNK_MODEL_NAME),

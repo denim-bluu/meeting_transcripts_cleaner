@@ -19,9 +19,8 @@ class Settings(BaseSettings):
     # Model configuration
     cleaning_model: str = "o3-mini"
     review_model: str = "o3-mini"
-    synthesis_model: str = "o3-mini"
-    chunk_model: str | None = None
-    aggregation_model: str | None = None
+    chunk_model: str = "o3-mini"
+    aggregation_model: str = "gpt-4o"
 
 
 settings = Settings()
