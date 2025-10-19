@@ -107,9 +107,4 @@ def run_intelligence_pipeline(
     result = run_async(
         orchestrator.process_meeting(vtt_chunks, progress_callback=progress_sync)
     )
-    # Return as a plain dict for UI
-    return {
-        "summary": result.summary,
-        "action_items": [ai.model_dump() for ai in result.action_items],
-        "processing_stats": result.processing_stats,
-    }
+    return result.model_dump()

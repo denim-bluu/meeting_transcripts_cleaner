@@ -4,20 +4,22 @@ import asyncio
 def run_async(coro):
     """Run an async coroutine from Streamlit/UI code.
 
-    Simple and predictable:
-    - Try `asyncio.run` (works in typical Streamlit usage)
-    - If already inside a running loop, create a fresh loop to execute
+    - Use asyncio.run when no event loop is active.
+    - Otherwise spin up a temporary loop to execute the coroutine.
     """
     try:
-        return asyncio.run(coro)
+        asyncio.get_running_loop()
     except RuntimeError:
-        # Fallback when a loop is already running
-        loop = asyncio.new_event_loop()
+        # No running loop; safe to use asyncio.run directly
+        return asyncio.run(coro)
+
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
+    finally:
+        asyncio.set_event_loop(None)
         try:
-            asyncio.set_event_loop(loop)
-            return loop.run_until_complete(coro)
-        finally:
-            try:
-                loop.close()
-            except Exception:
-                pass
+            loop.close()
+        except Exception:
+            pass

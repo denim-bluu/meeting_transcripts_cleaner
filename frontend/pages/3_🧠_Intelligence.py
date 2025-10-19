@@ -69,7 +69,7 @@ def render_action_items(action_items: list[dict]):
             st.markdown(f"**Description:** {description}")
 
             # Details in columns
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
 
             with col1:
                 owner = item.get("owner", "*Not specified*")
@@ -80,6 +80,13 @@ def render_action_items(action_items: list[dict]):
 
             with col2:
                 st.markdown(f"**📊 Status:** {status_text}")
+
+            with col3:
+                confidence = item.get("confidence")
+                if confidence is not None:
+                    st.markdown(f"**🔍 Confidence:** {confidence * 100:.0f}%")
+                else:
+                    st.markdown("**🔍 Confidence:** *Not rated*")
 
 
 def render_summary_section(intelligence_data: dict):
@@ -92,6 +99,102 @@ def render_summary_section(intelligence_data: dict):
     st.subheader("📋 Meeting Summary")
     summary = intelligence_data.get("summary", "No summary available")
     st.markdown(summary)
+
+
+def render_key_areas(key_areas: list[dict], artifacts: dict | None):
+    """Render thematic clusters with supporting details."""
+    st.subheader("🧩 Key Areas & Themes")
+
+    if not key_areas:
+        st.info("No key areas were identified for this meeting.")
+        return
+
+    timeline_events = (artifacts or {}).get("timeline_events") or []
+    if timeline_events:
+        st.markdown("**Timeline Highlights**")
+        for event in timeline_events:
+            st.markdown(f"- {event}")
+        st.divider()
+
+    for area in key_areas:
+        title = area.get("title", "Unnamed Theme")
+        confidence = area.get("confidence")
+        temporal_span = area.get("temporal_span") or "Not specified"
+
+        header = f"**{title}**"
+        if confidence is not None:
+            header += f" — {confidence * 100:.0f}% confidence"
+        header += f" • {temporal_span}"
+
+        with st.expander(header):
+            st.markdown(area.get("summary", "*No summary provided.*"))
+
+            bullet_points = area.get("bullet_points") or []
+            if bullet_points:
+                st.markdown("**Key Points**")
+                for point in bullet_points:
+                    st.markdown(f"- {point}")
+
+            decisions = area.get("decisions") or []
+            if decisions:
+                st.markdown("**Decisions**")
+                for decision in decisions:
+                    rationale = decision.get("rationale") or "*No rationale recorded*"
+                    decided_by = decision.get("decided_by") or "*Unknown*"
+                    st.markdown(
+                        f"- **{decision.get('statement', 'Decision')}** "
+                        f"(by {decided_by}, rationale: {rationale})"
+                    )
+
+            area_action_items = area.get("action_items") or []
+            if area_action_items:
+                st.markdown("**Action Items**")
+                for item in area_action_items:
+                    owner = item.get("owner") or "*Unassigned*"
+                    st.markdown(
+                        f"- {item.get('description', 'Action')} "
+                        f"(owner: {owner}, due: {item.get('due_date') or '—'})"
+                    )
+
+            supporting_chunks = area.get("supporting_chunks") or []
+            if supporting_chunks:
+                st.caption(f"Supports chunks: {', '.join(map(str, supporting_chunks))}")
+
+
+def render_validation_section(validation_data: dict, artifacts: dict | None):
+    """Show validation findings and unresolved topics."""
+    st.subheader("✅ Validation & Quality Checks")
+
+    passed = validation_data.get("passed", True)
+    issues = validation_data.get("issues") or []
+
+    if passed:
+        st.success("Validation passed with no critical issues.")
+    else:
+        st.warning("Validation detected issues that require attention.")
+
+    if issues:
+        for issue in issues:
+            severity = issue.get("level", "info").upper()
+            related = issue.get("related_chunks") or []
+            context = f"(chunks: {', '.join(map(str, related))})" if related else ""
+            st.markdown(f"- **{severity}**: {issue.get('message', 'No details')} {context}")
+    else:
+        st.info("No validation issues to report.")
+
+    unresolved_topics = (artifacts or {}).get("unresolved_topics") or []
+    if unresolved_topics:
+        st.divider()
+        st.markdown("**Unresolved Topics**")
+        for topic in unresolved_topics:
+            st.markdown(f"- {topic}")
+
+    validation_notes = (artifacts or {}).get("validation_notes") or []
+    if validation_notes:
+        st.divider()
+        st.markdown("**Validation Notes**")
+        for note in validation_notes:
+            st.markdown(f"- {note}")
 
 
 def extract_intelligence_with_progress(transcript: dict) -> dict | None:
@@ -164,33 +267,53 @@ def render_intelligence_results(intelligence_data: dict):
     """
     # Header with key metrics
     action_items = intelligence_data.get("action_items", [])
+    key_areas = intelligence_data.get("key_areas", [])
+    artifacts = intelligence_data.get("aggregation_artifacts")
     processing_stats = intelligence_data.get("processing_stats", {})
+    validation_data = processing_stats.get("validation") or {}
+    confidence = intelligence_data.get("confidence")
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
 
     with col1:
-        st.metric("Action Items", len(action_items))
+        if confidence is not None:
+            st.metric("Confidence", f"{confidence * 100:.0f}%")
+        else:
+            st.metric("Confidence", "—")
     with col2:
+        st.metric("Key Areas", len(key_areas))
+    with col3:
+        st.metric("Action Items", len(action_items))
+    with col4:
         has_owner = sum(1 for item in action_items if item.get("owner"))
         st.metric("With Owner", has_owner)
-    with col3:
-        has_due_date = sum(1 for item in action_items if item.get("due_date"))
-        st.metric("With Due Date", has_due_date)
-    with col4:
+    with col5:
         processing_time = processing_stats.get("time_ms", 0) / 1000
         st.metric("Processing Time", f"{processing_time:.1f}s")
+
+    pipeline_name = processing_stats.get("pipeline", "structured").title()
+    st.caption(f"Pipeline mode: {pipeline_name}")
 
     st.divider()
 
     # Main content in tabs
-    tab1, tab2, tab3 = st.tabs(["📋 Summary", "🎯 Action Items", "📤 Export"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["📋 Summary", "🧩 Key Areas", "🎯 Action Items", "✅ Validation", "📤 Export"]
+    )
 
     with tab1:
         render_summary_section(intelligence_data)
 
     with tab2:
-        render_action_items(action_items)
+        render_key_areas(key_areas, artifacts)
+
     with tab3:
+        render_action_items(action_items)
+
+    with tab4:
+        render_validation_section(validation_data, artifacts)
+
+    with tab5:
         original_filename = (
             st.session_state.get("upload_file", {}).get("name", "transcript.vtt")
         )

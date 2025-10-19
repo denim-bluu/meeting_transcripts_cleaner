@@ -199,6 +199,61 @@ class ExportHandler:
                     lines.append(f"{i}. {item}")
                 lines.append("")
 
+        key_areas = data.get("key_areas") or []
+        if key_areas:
+            lines.append("## Key Areas\n")
+            for area in key_areas:
+                lines.append(f"### {area.get('title', 'Theme')}\n")
+                if area.get("summary"):
+                    lines.append(f"{area['summary']}\n")
+                bullet_points = area.get("bullet_points") or []
+                if bullet_points:
+                    lines.append("**Highlights:**")
+                    for point in bullet_points:
+                        lines.append(f"- {point}")
+                    lines.append("")
+                decisions = area.get("decisions") or []
+                if decisions:
+                    lines.append("**Decisions:**")
+                    for decision in decisions:
+                        rationale = decision.get("rationale") or "No rationale provided"
+                        decided_by = decision.get("decided_by") or "Unknown"
+                        lines.append(
+                            f"- {decision.get('statement', 'Decision')} "
+                            f"(by {decided_by}, rationale: {rationale})"
+                        )
+                    lines.append("")
+                action_items = area.get("action_items") or []
+                if action_items:
+                    lines.append("**Actions:**")
+                    for action in action_items:
+                        owner = action.get("owner") or "Unassigned"
+                        due = action.get("due_date") or "No due date"
+                        lines.append(f"- {action.get('description', 'Action')} (owner: {owner}, due: {due})")
+                    lines.append("")
+
+        artifacts = data.get("aggregation_artifacts") or {}
+        timeline_events = artifacts.get("timeline_events") or []
+        if timeline_events:
+            lines.append("## Timeline Highlights\n")
+            for event in timeline_events:
+                lines.append(f"- {event}")
+            lines.append("")
+
+        unresolved_topics = artifacts.get("unresolved_topics") or []
+        if unresolved_topics:
+            lines.append("## Unresolved Topics\n")
+            for topic in unresolved_topics:
+                lines.append(f"- {topic}")
+            lines.append("")
+
+        validation_notes = artifacts.get("validation_notes") or []
+        if validation_notes:
+            lines.append("## Validation Notes\n")
+            for note in validation_notes:
+                lines.append(f"- {note}")
+            lines.append("")
+
         # Metadata
         if include_metadata and "processing_stats" in data:
             lines.append("## Processing Statistics\n")
@@ -265,6 +320,57 @@ class ExportHandler:
                 else:
                     lines.append(f"{i}. {item}")
                 lines.append("")
+
+        key_areas = data.get("key_areas") or []
+        if key_areas:
+            lines.append("KEY AREAS:")
+            lines.append("-" * 20)
+            for area in key_areas:
+                lines.append(area.get("title", "Theme"))
+                summary = area.get("summary")
+                if summary:
+                    lines.append(summary)
+                bullet_points = area.get("bullet_points") or []
+                if bullet_points:
+                    lines.append("  Highlights:")
+                    for point in bullet_points:
+                        lines.append(f"    - {point}")
+                decisions = area.get("decisions") or []
+                if decisions:
+                    lines.append("  Decisions:")
+                    for decision in decisions:
+                        rationale = decision.get("rationale") or "No rationale provided"
+                        decided_by = decision.get("decided_by") or "Unknown"
+                        lines.append(
+                            f"    - {decision.get('statement', 'Decision')} "
+                            f"(by {decided_by}, rationale: {rationale})"
+                        )
+                lines.append("")
+
+        artifacts = data.get("aggregation_artifacts") or {}
+        timeline_events = artifacts.get("timeline_events") or []
+        if timeline_events:
+            lines.append("TIMELINE HIGHLIGHTS:")
+            lines.append("-" * 25)
+            for event in timeline_events:
+                lines.append(f"- {event}")
+            lines.append("")
+
+        unresolved_topics = artifacts.get("unresolved_topics") or []
+        if unresolved_topics:
+            lines.append("UNRESOLVED TOPICS:")
+            lines.append("-" * 20)
+            for topic in unresolved_topics:
+                lines.append(f"- {topic}")
+            lines.append("")
+
+        validation_notes = artifacts.get("validation_notes") or []
+        if validation_notes:
+            lines.append("VALIDATION NOTES:")
+            lines.append("-" * 20)
+            for note in validation_notes:
+                lines.append(f"- {note}")
+            lines.append("")
 
         # Metadata
         if include_metadata and "processing_stats" in data:

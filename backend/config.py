@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     cleaning_model: str = "o3-mini"
     review_model: str = "o3-mini"
     synthesis_model: str = "o3-mini"
+    chunk_model: str | None = None
+    aggregation_model: str | None = None
 
 
 settings = Settings()
