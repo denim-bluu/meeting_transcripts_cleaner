@@ -10,7 +10,6 @@ import requests
 
 # Mock environment variables for testing
 os.environ["OPENAI_API_KEY"] = "test-key-123"
-os.environ["BACKEND_URL"] = "http://localhost:8000"
 
 @pytest.fixture
 def sample_vtt_content() -> str:

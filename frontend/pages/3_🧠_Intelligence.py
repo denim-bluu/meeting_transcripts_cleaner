@@ -1,34 +1,19 @@
-"""Meeting Intelligence Extraction - Refactored with clean architecture."""
-
 from components.export_handlers import ExportHandler
-from components.health_check import require_healthy_backend
-from components.progress_tracker import ProgressTracker
-from services.backend_service import BackendService
+from components.error_display import display_error
+from services.pipeline import run_intelligence_pipeline
 from services.state_service import StateService
-from services.task_service import TaskService
 import streamlit as st
 from utils.constants import STATE_KEYS
 
 # Page configuration
 st.set_page_config(page_title="Meeting Intelligence", page_icon="🧠", layout="wide")
 
-
-def initialize_services():
-    """Initialize required services."""
-    backend = BackendService()
-    task_service = TaskService(backend)
-    progress_tracker = ProgressTracker(task_service)
-    return backend, task_service, progress_tracker
-
-
 def initialize_page_state():
     """Initialize page-specific session state."""
     required_state = {
         STATE_KEYS.TRANSCRIPT_DATA: None,
         STATE_KEYS.INTELLIGENCE_DATA: None,
-        STATE_KEYS.CURRENT_TASK_ID: None,
         "intelligence_extracted": False,
-        "transcript_task_id": None,
     }
     StateService.initialize_page_state(required_state)
 
@@ -84,7 +69,7 @@ def render_action_items(action_items: list[dict]):
             st.markdown(f"**Description:** {description}")
 
             # Details in columns
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
 
             with col1:
                 owner = item.get("owner", "*Not specified*")
@@ -95,6 +80,13 @@ def render_action_items(action_items: list[dict]):
 
             with col2:
                 st.markdown(f"**📊 Status:** {status_text}")
+
+            with col3:
+                confidence = item.get("confidence")
+                if confidence is not None:
+                    st.markdown(f"**🔍 Confidence:** {confidence * 100:.0f}%")
+                else:
+                    st.markdown("**🔍 Confidence:** *Not rated*")
 
 
 def render_summary_section(intelligence_data: dict):
@@ -109,72 +101,129 @@ def render_summary_section(intelligence_data: dict):
     st.markdown(summary)
 
 
-def extract_intelligence_with_progress(
-    backend: BackendService,
-    progress_tracker: ProgressTracker,
-    transcript_id: str,
-) -> dict | None:
-    """Extract intelligence using backend service with progress tracking.
+def render_key_areas(key_areas: list[dict], artifacts: dict | None):
+    """Render thematic clusters with supporting details."""
+    st.subheader("🧩 Key Areas & Themes")
 
-    Logic:
-    1. Start intelligence extraction request
-    2. Track progress with UI updates
-    3. Handle success/error states
-    4. Return intelligence data or None
-    """
+    if not key_areas:
+        st.info("No key areas were identified for this meeting.")
+        return
 
-    def on_success(task_data):
-        """Handle successful intelligence extraction."""
-        result = task_data.get("result", {})
-        st.session_state[STATE_KEYS.INTELLIGENCE_DATA] = result
-        st.session_state["intelligence_extracted"] = True
+    timeline_events = (artifacts or {}).get("timeline_events") or []
+    if timeline_events:
+        st.markdown("**Timeline Highlights**")
+        for event in timeline_events:
+            st.markdown(f"- {event}")
+        st.divider()
 
-        # Also store in legacy format for compatibility
-        if "transcript" not in st.session_state:
-            st.session_state.transcript = {}
-        st.session_state.transcript["intelligence"] = result
+    for area in key_areas:
+        title = area.get("title", "Unnamed Theme")
+        confidence = area.get("confidence")
+        temporal_span = area.get("temporal_span") or "Not specified"
 
-        st.success("🎉 Meeting intelligence extracted successfully!")
-        return result
+        header = f"**{title}**"
+        if confidence is not None:
+            header += f" — {confidence * 100:.0f}% confidence"
+        header += f" • {temporal_span}"
 
-    def on_error(error_message):
-        """Handle intelligence extraction error."""
-        st.error(f"Intelligence extraction failed: {error_message}")
-        return None
+        with st.expander(header):
+            st.markdown(area.get("summary", "*No summary provided.*"))
 
-    # Start extraction
-    success, response = backend.extract_intelligence(transcript_id)
+            bullet_points = area.get("bullet_points") or []
+            if bullet_points:
+                st.markdown("**Key Points**")
+                for point in bullet_points:
+                    st.markdown(f"- {point}")
 
-    if not success:
-        error_msg = response.get("error", "Extraction failed")
-        st.error(f"❌ Failed to start extraction: {error_msg}")
-        return None
+            decisions = area.get("decisions") or []
+            if decisions:
+                st.markdown("**Decisions**")
+                for decision in decisions:
+                    rationale = decision.get("rationale") or "*No rationale recorded*"
+                    decided_by = decision.get("decided_by") or "*Unknown*"
+                    st.markdown(
+                        f"- **{decision.get('statement', 'Decision')}** "
+                        f"(by {decided_by}, rationale: {rationale})"
+                    )
 
-    # Get task ID and track progress
-    task_id = response.get("task_id")
-    if not task_id:
-        st.error("No task ID received")
-        return None
+            area_action_items = area.get("action_items") or []
+            if area_action_items:
+                st.markdown("**Action Items**")
+                for item in area_action_items:
+                    owner = item.get("owner") or "*Unassigned*"
+                    st.markdown(
+                        f"- {item.get('description', 'Action')} "
+                        f"(owner: {owner}, due: {item.get('due_date') or '—'})"
+                    )
 
-    st.session_state[STATE_KEYS.CURRENT_TASK_ID] = task_id
-    StateService.set_url_param("task", task_id)
-
-    # Track progress
-    success = progress_tracker.track_task(
-        task_id=task_id,
-        title="🧠 Extracting Meeting Intelligence",
-        success_callback=on_success,
-        error_callback=on_error,
-    )
-
-    if success:
-        return st.session_state.get(STATE_KEYS.INTELLIGENCE_DATA)
-    return None
+            supporting_chunks = area.get("supporting_chunks") or []
+            if supporting_chunks:
+                st.caption(f"Supports chunks: {', '.join(map(str, supporting_chunks))}")
 
 
-def render_intelligence_extraction_section(
-    backend: BackendService, progress_tracker: ProgressTracker
-):
+def render_validation_section(validation_data: dict, artifacts: dict | None):
+    """Show validation findings and unresolved topics."""
+    st.subheader("✅ Validation & Quality Checks")
+
+    passed = validation_data.get("passed", True)
+    issues = validation_data.get("issues") or []
+
+    if passed:
+        st.success("Validation passed with no critical issues.")
+    else:
+        st.warning("Validation detected issues that require attention.")
+
+    if issues:
+        for issue in issues:
+            severity = issue.get("level", "info").upper()
+            related = issue.get("related_chunks") or []
+            context = f"(chunks: {', '.join(map(str, related))})" if related else ""
+            st.markdown(f"- **{severity}**: {issue.get('message', 'No details')} {context}")
+    else:
+        st.info("No validation issues to report.")
+
+    unresolved_topics = (artifacts or {}).get("unresolved_topics") or []
+    if unresolved_topics:
+        st.divider()
+        st.markdown("**Unresolved Topics**")
+        for topic in unresolved_topics:
+            st.markdown(f"- {topic}")
+
+    validation_notes = (artifacts or {}).get("validation_notes") or []
+    if validation_notes:
+        st.divider()
+        st.markdown("**Validation Notes**")
+        for note in validation_notes:
+            st.markdown(f"- {note}")
+
+
+def extract_intelligence_with_progress(transcript: dict) -> dict | None:
+    """Extract intelligence directly via the pipeline with inline progress."""
+    status_ph = st.empty()
+    bar_ph = st.progress(0.0)
+
+    def on_progress(pct: float, message: str) -> None:
+        bar_ph.progress(pct)
+        status_ph.text(f"{int(pct * 100)}% • {message}")
+
+    with st.spinner("Extracting meeting intelligence..."):
+        try:
+            chunks = transcript.get("chunks", [])
+            result = run_intelligence_pipeline(chunks, on_progress)
+        except Exception as e:
+            display_error("processing_failed", f"Intelligence extraction failed: {e}")
+            return None
+
+    st.session_state[STATE_KEYS.INTELLIGENCE_DATA] = result
+    st.session_state["intelligence_extracted"] = True
+
+    # Only use standardized session keys
+
+    st.success("🎉 Meeting intelligence extracted successfully!")
+    return result
+
+
+def render_intelligence_extraction_section():
     """Render intelligence extraction interface.
 
     Logic:
@@ -189,62 +238,23 @@ def render_intelligence_extraction_section(
     if st.button(
         "🧠 Extract Meeting Intelligence", type="primary", use_container_width=True
     ):
-        # Get the transcript task_id from session state
-        transcript_task_id = st.session_state.get("transcript_task_id")
-
-        if not transcript_task_id:
-            st.error(
-                "❌ No transcript task ID found. Please re-process your transcript."
+        transcript = st.session_state.get(STATE_KEYS.TRANSCRIPT_DATA)
+        if not transcript:
+            display_error(
+                "missing_data",
+                "No transcript found in session. Please process a VTT file first.",
             )
             return
 
-        # Extract intelligence
-        intelligence_data = extract_intelligence_with_progress(
-            backend, progress_tracker, transcript_task_id
-        )
-
+        intelligence_data = extract_intelligence_with_progress(transcript)
         if intelligence_data:
-            st.rerun()  # Refresh to show results
+            st.rerun()
 
     # Show what will be extracted
     st.markdown("**This will:**")
     st.markdown("• 📋 Generate comprehensive executive and detailed summaries")
     st.markdown("• 🎯 Identify action items with owners and deadlines")
     st.markdown("• 🔍 Extract key decisions and topics")
-
-
-def handle_task_resumption(backend: BackendService, task_service: TaskService):
-    """Handle resumption of intelligence extraction task from URL.
-
-    Logic:
-    1. Check URL for existing task ID
-    2. Verify task is intelligence extraction type
-    3. Resume task if valid
-    4. Store results in session state
-    """
-    task_id = StateService.get_url_param("task")
-    if not task_id:
-        return
-
-    st.info(f"Resuming intelligence task: {task_id}")
-
-    # Get task result
-    result = task_service.get_task_result(task_id)
-
-    if result:
-        st.session_state[STATE_KEYS.INTELLIGENCE_DATA] = result
-        st.session_state["intelligence_extracted"] = True
-
-        # Also store in legacy format for compatibility
-        if "transcript" not in st.session_state:
-            st.session_state.transcript = {}
-        st.session_state.transcript["intelligence"] = result
-
-        st.success("✅ Intelligence task resumed successfully!")
-        StateService.clear_url_params(["task"])
-    else:
-        st.warning("Task not found or expired")
-        StateService.clear_url_params(["task"])
 
 
 def render_intelligence_results(intelligence_data: dict):
@@ -257,34 +267,56 @@ def render_intelligence_results(intelligence_data: dict):
     """
     # Header with key metrics
     action_items = intelligence_data.get("action_items", [])
+    key_areas = intelligence_data.get("key_areas", [])
+    artifacts = intelligence_data.get("aggregation_artifacts")
     processing_stats = intelligence_data.get("processing_stats", {})
+    validation_data = processing_stats.get("validation") or {}
+    confidence = intelligence_data.get("confidence")
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
 
     with col1:
-        st.metric("Action Items", len(action_items))
+        if confidence is not None:
+            st.metric("Confidence", f"{confidence * 100:.0f}%")
+        else:
+            st.metric("Confidence", "—")
     with col2:
+        st.metric("Key Areas", len(key_areas))
+    with col3:
+        st.metric("Action Items", len(action_items))
+    with col4:
         has_owner = sum(1 for item in action_items if item.get("owner"))
         st.metric("With Owner", has_owner)
-    with col3:
-        has_due_date = sum(1 for item in action_items if item.get("due_date"))
-        st.metric("With Due Date", has_due_date)
-    with col4:
+    with col5:
         processing_time = processing_stats.get("time_ms", 0) / 1000
         st.metric("Processing Time", f"{processing_time:.1f}s")
+
+    pipeline_name = processing_stats.get("pipeline", "structured").title()
+    st.caption(f"Pipeline mode: {pipeline_name}")
 
     st.divider()
 
     # Main content in tabs
-    tab1, tab2, tab3 = st.tabs(["📋 Summary", "🎯 Action Items", "📤 Export"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["📋 Summary", "🧩 Key Areas", "🎯 Action Items", "✅ Validation", "📤 Export"]
+    )
 
     with tab1:
         render_summary_section(intelligence_data)
 
     with tab2:
-        render_action_items(action_items)
+        render_key_areas(key_areas, artifacts)
+
     with tab3:
-        original_filename = "meeting_transcript"  # Could be from session state
+        render_action_items(action_items)
+
+    with tab4:
+        render_validation_section(validation_data, artifacts)
+
+    with tab5:
+        original_filename = (
+            st.session_state.get("upload_file", {}).get("name", "transcript.vtt")
+        )
         ExportHandler.render_intelligence_export_section(
             intelligence_data, original_filename, "intelligence"
         )
@@ -293,7 +325,6 @@ def render_intelligence_results(intelligence_data: dict):
 def main():
     """Main page logic."""
     # Initialize services
-    backend, task_service, progress_tracker = initialize_services()
     initialize_page_state()
 
     st.title("🧠 Meeting Intelligence")
@@ -301,16 +332,8 @@ def main():
         "Extract and view meeting summaries, action items, and key insights using AI."
     )
 
-    # Require healthy backend
-    require_healthy_backend(backend)
-
-    # Handle task resumption
-    handle_task_resumption(backend, task_service)
-
-    # Check for transcript data (from session state or legacy format)
-    transcript = st.session_state.get("transcript") or st.session_state.get(
-        STATE_KEYS.TRANSCRIPT_DATA
-    )
+    # Check for transcript data
+    transcript = st.session_state.get(STATE_KEYS.TRANSCRIPT_DATA)
 
     if not transcript:
         st.warning(
@@ -345,12 +368,10 @@ def main():
         return
 
     # Check if intelligence has been extracted
-    intelligence_data = st.session_state.get(STATE_KEYS.INTELLIGENCE_DATA) or (
-        transcript.get("intelligence") if isinstance(transcript, dict) else None
-    )
+    intelligence_data = st.session_state.get(STATE_KEYS.INTELLIGENCE_DATA)
 
     if not intelligence_data:
-        render_intelligence_extraction_section(backend, progress_tracker)
+        render_intelligence_extraction_section()
         return
 
     # Display intelligence results

@@ -1,8 +1,8 @@
-"""Standardized metrics display components."""
-
 from typing import Any
 
 import streamlit as st
+
+from frontend.utils.constants import STATE_KEYS
 
 
 def render_quality_metrics(quality_data: dict[str, Any]) -> None:
@@ -37,10 +37,13 @@ def render_quality_metrics(quality_data: dict[str, Any]) -> None:
     categories = quality_data.get("improvement_categories", [])
     if categories:
         st.caption("**Improvement Categories:**")
-        cols = st.columns(len(categories))
-        for i, category in enumerate(categories):
-            with cols[i]:
-                st.success(category)
+        max_cols = 4
+        for start in range(0, len(categories), max_cols):
+            row = categories[start : start + max_cols]
+            cols = st.columns(len(row))
+            for i, category in enumerate(row):
+                with cols[i]:
+                    st.success(category)
 
 
 def render_review_quality_distribution(review_results: list[dict[str, Any]]) -> None:
@@ -55,7 +58,6 @@ def render_review_quality_distribution(review_results: list[dict[str, Any]]) -> 
         st.info("No review results available")
         return
 
-    st.subheader("🎯 Quality Distribution")
 
     # Calculate quality metrics
     total_chunks = len(review_results)
@@ -74,52 +76,53 @@ def render_review_quality_distribution(review_results: list[dict[str, Any]]) -> 
     low_quality = sum(1 for score in quality_scores if score < 0.6)
 
     # Display metrics
-    col1, col2, col3, col4 = st.columns(4)
+    with st.expander("Quality Metrics", icon="🎯", expanded=True):
+        col1, col2, col3, col4 = st.columns(4)
 
-    with col1:
-        st.metric("Total Chunks", total_chunks)
+        with col1:
+            st.metric("Total Chunks", total_chunks)
 
-    with col2:
-        acceptance_rate = (
-            (accepted_count / total_chunks * 100) if total_chunks > 0 else 0
-        )
-        st.metric("Accepted", accepted_count, f"{acceptance_rate:.1f}%")
+        with col2:
+            acceptance_rate = (
+                (accepted_count / total_chunks * 100) if total_chunks > 0 else 0
+            )
+            st.metric("Accepted", accepted_count, f"{acceptance_rate:.1f}%")
 
-    with col3:
-        needs_review = total_chunks - accepted_count
-        needs_review_rate = (
-            (needs_review / total_chunks * 100) if total_chunks > 0 else 0
-        )
-        st.metric("Needs Review", needs_review, f"{needs_review_rate:.1f}%")
+        with col3:
+            needs_review = total_chunks - accepted_count
+            needs_review_rate = (
+                (needs_review / total_chunks * 100) if total_chunks > 0 else 0
+            )
+            st.metric("Needs Review", needs_review, f"{needs_review_rate:.1f}%")
 
-    with col4:
-        quality_status = "Good" if avg_quality > 0.7 else "Needs Review"
-        st.metric("Avg Quality", f"{avg_quality:.2f}", quality_status)
+        with col4:
+            quality_status = "Good" if avg_quality > 0.7 else "Needs Review"
+            st.metric("Avg Quality", f"{avg_quality:.2f}", quality_status)
 
-    # Quality breakdown
-    st.divider()
-    col1, col2, col3 = st.columns(3)
+        # Quality breakdown
+        st.divider()
+        col1, col2, col3 = st.columns(3)
 
-    with col1:
-        st.metric(
-            "🟢 High Quality (≥0.8)",
-            high_quality,
-            f"{(high_quality/total_chunks*100):.1f}%" if total_chunks > 0 else "0%",
-        )
+        with col1:
+            st.metric(
+                "🟢 High Quality (≥0.8)",
+                high_quality,
+                f"{(high_quality/total_chunks*100):.1f}%" if total_chunks > 0 else "0%",
+            )
 
-    with col2:
-        st.metric(
-            "🟡 Medium Quality (0.6-0.8)",
-            medium_quality,
-            f"{(medium_quality/total_chunks*100):.1f}%" if total_chunks > 0 else "0%",
-        )
+        with col2:
+            st.metric(
+                "🟡 Medium Quality (0.6-0.8)",
+                medium_quality,
+                f"{(medium_quality/total_chunks*100):.1f}%" if total_chunks > 0 else "0%",
+            )
 
-    with col3:
-        st.metric(
-            "🔴 Low Quality (<0.6)",
-            low_quality,
-            f"{(low_quality/total_chunks*100):.1f}%" if total_chunks > 0 else "0%",
-        )
+        with col3:
+            st.metric(
+                "🔴 Low Quality (<0.6)",
+                low_quality,
+                f"{(low_quality/total_chunks*100):.1f}%" if total_chunks > 0 else "0%",
+            )
 
 
 def render_transcript_summary_metrics(transcript_data: dict[str, Any]) -> None:
@@ -179,3 +182,37 @@ def get_quality_status(score: float) -> tuple[str, str, str]:
         return "🟡", "Medium Quality", "orange"
     else:
         return "🔴", "Low Quality", "red"
+
+
+def render_transcript_summary():
+    """Render transcript summary if available."""
+    transcript = st.session_state.get(STATE_KEYS.TRANSCRIPT_DATA)
+
+    if not transcript:
+        return
+
+    # Show basic metrics
+    chunks = transcript.get("chunks", [])
+    speakers = transcript.get("speakers", [])
+    duration = transcript.get("duration", 0)
+    total_entries = sum(len(chunk.get("entries", [])) for chunk in chunks)
+
+    with st.expander("Transcript Summary", icon="📊", expanded=True):
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Chunks", len(chunks))
+        with col2:
+            st.metric("Entries", total_entries)
+        with col3:
+            st.metric("Speakers", len(speakers))
+        with col4:
+            st.metric(
+                "Duration",
+                f"{duration/60:.1f}m" if duration > 60 else f"{duration:.1f}s",
+            )
+
+        # Show participants
+        if speakers:
+            st.info(f"**Participants:** {', '.join(speakers)}")
+
+    st.divider()

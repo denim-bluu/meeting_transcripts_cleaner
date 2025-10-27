@@ -1,5 +1,3 @@
-"""Error display and handling components."""
-
 from typing import Any
 
 import streamlit as st
