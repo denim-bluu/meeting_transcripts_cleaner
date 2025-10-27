@@ -40,22 +40,55 @@ class ChunkProcessor:
         initial_state: ConversationState | None = None,
         progress_callback: ProgressCallback | None = None,
     ) -> tuple[list[IntermediateSummary], ConversationState]:
-        """Process chunks sequentially while respecting conversation flow."""
-        state = initial_state or ConversationState()
-        summaries: list[IntermediateSummary] = []
-
-        total = len(chunks) or 1
-        for idx, chunk in enumerate(chunks):
-            progress = (idx / total) * 0.4  # leave headroom for aggregation phase
+        """Process chunks concurrently with deterministic ordering of results."""
+        total = len(chunks)
+        if total == 0:
             await _maybe_call(
-                progress_callback, progress, f"Chunk processing {idx + 1}/{total}"
+                progress_callback,
+                0.4,
+                "Chunk processing completed",
+            )
+            return [], initial_state or ConversationState()
+
+        base_state = initial_state or ConversationState()
+        state_snapshots = self._prepare_state_snapshots(base_state, chunks)
+        prior_contexts = self._prepare_prior_contexts(chunks)
+
+        summaries: list[IntermediateSummary | None] = [None] * total
+        processed_count = 0
+        progress_lock = asyncio.Lock()
+
+        async def handle_chunk(index: int) -> None:
+            nonlocal processed_count
+            chunk = chunks[index]
+            payload = await self._invoke_agent(
+                chunk,
+                state_snapshots[index],
+                prior_summary=None,
+                previous_context=prior_contexts[index],
+            )
+            intermediate = self._build_intermediate_summary(chunk, payload)
+            summaries[index] = intermediate
+
+            async with progress_lock:
+                processed_count += 1
+                progress = (processed_count / total) * 0.4
+            await _maybe_call(
+                progress_callback,
+                progress,
+                f"Chunk processing {processed_count}/{total}",
             )
 
-            prior_summary = summaries[-1] if summaries else None
-            payload = await self._invoke_agent(chunk, state, prior_summary)
-            intermediate = self._build_intermediate_summary(chunk, payload)
-            summaries.append(intermediate)
-            state = self._update_state(state, intermediate)
+        tasks = [asyncio.create_task(handle_chunk(idx)) for idx in range(total)]
+        await asyncio.gather(*tasks)
+
+        ordered_summaries: list[IntermediateSummary] = []
+        updated_state = base_state
+        for summary in summaries:
+            if summary is None:
+                raise RuntimeError("Missing chunk summary after processing.")
+            ordered_summaries.append(summary)
+            updated_state = self._update_state(updated_state, summary)
 
         await _maybe_call(
             progress_callback,
@@ -63,13 +96,15 @@ class ChunkProcessor:
             "Chunk processing completed",
         )
 
-        return summaries, state
+        return ordered_summaries, updated_state
 
     async def _invoke_agent(
         self,
         chunk: VTTChunk,
         state: ConversationState,
         prior_summary: IntermediateSummary | None,
+        *,
+        previous_context: str | None = None,
     ) -> ChunkAgentPayload:
         """Call the chunk processing agent with contextual data."""
         transcript_text = chunk.to_transcript_text()
@@ -92,6 +127,7 @@ class ChunkProcessor:
             "previous_summary": prior_summary.narrative_summary
             if prior_summary
             else None,
+            "previous_chunk_transcript": previous_context,
             "conversation_state": state.model_dump(),
         }
 
@@ -185,6 +221,45 @@ class ChunkProcessor:
         if "chief" in lower or "cxo" in lower or "ceo" in lower:
             return "Executive"
         return None
+
+    def _prepare_state_snapshots(
+        self,
+        base_state: ConversationState,
+        chunks: Sequence[VTTChunk],
+    ) -> list[ConversationState]:
+        """Create lightweight snapshots to preserve speaker continuity across concurrent tasks."""
+        snapshots: list[ConversationState] = []
+        last_speaker = base_state.last_speaker
+        last_topic = base_state.last_topic
+        key_decisions = dict(base_state.key_decisions)
+        unresolved = list(base_state.unresolved_items)
+
+        for chunk in chunks:
+            snapshot = ConversationState(
+                last_topic=last_topic,
+                key_decisions=dict(key_decisions),
+                unresolved_items=list(unresolved),
+                last_speaker=last_speaker,
+            )
+            snapshots.append(snapshot)
+            if chunk.entries:
+                last_speaker = chunk.entries[-1].speaker
+
+        return snapshots
+
+    def _prepare_prior_contexts(
+        self,
+        chunks: Sequence[VTTChunk],
+    ) -> list[str | None]:
+        """Collect prior chunk transcript windows for contextual continuity."""
+        contexts: list[str | None] = []
+        previous_text: str | None = None
+        for chunk in chunks:
+            contexts.append(
+                previous_text[:2000] if previous_text and len(previous_text) > 2000 else previous_text
+            )
+            previous_text = chunk.to_transcript_text()
+        return contexts
 
 
 def _chunk_time_range(chunk: VTTChunk) -> str:

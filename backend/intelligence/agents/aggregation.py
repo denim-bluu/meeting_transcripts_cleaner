@@ -4,14 +4,12 @@ from __future__ import annotations
 
 from dotenv import load_dotenv
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import (
-    OpenAIResponsesModel,
-    OpenAIResponsesModelSettings,
-)
+from pydantic_ai.models.openai import OpenAIResponsesModel
 import structlog
 
 from backend.config import settings
 from backend.intelligence.models import AggregationAgentPayload
+from backend.utils.model_settings import build_openai_model_settings
 
 load_dotenv()
 logger = structlog.get_logger(__name__)
@@ -46,9 +44,10 @@ aggregation_agent = Agent(
     output_type=AggregationAgentPayload,
     instructions=AGGREGATION_INSTRUCTIONS,
     retries=2,
-    model_settings=OpenAIResponsesModelSettings(
-        openai_reasoning_effort="high",
-        openai_reasoning_summary="detailed",
+    model_settings=build_openai_model_settings(
+        AGGREGATION_MODEL_NAME,
+        reasoning_effort="high",
+        reasoning_summary="detailed",
     ),
 )
 
