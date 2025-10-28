@@ -26,14 +26,30 @@ logger = structlog.get_logger(__name__)
 class IntelligenceOrchestrator:
     """Orchestrates the multi-stage meeting intelligence pipeline."""
 
-    def __init__(self) -> None:
-        self._chunk_processor = ChunkProcessor()
+    def __init__(
+        self,
+        *,
+        chunk_processor: ChunkProcessor | None = None,
+        chunk_max_concurrency: int | None = None,
+    ) -> None:
+        if chunk_processor is not None:
+            self._chunk_processor = chunk_processor
+            self._chunk_concurrency = getattr(
+                chunk_processor, "_max_concurrency", None
+            )
+        else:
+            max_concurrency = (
+                chunk_max_concurrency or settings.intelligence_max_concurrency
+            )
+            self._chunk_processor = ChunkProcessor(max_concurrency=max_concurrency)
+            self._chunk_concurrency = max_concurrency
         self._aggregator = SemanticAggregator()
         self._validator = ValidationService()
         logger.info(
             "IntelligenceOrchestrator initialized",
             chunk_model=getattr(settings, "chunk_model", None),
             aggregation_model=getattr(settings, "aggregation_model", None),
+            chunk_processor_concurrency=self._chunk_concurrency,
         )
 
     async def process_meeting(

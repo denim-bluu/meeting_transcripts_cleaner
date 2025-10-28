@@ -31,7 +31,9 @@ class ChunkProcessor:
     ) -> None:
         self._agent = agent
         self._logger = structlog.get_logger(__name__)
-        self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
+        normalized_concurrency = max(1, max_concurrency)
+        self._semaphore = asyncio.Semaphore(normalized_concurrency)
+        self._max_concurrency = normalized_concurrency
 
     async def process_chunks(
         self,

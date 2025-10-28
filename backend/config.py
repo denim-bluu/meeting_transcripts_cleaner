@@ -20,7 +20,12 @@ class Settings(BaseSettings):
     cleaning_model: str = "o3-mini"
     review_model: str = "o3-mini"
     chunk_model: str = "o3-mini"
-    aggregation_model: str = "gpt-4o"
+    aggregation_model: str = "o3-mini"
+
+    # Concurrency + rate limits
+    transcript_max_concurrency: int = 20
+    transcript_rate_limit_per_minute: int = 80
+    intelligence_max_concurrency: int = 8
 
 
 settings = Settings()

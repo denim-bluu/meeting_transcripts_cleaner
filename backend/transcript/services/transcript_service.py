@@ -7,6 +7,7 @@ import time
 from asyncio_throttle.throttler import Throttler
 import structlog
 
+from backend.config import settings
 from backend.intelligence.intelligence_orchestrator import IntelligenceOrchestrator
 from backend.transcript.models import CleaningResult, ReviewResult, VTTChunk
 from backend.transcript.services.cleaning_service import (
@@ -21,15 +22,29 @@ logger = structlog.get_logger(__name__)
 class TranscriptService:
     """Orchestrate the complete VTT processing pipeline with concurrent processing and rate limiting."""
 
-    def __init__(self, api_key: str, max_concurrent: int = 10, rate_limit: int = 50):
+    def __init__(
+        self,
+        api_key: str,
+        max_concurrent: int | None = None,
+        rate_limit: int | None = None,
+        intelligence_max_concurrency: int | None = None,
+    ):
         """
         Initialize service with API key and rate limiting controls.
 
         Args:
             api_key: OpenAI API key for AI processing
-            max_concurrent: Maximum concurrent API calls (default: 10 for o3-mini stability)
-            rate_limit: Maximum requests per minute (default: 300 for Tier 2-3 usage)
+            max_concurrent: Maximum concurrent API calls (defaults to settings.transcript_max_concurrency)
+            rate_limit: Maximum requests per minute (defaults to settings.transcript_rate_limit_per_minute)
+            intelligence_max_concurrency: Concurrency for intelligence stage (defaults to settings.intelligence_max_concurrency)
         """
+        if max_concurrent is None:
+            max_concurrent = settings.transcript_max_concurrency
+        if rate_limit is None:
+            rate_limit = settings.transcript_rate_limit_per_minute
+        if intelligence_max_concurrency is None:
+            intelligence_max_concurrency = settings.intelligence_max_concurrency
+
         self.api_key = api_key
         self.client = None
         self.transcript_cleaner = None
@@ -37,6 +52,7 @@ class TranscriptService:
         self.semaphore = asyncio.Semaphore(max_concurrent)
         # Keep an explicit copy of the configured concurrency for worker sizing
         self.max_concurrent = max_concurrent
+        self.rate_limit = rate_limit
 
         # Initialize VTT processor
         self.processor = VTTProcessor()
@@ -47,7 +63,9 @@ class TranscriptService:
         # Initialize services using pure agents
         self.cleaner = TranscriptCleaningService()
         self.reviewer = TranscriptReviewService()
-        self._intelligence_orchestrator = IntelligenceOrchestrator()
+        self._intelligence_orchestrator = IntelligenceOrchestrator(
+            chunk_max_concurrency=intelligence_max_concurrency
+        )
 
     def process_vtt(self, content: str) -> dict:
         """
