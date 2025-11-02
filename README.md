@@ -1,6 +1,6 @@
 # Minutes Cleaner – Meeting Intelligence Prototype
 
-Minutes Cleaner is a Streamlit-driven experience that transforms raw WebVTT meeting transcripts into cleaned text, quality assessments, and rich meeting intelligence. The application keeps everything in a single process: the UI orchestrates domain services directly, and the AI pipeline lives entirely in Python, making iteration fast while remaining production-conscious.
+Minutes Cleaner now ships with a Reflex-powered frontend that transforms raw WebVTT meeting transcripts into cleaned text, quality assessments, and rich meeting intelligence. The application keeps everything in a single process: the Python UI orchestrates domain services directly, and the AI pipeline lives entirely in Python, making iteration fast while remaining production-conscious.
 
 ---
 
@@ -15,7 +15,7 @@ Minutes Cleaner is a Streamlit-driven experience that transforms raw WebVTT meet
   - [Local Development](#local-development)
     - [Prerequisites](#prerequisites)
     - [Install Dependencies](#install-dependencies)
-    - [Run Streamlit](#run-streamlit)
+  - [Run Reflex](#run-reflex)
     - [Tests \& Linters](#tests--linters)
   - [Docker Support](#docker-support)
   - [Usage Walkthrough](#usage-walkthrough)

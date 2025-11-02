@@ -23,6 +23,8 @@ dependencies = [
   "asyncio-throttle>=1.0.2",
   "structlog>=25.4.0",
   "python-dotenv>=1.1.1",
+  "reflex>=0.8.17",
+  "markdown>=3.5.0",
 ]
 
 [project.optional-dependencies]
