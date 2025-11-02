@@ -9,6 +9,7 @@ from typing import Any
 def generate_export_content(
     data: dict[str, Any], format_type: str, include_metadata: bool = True
 ) -> tuple[str, str]:
+    """Generate export content in the requested format."""
     format_type = format_type.lower()
 
     if format_type == "vtt":
@@ -26,6 +27,7 @@ def generate_export_content(
 
 
 def _format_as_vtt(data: dict[str, Any]) -> str:
+    """Format data as WebVTT."""
     lines = ["WEBVTT", ""]
 
     chunks = data.get("chunks", [])
@@ -47,6 +49,7 @@ def _format_as_vtt(data: dict[str, Any]) -> str:
 
 
 def _format_timestamp(seconds: float) -> str:
+    """Format seconds as VTT timestamp (HH:MM:SS.mmm)."""
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = seconds % 60
@@ -54,6 +57,7 @@ def _format_timestamp(seconds: float) -> str:
 
 
 def _format_as_markdown(data: dict[str, Any], include_metadata: bool) -> str:
+    """Format data as Markdown."""
     lines: list[str] = []
     lines.append("# Meeting Transcript Results\n")
 
@@ -124,6 +128,7 @@ def _format_as_markdown(data: dict[str, Any], include_metadata: bool) -> str:
 
 
 def _format_as_text(data: dict[str, Any], include_metadata: bool) -> str:
+    """Format data as plain text."""
     lines: list[str] = []
     lines.append("MEETING TRANSCRIPT RESULTS")
     lines.append("=" * 50)
@@ -173,8 +178,4 @@ def _format_as_text(data: dict[str, Any], include_metadata: bool) -> str:
             lines.append(f"{formatted_key}: {value}")
 
     return "\n".join(lines)
-
-
-
-
 

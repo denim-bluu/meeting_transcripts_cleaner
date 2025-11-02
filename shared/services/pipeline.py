@@ -1,3 +1,5 @@
+"""Shared transcript processing pipelines."""
+
 from collections.abc import Callable
 from dataclasses import asdict, is_dataclass
 from typing import Any
@@ -11,6 +13,7 @@ from .runtime import run_async
 
 def _serialize_value(value: Any) -> Any:
     """Convert dataclasses and Pydantic models to plain python structures."""
+
     if is_dataclass(value):
         return asdict(value)
     if hasattr(value, "model_dump"):
@@ -23,42 +26,48 @@ def _serialize_value(value: Any) -> Any:
 
 
 def _serialize_transcript_dict(transcript: dict[str, Any]) -> dict[str, Any]:
+    """Serialize transcript dictionary for frontend consumption."""
     return {k: _serialize_value(v) for k, v in transcript.items()}
 
 
-def run_transcript_pipeline(
-    content_str: str, on_progress: Callable[[float, str], None]
+async def run_transcript_pipeline_async(
+    content_str: str,
+    on_progress: Callable[[float, str], None],
+    api_key: str | None = None,
 ) -> dict[str, Any]:
-    """End-to-end transcript processing for Streamlit UI.
+    """Async transcript pipeline.
 
-    Steps: parse VTT -> create chunks -> async clean+review with progress.
-    Returns a JSON-serializable dict suitable for the existing UI components.
+    Processes VTT content through parsing, cleaning, and review stages.
+    Returns serialized transcript data suitable for frontend consumption.
     """
-    service = TranscriptService(api_key="")  # settings provide actual key
 
-    # Parse/chunk synchronously
+    service = TranscriptService(api_key=api_key or "")
     transcript = service.process_vtt(content_str)
 
-    # Progress passthrough
     def progress_sync(pct: float, msg: str) -> None:
         try:
-            # Clamp for safety
             pct = max(0.0, min(1.0, pct))
             on_progress(pct, msg)
         except Exception:
             pass
 
-    # Run cleaning/review (async)
-    result = run_async(
-        service.clean_transcript(transcript, progress_callback=progress_sync)
-    )
-
-    # Convert dataclasses and pydantic models for Streamlit/front-end
+    result = await service.clean_transcript(transcript, progress_callback=progress_sync)
     return _serialize_transcript_dict(result)
+
+
+def run_transcript_pipeline(
+    content_str: str, on_progress: Callable[[float, str], None], api_key: str | None = None
+) -> dict[str, Any]:
+    """Synchronous convenience wrapper for environments that need it."""
+
+    return run_async(
+        run_transcript_pipeline_async(content_str, on_progress, api_key=api_key)
+    )
 
 
 def rehydrate_vtt_chunks(raw_chunks: list[dict[str, Any]]) -> list[VTTChunk]:
     """Recreate VTTChunk dataclasses from serialized dicts."""
+
     chunks: list[VTTChunk] = []
     for chunk_data in raw_chunks:
         entries = [
@@ -81,21 +90,42 @@ def rehydrate_vtt_chunks(raw_chunks: list[dict[str, Any]]) -> list[VTTChunk]:
     return chunks
 
 
-def run_intelligence_pipeline(
-    chunks_raw_or_dataclass: list[Any], on_progress: Callable[[float, str], None]
+async def run_intelligence_pipeline_async(
+    chunks_raw_or_dataclass: list[Any],
+    on_progress: Callable[[float, str], None],
 ) -> dict[str, Any]:
-    """Run intelligence extraction on cleaned transcript chunks.
+    """Async intelligence extraction pipeline.
 
-    Accepts either serialized chunk dicts (from session state) or dataclass chunks.
-    Returns a plain dict (model_dump) for UI consumption.
+    Processes transcript chunks to extract meeting intelligence including
+    summaries, key areas, action items, and validation results.
     """
+
+    if not chunks_raw_or_dataclass:
+        raise ValueError("No chunks provided for intelligence extraction")
+
     orchestrator = IntelligenceOrchestrator()
 
-    # Accept both dataclasses and dicts
-    if chunks_raw_or_dataclass and not isinstance(chunks_raw_or_dataclass[0], VTTChunk):
+    # Rehydrate serialized chunks if needed
+    if not isinstance(chunks_raw_or_dataclass[0], VTTChunk):
         vtt_chunks = rehydrate_vtt_chunks(chunks_raw_or_dataclass)  # type: ignore[arg-type]
     else:
         vtt_chunks = chunks_raw_or_dataclass  # type: ignore[assignment]
+
+    # Filter out empty chunks (chunks with no entries or empty text)
+    # After rehydration, all chunks should be VTTChunk objects
+    filtered_chunks = []
+    for chunk in vtt_chunks:
+        if isinstance(chunk, VTTChunk):
+            # Check if chunk has entries with non-empty text
+            if chunk.entries and any(entry.text.strip() for entry in chunk.entries):
+                filtered_chunks.append(chunk)
+
+    if not filtered_chunks:
+        raise ValueError(
+            "No valid chunks found for intelligence extraction. All chunks are empty or contain no text."
+        )
+
+    vtt_chunks = filtered_chunks
 
     def progress_sync(pct: float, msg: str) -> None:
         try:
@@ -104,7 +134,17 @@ def run_intelligence_pipeline(
         except Exception:
             pass
 
-    result = run_async(
-        orchestrator.process_meeting(vtt_chunks, progress_callback=progress_sync)
-    )
+    result = await orchestrator.process_meeting(vtt_chunks, progress_callback=progress_sync)
     return result.model_dump()
+
+
+def run_intelligence_pipeline(
+    chunks_raw_or_dataclass: list[Any],
+    on_progress: Callable[[float, str], None],
+) -> dict[str, Any]:
+    """Synchronous wrapper for legacy callers."""
+
+    return run_async(
+        run_intelligence_pipeline_async(chunks_raw_or_dataclass, on_progress)
+    )
+

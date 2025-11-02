@@ -1,8 +1,10 @@
+"""Async helpers for running coroutines from synchronous code."""
+
 import asyncio
 
 
 def run_async(coro):
-    """Run an async coroutine from Streamlit/UI code.
+    """Run an async coroutine from synchronous code.
 
     - Use asyncio.run when no event loop is active.
     - Otherwise spin up a temporary loop to execute the coroutine.
@@ -23,3 +25,4 @@ def run_async(coro):
             loop.close()
         except Exception:
             pass
+

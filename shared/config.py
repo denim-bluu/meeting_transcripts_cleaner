@@ -1,15 +1,18 @@
-"""Frontend configuration shared across Reflex components."""
+"""Shared application configuration."""
 
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class FileConstraints:
+    """File upload constraints."""
+
     max_size_mb: int = 100
     allowed_extensions: tuple[str, ...] = (".vtt",)
 
     @property
     def max_size_bytes(self) -> int:
+        """Calculate max size in bytes."""
         return self.max_size_mb * 1024 * 1024
 
 
@@ -25,9 +28,5 @@ ERROR_MESSAGES = {
 }
 
 
-EXPORT_FORMATS = ("txt", "md", "vtt")
-
-
-
-
+EXPORT_FORMATS = ("txt", "md", "vtt", "json")
 

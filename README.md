@@ -39,7 +39,7 @@ The app follows a layered but tightly integrated architecture:
 
 ```mermaid
 flowchart TD
-    UI["Streamlit UI<br/>(session state &amp; progress displays)"]
+    UI["Reflex UI<br/>(state management &amp; progress displays)"]
     Services["Domain Services<br/>(transcript &amp; intelligence layers)"]
     Agents["Pydantic AI Agents<br/>(OpenAI models)"]
     Validation["Automated Validation<br/>(confidence &amp; issue tracking)"]
@@ -54,7 +54,7 @@ flowchart TD
     UI -->|Exports| Outputs
 ```
 
-- **Streamlit UI** handles user interaction, progress bars, and exports.  
+- **Reflex UI** handles user interaction, progress tracking, and exports.  
 - **Domain services** encapsulate the business logic for transcript processing and intelligence generation. They are invoked directly from the UI.  
 - **AI agents** (powered by OpenAI via Pydantic AI) are stateless wrappers that accept structured prompts and return typed outputs.  
 - **Validation layer** enforces conversation-aware rules and computes confidence adjustments before returning results.  
@@ -118,10 +118,10 @@ just install          # or use pip directly
 just install-dev      # include development extras
 ```
 
-### Run Streamlit
+### Run Reflex
 
 ```bash
-just run-app          # launches http://localhost:8501
+just run-app          # launches Reflex app (default: http://localhost:3000)
 ```
 
 ### Tests & Linters
@@ -136,14 +136,7 @@ just format
 
 ## Docker Support
 
-Build and run the containerised app:
-
-```bash
-just docker-build
-just docker-run
-```
-
-The Streamlit UI will be available at `http://localhost:8501`. Use `just status` for a quick health check.
+Docker configuration has been removed in favor of Reflex's native deployment options. For local development, use `just run-app` directly. For production deployments, refer to Reflex's deployment documentation.
 
 ---
 
@@ -159,9 +152,9 @@ The sample file `test_meeting.vtt` is included for quick experiments.
 
 ## Notes & Limitations
 
-- There is no external API layer; Streamlit talks directly to domain services.  
+- There is no external API layer; the Reflex UI talks directly to domain services.  
 - Session data is ephemeral. Export results if you need persistence.  
 - The intelligence pipeline makes one model call per chunk plus a larger aggregation call. Expect costs to scale with meeting length.  
-- Model choices matter: the defaults target OpenAI’s `o3-mini` family, but you can swap models through environment variables as needed.
+- Model choices matter: the defaults target OpenAI's `o3-mini` family, but you can swap models through environment variables as needed.
 
 For deeper design rationale, see the target design document in the intelligence domain.

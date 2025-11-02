@@ -8,18 +8,18 @@ from typing import Any, TypedDict
 from dotenv import load_dotenv
 import reflex as rx
 
-from app.config import ERROR_MESSAGES
-from app.services.pipeline import (
+from backend.config import configure_structlog
+from shared.config import ERROR_MESSAGES
+from shared.services.pipeline import (
     run_intelligence_pipeline_async,
     run_transcript_pipeline_async,
 )
-from app.utils.exports import generate_export_content
-from app.utils.files import (
+from shared.utils.exports import generate_export_content
+from shared.utils.files import (
     format_file_size,
     generate_download_filename,
     validate_file_metadata,
 )
-from backend.config import configure_structlog
 
 load_dotenv()
 
@@ -660,7 +660,7 @@ class State(rx.State):
             meta_parts: list[str] = []
             if temporal_span:
                 meta_parts.append(temporal_span)
-            if isinstance(confidence, (float, int)):
+            if isinstance(confidence, float | int):
                 meta_parts.append(f"Confidence {float(confidence) * 100:.0f}%")
             meta = " • ".join(meta_parts) if meta_parts else "Timeline not specified"
 

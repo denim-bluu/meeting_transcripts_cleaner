@@ -17,7 +17,6 @@ dependencies = [
   "pydantic-settings>=2.0.0",
   "langchain>=0.3.27",
   # Frontend and client utilities
-  "streamlit>=1.39.0",
   "requests>=2.31.0",
   # Async coordination and logging
   "asyncio-throttle>=1.0.2",
@@ -61,7 +60,7 @@ test = [
 # No scripts needed - use just dev or docker
 
 [tool.setuptools]
-packages = ["backend", "frontend"]
+packages = ["backend", "app", "shared"]
 
 [tool.black]
 line-length = 88
@@ -86,7 +85,8 @@ multi_line_output = 3
 line_length = 88
 known_first_party = [
   "backend",
-  "frontend",
+  "app",
+  "shared",
 ]
 
 [tool.mypy]
@@ -132,7 +132,7 @@ ignore = ["E501", "B008", "C901"]
 combine-as-imports = true
 force-single-line = false
 force-sort-within-sections = true
-known-first-party = ["your_package_name"] # Replace with your package
+known-first-party = ["backend", "app", "shared"]
 section-order = [
   "future",
   "standard-library",

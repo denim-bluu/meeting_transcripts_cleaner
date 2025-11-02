@@ -1,11 +1,11 @@
-"""File handling helpers for the Reflex frontend."""
+"""File handling utilities."""
 
 from __future__ import annotations
 
 from datetime import datetime
 import re
 
-from app.config import FILE_CONSTRAINTS
+from shared.config import FILE_CONSTRAINTS
 
 
 def validate_file_metadata(filename: str, size_bytes: int) -> tuple[bool, str]:
@@ -47,12 +47,9 @@ def sanitize_filename(filename: str) -> str:
 
 
 def generate_download_filename(original: str, suffix: str, extension: str) -> str:
+    """Generate a download filename with timestamp and suffix."""
     base = original.rsplit(".", 1)[0] if "." in original else original
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{base}_{suffix}_{timestamp}.{extension}"
     return sanitize_filename(filename)
-
-
-
-
 

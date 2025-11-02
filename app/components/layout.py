@@ -1,6 +1,7 @@
 """Layout primitives shared across pages."""
 
 import reflex as rx
+
 from app.state import State
 
 
@@ -38,7 +39,7 @@ def nav_link(label: str, href: str) -> rx.Component:
     is_active = State.current_page == href
     active_class = "text-sm font-bold text-yellow-400 border-2 border-yellow-400 px-3 py-1 bg-black"
     inactive_class = "text-sm font-bold text-white hover:text-yellow-400 hover:border-2 hover:border-yellow-400 hover:px-3 hover:py-1 transition-all"
-    
+
     return rx.link(
         label,
         href=href,

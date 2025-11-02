@@ -1,4 +1,4 @@
-# Meeting Transcript Cleaner - Streamlit-only Prototype
+# Meeting Transcript Cleaner - Reflex Application
 # Task runner using just (https://github.com/casey/just)
 
 # Show available recipes
@@ -31,9 +31,6 @@ test-integration:
 test-backend:
     uv run pytest tests/backend/ -v
 
-[group('test')]
-test-frontend:
-    uv run pytest tests/frontend/ -v
 
 [group('test')]
 test-watch:
@@ -75,8 +72,8 @@ clean:
 run-app:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "🚀 Starting Streamlit app on http://localhost:8501"
-    cd frontend && uv run streamlit run main.py --server.port 8501 --server.address 0.0.0.0
+    echo "🚀 Starting Reflex app..."
+    reflex run
 
 # Docker operations
 [group('docker')]
@@ -113,5 +110,5 @@ docker-shell service:
 [group('monitor')]
 status:
     #!/usr/bin/env bash
-    echo "🔍 Checking Streamlit app status..."
-    curl -s http://localhost:8501/_stcore/health >/dev/null && echo "✅ App healthy" || echo "❌ App not responding"
+    echo "🔍 Checking Reflex app status..."
+    curl -s http://localhost:3000 >/dev/null && echo "✅ App healthy" || echo "❌ App not responding"
