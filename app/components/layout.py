@@ -59,7 +59,5 @@ def page_container(*children: rx.Component) -> rx.Component:
             *children,
             class_name="container mx-auto px-4 py-10",
         ),
-        class_name="min-h-screen bg-yellow-50 font-[\'Montserrat\']",
+        class_name="min-h-screen bg-yellow-50 font-['Montserrat']",
     )
-
-

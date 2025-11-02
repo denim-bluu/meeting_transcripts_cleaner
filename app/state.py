@@ -8,6 +8,13 @@ from typing import Any, TypedDict
 from dotenv import load_dotenv
 import reflex as rx
 
+from app.utils.state_transformers import (
+    format_speakers_display,
+    format_validation_issue,
+    transform_action_item_cards,
+    transform_chunk_pairs,
+    transform_key_area_cards,
+)
 from backend.config import configure_structlog
 from shared.config import ERROR_MESSAGES
 from shared.services.pipeline import (
@@ -187,16 +194,12 @@ class State(rx.State):
         self.processing_progress = 0.05
         self.transcript_error = ""
 
-        progress_state = {
-            "pct": self.processing_progress,
-            "status": self.processing_status,
-        }
-
         yield
 
         def on_progress(pct: float, msg: str) -> None:
-            progress_state["pct"] = pct
-            progress_state["status"] = msg
+            """Update progress state directly."""
+            self.processing_progress = pct
+            self.processing_status = msg
 
         try:
             result = await run_transcript_pipeline_async(self.vtt_content, on_progress)
@@ -211,9 +214,7 @@ class State(rx.State):
             yield
             return
 
-        self.processing_progress = progress_state.get("pct", 1.0)
-        status_msg = progress_state.get("status", "Processing complete")
-        self.processing_status = status_msg or "Processing complete"
+        # Progress already updated by callback
         self.transcript_data = result
         self.processing_complete = True
         self.is_processing = False
@@ -251,21 +252,13 @@ class State(rx.State):
             yield
             return
 
-        payload = raw_chunks
-
-        progress_state = {
-            "status": self.intelligence_status,
-            "pct": self.intelligence_progress,
-        }
-
         def on_progress(pct: float, msg: str) -> None:
-            progress_state["pct"] = pct
-            progress_state["status"] = msg
+            """Update intelligence progress state directly."""
             self.intelligence_progress = pct
             self.intelligence_status = msg
 
         try:
-            result = await run_intelligence_pipeline_async(payload or [], on_progress)
+            result = await run_intelligence_pipeline_async(raw_chunks, on_progress)
         except Exception as exc:  # pragma: no cover - backend guard
             logging.exception("Intelligence extraction failed: %s", exc)
             self.intelligence_error = (
@@ -277,9 +270,7 @@ class State(rx.State):
             yield
             return
 
-        status_msg = progress_state.get("status", "Intelligence ready")
-        self.intelligence_status = status_msg or "Intelligence ready"
-        self.intelligence_progress = progress_state.get("pct", 1.0)
+        # Progress already updated by callback
         self.intelligence_data = result
         self.intelligence_running = False
         self.intelligence_status = "Intelligence ready"
@@ -368,15 +359,8 @@ class State(rx.State):
 
     @rx.var
     def transcript_speakers_display(self) -> str:
-        speakers = self.transcript_data.get("speakers") or []
-        return ", ".join(speakers)
-
-    @rx.var
-    def transcript_speakers_display_or_placeholder(self) -> str:
-        speakers = self.transcript_data.get("speakers") or []
-        if not speakers:
-            return "—"
-        return ", ".join(speakers)
+        """Display speakers as comma-separated string, with fallback."""
+        return format_speakers_display(self.transcript_speakers)
 
     @rx.var
     def transcript_has_speakers(self) -> bool:
@@ -475,36 +459,12 @@ class State(rx.State):
 
     @rx.var
     def transcript_chunk_pairs(self) -> list[ChunkReviewDisplay]:
-        pairs: list[ChunkReviewDisplay] = []
-        chunks = self.transcript_chunks
-        cleaned_chunks = self.transcript_cleaned_chunks
-        review_results = self.transcript_review_results
-
-        for idx, chunk in enumerate(chunks):
-            cleaned = cleaned_chunks[idx] if idx < len(cleaned_chunks) else {}
-            review = review_results[idx] if idx < len(review_results) else {}
-
-            quality_score = float(review.get("quality_score", 0.0)) if review else 0.0
-            accept = bool(review.get("accept", False)) if review else False
-            issues = [str(issue) for issue in (review.get("issues") or []) if issue]
-            confidence_text = self._format_confidence(cleaned.get("confidence")) if cleaned else ""
-
-            pairs.append(
-                {
-                    "index_label": f"Chunk {idx + 1}",
-                    "quality_score": f"{quality_score:.2f}",
-                    "quality_label": self._quality_label(quality_score),
-                    "quality_badge_class": self._quality_badge_class(quality_score),
-                    "status_label": "Accepted" if accept else "Needs Review",
-                    "status_badge_class": self._status_badge_class(accept),
-                    "original_text": self._format_original_chunk(chunk),
-                    "cleaned_text": cleaned.get("cleaned_text", "—") if cleaned else "—",
-                    "confidence_text": confidence_text,
-                    "has_issues": len(issues) > 0,
-                    "issues_text": "\n".join(issues),
-                }
-            )
-        return pairs
+        """Transform chunks into display-ready pairs using pure transformer."""
+        return transform_chunk_pairs(
+            self.transcript_chunks,
+            self.transcript_cleaned_chunks,
+            self.transcript_review_results,
+        )
 
     @rx.var
     def has_intelligence(self) -> bool:
@@ -648,75 +608,13 @@ class State(rx.State):
 
     @rx.var
     def intelligence_key_area_cards(self) -> list[KeyAreaDisplay]:
-        cards: list[KeyAreaDisplay] = []
-        for area in self.intelligence_key_areas:
-            if not isinstance(area, dict):
-                continue
-            title = str(area.get("title") or "Theme")
-            summary = str(area.get("summary") or "Summary unavailable.")
-
-            temporal_span = str(area.get("temporal_span") or "Timeline not specified")
-            confidence = area.get("confidence")
-            meta_parts: list[str] = []
-            if temporal_span:
-                meta_parts.append(temporal_span)
-            if isinstance(confidence, float | int):
-                meta_parts.append(f"Confidence {float(confidence) * 100:.0f}%")
-            meta = " • ".join(meta_parts) if meta_parts else "Timeline not specified"
-
-            highlights = [str(point) for point in (area.get("bullet_points") or []) if point]
-
-            decisions_raw = area.get("decisions") or []
-            decisions = [self._format_decision(decision) for decision in decisions_raw if decision]
-
-            actions_raw = area.get("action_items") or []
-            actions = [self._format_action_item(action) for action in actions_raw if action]
-
-            supporting = area.get("supporting_chunks") or []
-            supporting_chunks = ", ".join(str(chunk) for chunk in supporting) if supporting else ""
-            supporting_text = (
-                f"Supporting chunks: {supporting_chunks}" if supporting_chunks else ""
-            )
-
-            cards.append(
-                {
-                    "title": title,
-                    "meta": meta,
-                    "summary": summary,
-                    "highlights": highlights,
-                    "decisions": decisions,
-                    "actions": actions,
-                    "supporting_text": supporting_text,
-                    "has_highlights": len(highlights) > 0,
-                    "has_decisions": len(decisions) > 0,
-                    "has_actions": len(actions) > 0,
-                    "has_supporting": bool(supporting_text),
-                }
-            )
-        return cards
+        """Transform intelligence key areas into display-ready cards."""
+        return transform_key_area_cards(self.intelligence_key_areas)
 
     @rx.var
     def intelligence_action_item_cards(self) -> list[ActionItemDisplay]:
-        cards: list[ActionItemDisplay] = []
-        for item in self.intelligence_action_items:
-            if not isinstance(item, dict):
-                continue
-            title = str(item.get("description") or "Action item")
-            owner = str(item.get("owner") or "Unassigned")
-            due = str(item.get("due_date") or "No due date")
-
-            confidence_text = self._format_confidence(item.get("confidence"))
-
-            cards.append(
-                {
-                    "title": title,
-                    "owner_text": f"Owner: {owner}",
-                    "due_text": f"Due: {due}",
-                    "confidence_text": confidence_text,
-                    "has_confidence": bool(confidence_text),
-                }
-            )
-        return cards
+        """Transform intelligence action items into display-ready cards."""
+        return transform_action_item_cards(self.intelligence_action_items)
 
     @rx.var
     def intelligence_validation_display(self) -> ValidationDisplay:
@@ -734,7 +632,9 @@ class State(rx.State):
         )
 
         issues_raw = validation.get("issues") or []
-        issue_lines = [self._format_validation_issue(issue) for issue in issues_raw if issue]
+        issue_lines = [
+            format_validation_issue(issue) for issue in issues_raw if issue
+        ]
         issues_text = "\n".join(line for line in issue_lines if line)
 
         artifacts = (
@@ -761,83 +661,4 @@ class State(rx.State):
             "notes_text": notes_text,
         }
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _format_confidence(self, confidence: Any) -> str:
-        if confidence is None:
-            return ""
-        try:
-            value = float(confidence)
-        except (TypeError, ValueError):
-            return ""
-        return f"Confidence: {value * 100:.0f}%"
-
-    def _format_original_chunk(self, chunk: dict[str, Any]) -> str:
-        entries = chunk.get("entries") if isinstance(chunk, dict) else None
-        if entries is None and hasattr(chunk, "entries"):
-            entries = chunk.entries
-        if not entries:
-            return "—"
-
-        lines: list[str] = []
-        for entry in entries:
-            speaker = entry.get("speaker") if isinstance(entry, dict) else getattr(entry, "speaker", "Speaker")
-            text = entry.get("text") if isinstance(entry, dict) else getattr(entry, "text", "")
-            start_time = entry.get("start_time") if isinstance(entry, dict) else getattr(entry, "start_time", 0.0)
-            timestamp = self._format_timestamp(float(start_time))
-            lines.append(f"[{timestamp}] {speaker or 'Speaker'}: {text}")
-        return "\n".join(lines) if lines else "—"
-
-    def _quality_label(self, score: float) -> str:
-        if score >= 0.8:
-            return "High Quality"
-        if score >= 0.6:
-            return "Medium Quality"
-        return "Low Quality"
-
-    def _quality_badge_class(self, score: float) -> str:
-        if score >= 0.8:
-            return "text-xs font-bold px-2 py-1 border-2 border-black bg-cyan-300 text-black"
-        if score >= 0.6:
-            return "text-xs font-bold px-2 py-1 border-2 border-black bg-yellow-200 text-black"
-        return "text-xs font-bold px-2 py-1 border-2 border-black bg-red-300 text-black"
-
-    def _status_badge_class(self, accepted: bool) -> str:
-        base = "text-xs font-bold px-3 py-1 border-2 border-black "
-        suffix = "bg-cyan-300 text-black" if accepted else "bg-yellow-200 text-black"
-        return f"{base}{suffix}"
-
-    def _format_decision(self, decision: Any) -> str:
-        if isinstance(decision, dict):
-            statement = str(decision.get("statement") or "Decision")
-            decided_by = str(decision.get("decided_by") or "Unknown")
-            rationale = str(decision.get("rationale") or "No rationale provided")
-            return f"{statement} (by {decided_by}, rationale: {rationale})"
-        return str(decision)
-
-    def _format_action_item(self, action: Any) -> str:
-        if isinstance(action, dict):
-            description = str(action.get("description") or "Action")
-            owner = str(action.get("owner") or "Unassigned")
-            due = str(action.get("due_date") or "No due date")
-            return f"{description} (owner: {owner}, due: {due})"
-        return str(action)
-
-    def _format_validation_issue(self, issue: Any) -> str:
-        if isinstance(issue, dict):
-            level = str(issue.get("level", "info")).upper()
-            message = str(issue.get("message") or "No details")
-            related = issue.get("related_chunks") or []
-            related_text = ", ".join(str(chunk) for chunk in related) if related else ""
-            context = f" (chunks: {related_text})" if related_text else ""
-            return f"[{level}] {message}{context}"
-        return str(issue)
-
-    def _format_timestamp(self, seconds: float) -> str:
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = seconds % 60
-        return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
 

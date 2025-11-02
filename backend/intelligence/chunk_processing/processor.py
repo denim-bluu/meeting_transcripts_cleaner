@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 import json
-from typing import Any
 
 import structlog
 
@@ -16,8 +15,8 @@ from backend.intelligence.models import (
     IntermediateSummary,
 )
 from backend.transcript.models import VTTChunk
-
-ProgressCallback = Callable[[float, str], Any] | Callable[[float, str], Awaitable[Any]]
+from shared.types import ProgressCallback
+from shared.utils.time_formatters import format_timestamp_vtt
 
 
 class ChunkProcessor:
@@ -110,8 +109,12 @@ class ChunkProcessor:
     ) -> ChunkAgentPayload:
         """Call the chunk processing agent with contextual data."""
         transcript_text = chunk.to_transcript_text()
-        primary_speaker = chunk.entries[0].speaker if chunk.entries else "Unknown Speaker"
-        speakers_in_chunk = sorted({entry.speaker for entry in chunk.entries if entry.speaker}) or [primary_speaker]
+        primary_speaker = (
+            chunk.entries[0].speaker if chunk.entries else "Unknown Speaker"
+        )
+        speakers_in_chunk = sorted(
+            {entry.speaker for entry in chunk.entries if entry.speaker}
+        ) or [primary_speaker]
         speaker_label = ", ".join(speakers_in_chunk)
         speaker_role = None
         for name in speakers_in_chunk:
@@ -158,8 +161,12 @@ class ChunkProcessor:
         payload: ChunkAgentPayload,
     ) -> IntermediateSummary:
         """Populate metadata around the agent payload."""
-        speakers_in_chunk = sorted({entry.speaker for entry in chunk.entries if entry.speaker})
-        speaker = ", ".join(speakers_in_chunk) if speakers_in_chunk else "Unknown Speaker"
+        speakers_in_chunk = sorted(
+            {entry.speaker for entry in chunk.entries if entry.speaker}
+        )
+        speaker = (
+            ", ".join(speakers_in_chunk) if speakers_in_chunk else "Unknown Speaker"
+        )
         speaker_role = None
         for name in speakers_in_chunk:
             inferred = self._infer_speaker_role(name)
@@ -258,7 +265,9 @@ class ChunkProcessor:
         previous_text: str | None = None
         for chunk in chunks:
             contexts.append(
-                previous_text[:2000] if previous_text and len(previous_text) > 2000 else previous_text
+                previous_text[:2000]
+                if previous_text and len(previous_text) > 2000
+                else previous_text
             )
             previous_text = chunk.to_transcript_text()
         return contexts
@@ -271,15 +280,7 @@ def _chunk_time_range(chunk: VTTChunk) -> str:
 
     start = min(entry.start_time for entry in chunk.entries)
     end = max(entry.end_time for entry in chunk.entries)
-    return f"{_format_timestamp(start)} - {_format_timestamp(end)}"
-
-
-def _format_timestamp(seconds: float) -> str:
-    """Format seconds as HH:MM:SS.mmm."""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = seconds % 60
-    return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
+    return f"{format_timestamp_vtt(start)} - {format_timestamp_vtt(end)}"
 
 
 async def _maybe_call(

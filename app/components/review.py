@@ -4,13 +4,19 @@ from __future__ import annotations
 
 import reflex as rx
 
+from app.components.common import (
+    export_section as common_export_section,
+    missing_transcript_notice,
+)
 from app.components.metrics import transcript_quality_metrics
 from app.state import ChunkReviewDisplay, State
 
 
 def review_workspace() -> rx.Component:
     return rx.el.section(
-        rx.el.h2("Review Cleaned Transcript", class_name="text-3xl font-black text-black"),
+        rx.el.h2(
+            "Review Cleaned Transcript", class_name="text-3xl font-black text-black"
+        ),
         rx.el.p(
             "Inspect cleaned chunks, quality scores, and export the transcript in multiple formats.",
             class_name="mt-2 text-sm font-bold text-black",
@@ -21,25 +27,6 @@ def review_workspace() -> rx.Component:
             missing_transcript_notice(),
         ),
         class_name="max-w-6xl mx-auto space-y-6",
-    )
-
-
-def missing_transcript_notice() -> rx.Component:
-    return rx.el.div(
-        rx.icon("triangle_alert", class_name="w-5 h-5 text-black mr-2 flex-shrink-0"),
-        rx.el.div(
-            rx.el.p(
-                "No processed transcript available. Upload and process a VTT file first.",
-                class_name="text-sm font-bold text-black mb-3",
-            ),
-            rx.link(
-                "Go to Upload",
-                href="/",
-                class_name="inline-flex w-fit items-center px-6 py-3 bg-black text-yellow-400 font-bold border-4 border-yellow-400 hover:bg-yellow-400 hover:text-black transition-all",
-            ),
-            class_name="flex-1 flex flex-col",
-        ),
-        class_name="mt-6 flex items-start space-x-3 p-4 bg-yellow-200 border-4 border-black",
     )
 
 
@@ -55,7 +42,9 @@ def review_content() -> rx.Component:
 def chunk_review_panel() -> rx.Component:
     return rx.el.section(
         rx.el.div(
-            rx.el.h3("Detailed Chunk Review", class_name="text-xl font-black text-black"),
+            rx.el.h3(
+                "Detailed Chunk Review", class_name="text-xl font-black text-black"
+            ),
             rx.el.p(
                 "Compare the original transcript with cleaned output and quality scores for each chunk.",
                 class_name="mt-1 text-sm font-bold text-black",
@@ -79,7 +68,9 @@ def chunk_review_panel() -> rx.Component:
 def chunk_card(pair: ChunkReviewDisplay) -> rx.Component:
     confidence_helper = rx.cond(
         pair["confidence_text"] != "",
-        rx.el.span(pair["confidence_text"], class_name="text-xs font-bold text-black mt-1"),
+        rx.el.span(
+            pair["confidence_text"], class_name="text-xs font-bold text-black mt-1"
+        ),
         rx.fragment(),
     )
 
@@ -170,36 +161,19 @@ def text_block(
 
 
 def export_section() -> rx.Component:
-    return rx.el.section(
-        rx.el.h3("Export Cleaned Transcript", class_name="text-xl font-black text-black"),
-        rx.el.p(
-            "Download the cleaned transcript in your preferred format.",
-            class_name="mt-1 text-sm font-bold text-black",
-        ),
-        rx.el.div(
-            export_button("TXT", "📄", "txt"),
-            export_button("Markdown", "📝", "md"),
-            export_button("VTT", "🎬", "vtt"),
-            class_name="mt-4 grid gap-3 sm:grid-cols-3",
-        ),
-        rx.cond(
-            State.last_download_error != "",
-        rx.el.div(
-            rx.icon("triangle_alert", class_name="w-4 h-4 mr-2 text-black"),
-                rx.el.span(State.last_download_error, class_name="text-xs font-bold text-black"),
-                class_name="mt-3 flex items-center",
-            ),
-        ),
-        class_name="space-y-2",
+    """Export section for cleaned transcript."""
+    return common_export_section(
+        title="Export Cleaned Transcript",
+        description="Download the cleaned transcript in your preferred format.",
+        formats=[
+            ("TXT", "📄", "txt"),
+            ("Markdown", "📝", "md"),
+            ("VTT", "🎬", "vtt"),
+        ],
+        on_click_handlers={
+            "txt": State.download_transcript("txt"),
+            "md": State.download_transcript("md"),
+            "vtt": State.download_transcript("vtt"),
+        },
+        disabled_condition=~State.has_transcript,
     )
-
-
-def export_button(label: str, icon: str, format_type: str) -> rx.Component:
-    return rx.button(
-        f"{icon} Download {label}",
-        on_click=State.download_transcript(format_type),
-        disabled=~State.has_transcript,
-        class_name="w-full justify-center px-4 py-2 bg-white border-4 border-black text-sm font-bold text-black hover:bg-yellow-200 disabled:opacity-40 transition-all",
-    )
-
-

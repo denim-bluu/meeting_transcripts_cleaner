@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import reflex as rx
 
+from app.components.common import (
+    export_section as common_export_section,
+    missing_transcript_notice,
+)
 from app.components.metrics import metric_card
 from app.state import (
     ActionItemDisplay,
@@ -31,28 +35,11 @@ def intelligence_workspace() -> rx.Component:
                 ),
                 class_name="space-y-8",
             ),
-            missing_transcript_notice(),
+            missing_transcript_notice(
+                "No processed transcript available. Upload and process a VTT file to enable intelligence extraction."
+            ),
         ),
         class_name="max-w-6xl mx-auto space-y-6",
-    )
-
-
-def missing_transcript_notice() -> rx.Component:
-    return rx.el.div(
-        rx.icon("triangle_alert", class_name="w-5 h-5 text-black mr-2 flex-shrink-0"),
-        rx.el.div(
-            rx.el.p(
-                "No processed transcript available. Upload and process a VTT file to enable intelligence extraction.",
-                class_name="text-sm font-bold text-black mb-3",
-            ),
-            rx.link(
-                "Go to Upload",
-                href="/",
-                class_name="inline-flex w-fit items-center px-6 py-3 bg-black text-yellow-400 font-bold border-4 border-yellow-400 hover:bg-yellow-400 hover:text-black transition-all",
-            ),
-            class_name="flex-1 flex flex-col",
-        ),
-        class_name="mt-6 flex items-start space-x-3 p-4 bg-yellow-200 border-4 border-black",
     )
 
 
@@ -73,10 +60,21 @@ def extraction_prompt() -> rx.Component:
             class_name="flex items-start space-x-3",
         ),
         rx.el.ul(
-            rx.el.li("📋 Executive summaries", class_name="text-sm font-medium text-black"),
-            rx.el.li("🎯 Action items with owners and due dates", class_name="text-sm font-medium text-black"),
-            rx.el.li("🧩 Key themes with supporting evidence", class_name="text-sm font-medium text-black"),
-            rx.el.li("✅ Validation notes and unresolved topics", class_name="text-sm font-medium text-black"),
+            rx.el.li(
+                "📋 Executive summaries", class_name="text-sm font-medium text-black"
+            ),
+            rx.el.li(
+                "🎯 Action items with owners and due dates",
+                class_name="text-sm font-medium text-black",
+            ),
+            rx.el.li(
+                "🧩 Key themes with supporting evidence",
+                class_name="text-sm font-medium text-black",
+            ),
+            rx.el.li(
+                "✅ Validation notes and unresolved topics",
+                class_name="text-sm font-medium text-black",
+            ),
             class_name="mt-4 list-disc list-inside space-y-1",
         ),
         rx.cond(
@@ -93,7 +91,9 @@ def extraction_prompt() -> rx.Component:
             State.intelligence_error != "",
             rx.el.div(
                 rx.icon("triangle_alert", class_name="w-4 h-4 mr-2 text-black"),
-                rx.el.span(State.intelligence_error, class_name="text-xs font-bold text-black"),
+                rx.el.span(
+                    State.intelligence_error, class_name="text-xs font-bold text-black"
+                ),
                 class_name="mt-4 flex items-center",
             ),
         ),
@@ -104,10 +104,14 @@ def extraction_prompt() -> rx.Component:
 def extraction_progress_panel() -> rx.Component:
     return rx.el.div(
         rx.el.div(
-            rx.el.span("Extraction Status", class_name="text-xs uppercase font-bold text-black"),
-                rx.el.div(
+            rx.el.span(
+                "Extraction Status", class_name="text-xs uppercase font-bold text-black"
+            ),
+            rx.el.div(
                 rx.spinner(class_name="w-4 h-4 text-black mr-2"),
-                rx.el.p(State.intelligence_status, class_name="text-sm font-bold text-black"),
+                rx.el.p(
+                    State.intelligence_status, class_name="text-sm font-bold text-black"
+                ),
                 class_name="flex items-center",
             ),
             class_name="flex items-center justify-between",
@@ -232,7 +236,10 @@ def key_areas_section() -> rx.Component:
                 rx.foreach(State.intelligence_key_area_cards, key_area_card),
                 class_name="mt-4 space-y-4",
             ),
-            rx.el.div("No key areas were generated for this meeting.", class_name="mt-4 text-sm font-bold text-black"),
+            rx.el.div(
+                "No key areas were generated for this meeting.",
+                class_name="mt-4 text-sm font-bold text-black",
+            ),
         ),
         class_name="space-y-2",
     )
@@ -242,11 +249,15 @@ def key_area_card(area: KeyAreaDisplay) -> rx.Component:
     highlights_section = rx.cond(
         area["has_highlights"],
         rx.el.div(
-            rx.el.span("Highlights", class_name="text-xs font-bold text-black uppercase"),
-                    rx.el.ul(
-                    rx.foreach(
-                        area["highlights"],
-                        lambda highlight, _: rx.el.li(highlight, class_name="text-sm font-medium text-black"),
+            rx.el.span(
+                "Highlights", class_name="text-xs font-bold text-black uppercase"
+            ),
+            rx.el.ul(
+                rx.foreach(
+                    area["highlights"],
+                    lambda highlight, _: rx.el.li(
+                        highlight, class_name="text-sm font-medium text-black"
+                    ),
                 ),
                 class_name="mt-2 list-disc list-inside space-y-1",
             ),
@@ -258,11 +269,15 @@ def key_area_card(area: KeyAreaDisplay) -> rx.Component:
     decisions_section = rx.cond(
         area["has_decisions"],
         rx.el.div(
-            rx.el.span("Decisions", class_name="text-xs font-bold text-black uppercase"),
-                    rx.el.ul(
-                    rx.foreach(
-                        area["decisions"],
-                        lambda decision, _: rx.el.li(decision, class_name="text-sm font-medium text-black"),
+            rx.el.span(
+                "Decisions", class_name="text-xs font-bold text-black uppercase"
+            ),
+            rx.el.ul(
+                rx.foreach(
+                    area["decisions"],
+                    lambda decision, _: rx.el.li(
+                        decision, class_name="text-sm font-medium text-black"
+                    ),
                 ),
                 class_name="mt-2 list-disc list-inside space-y-1",
             ),
@@ -275,10 +290,12 @@ def key_area_card(area: KeyAreaDisplay) -> rx.Component:
         area["has_actions"],
         rx.el.div(
             rx.el.span("Actions", class_name="text-xs font-bold text-black uppercase"),
-                    rx.el.ul(
-                    rx.foreach(
-                        area["actions"],
-                        lambda action, _: rx.el.li(action, class_name="text-sm font-medium text-black"),
+            rx.el.ul(
+                rx.foreach(
+                    area["actions"],
+                    lambda action, _: rx.el.li(
+                        action, class_name="text-sm font-medium text-black"
+                    ),
                 ),
                 class_name="mt-2 list-disc list-inside space-y-1",
             ),
@@ -326,7 +343,10 @@ def action_items_section() -> rx.Component:
                 rx.foreach(State.intelligence_action_item_cards, action_item_card),
                 class_name="mt-4 grid gap-4 md:grid-cols-2",
             ),
-            rx.el.div("No action items were generated for this meeting.", class_name="mt-4 text-sm font-bold text-black"),
+            rx.el.div(
+                "No action items were generated for this meeting.",
+                class_name="mt-4 text-sm font-bold text-black",
+            ),
         ),
         class_name="space-y-2",
     )
@@ -335,7 +355,9 @@ def action_items_section() -> rx.Component:
 def action_item_card(item: ActionItemDisplay) -> rx.Component:
     confidence_section = rx.cond(
         item["has_confidence"],
-        rx.el.span(item["confidence_text"], class_name="text-xs font-bold text-black mt-3"),
+        rx.el.span(
+            item["confidence_text"], class_name="text-xs font-bold text-black mt-3"
+        ),
         rx.fragment(),
     )
 
@@ -363,7 +385,10 @@ def validation_section() -> rx.Component:
         rx.cond(
             details["has_issues"],
             rx.el.div(
-                rx.el.span("Detected Issues", class_name="text-xs font-bold text-black uppercase"),
+                rx.el.span(
+                    "Detected Issues",
+                    class_name="text-xs font-bold text-black uppercase",
+                ),
                 rx.el.pre(
                     details["issues_text"],
                     class_name="mt-2 whitespace-pre-wrap text-sm font-medium text-black bg-white border-4 border-black px-2 py-2",
@@ -374,7 +399,10 @@ def validation_section() -> rx.Component:
         rx.cond(
             details["has_unresolved"],
             rx.el.div(
-                rx.el.span("Unresolved Topics", class_name="text-xs font-bold text-black uppercase"),
+                rx.el.span(
+                    "Unresolved Topics",
+                    class_name="text-xs font-bold text-black uppercase",
+                ),
                 rx.el.pre(
                     details["unresolved_text"],
                     class_name="mt-2 whitespace-pre-wrap text-sm font-medium text-black bg-white border-4 border-black px-2 py-2",
@@ -385,7 +413,10 @@ def validation_section() -> rx.Component:
         rx.cond(
             details["has_notes"],
             rx.el.div(
-                rx.el.span("Validation Notes", class_name="text-xs font-bold text-black uppercase"),
+                rx.el.span(
+                    "Validation Notes",
+                    class_name="text-xs font-bold text-black uppercase",
+                ),
                 rx.el.pre(
                     details["notes_text"],
                     class_name="mt-2 whitespace-pre-wrap text-sm font-medium text-black bg-white border-4 border-black px-2 py-2",
@@ -396,36 +427,20 @@ def validation_section() -> rx.Component:
         class_name="space-y-3",
     )
 
+
 def export_section() -> rx.Component:
-    return rx.el.section(
-        rx.el.h3("Export Intelligence", class_name="text-xl font-black text-black"),
-        rx.el.p(
-            "Download the intelligence package as Markdown or plain text.",
-            class_name="mt-1 text-sm font-bold text-black",
-        ),
-        rx.el.div(
-            intelligence_export_button("TXT", "📄", "txt"),
-            intelligence_export_button("Markdown", "📝", "md"),
-            class_name="mt-4 grid gap-3 sm:grid-cols-2",
-        ),
-        rx.cond(
-            State.last_download_error != "",
-            rx.el.div(
-                rx.icon("triangle_alert", class_name="w-4 h-4 mr-2 text-black"),
-                rx.el.span(State.last_download_error, class_name="text-xs font-bold text-black"),
-                class_name="mt-3 flex items-center",
-            ),
-        ),
-        class_name="space-y-2",
+    """Export section for intelligence data."""
+    return common_export_section(
+        title="Export Intelligence",
+        description="Download the intelligence package as Markdown or plain text.",
+        formats=[
+            ("TXT", "📄", "txt"),
+            ("Markdown", "📝", "md"),
+        ],
+        on_click_handlers={
+            "txt": State.download_intelligence("txt"),
+            "md": State.download_intelligence("md"),
+        },
+        disabled_condition=~State.has_intelligence,
+        grid_cols="sm:grid-cols-2",
     )
-
-
-def intelligence_export_button(label: str, icon: str, format_type: str) -> rx.Component:
-    return rx.button(
-        f"{icon} Download {label}",
-        on_click=State.download_intelligence(format_type),
-        disabled=~State.has_intelligence,
-        class_name="w-full justify-center px-4 py-2 bg-white border-4 border-black text-sm font-bold text-black hover:bg-yellow-200 disabled:opacity-40 transition-all",
-    )
-
-

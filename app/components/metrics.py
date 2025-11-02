@@ -5,9 +5,13 @@ import reflex as rx
 from app.state import State
 
 
-def metric_card(title: str, value: rx.Var | str, helper: rx.Component | None = None) -> rx.Component:
+def metric_card(
+    title: str, value: rx.Var | str, helper: rx.Component | None = None
+) -> rx.Component:
     elements: list[rx.Component] = [
-        rx.el.span(title, class_name="text-xs font-bold text-black uppercase tracking-wide"),
+        rx.el.span(
+            title, class_name="text-xs font-bold text-black uppercase tracking-wide"
+        ),
         rx.el.p(value, class_name="mt-1 text-3xl font-black text-black"),
     ]
     if helper is not None:
@@ -84,5 +88,3 @@ def transcript_quality_metrics() -> rx.Component:
             class_name="mt-10",
         ),
     )
-
-

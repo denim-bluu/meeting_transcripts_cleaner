@@ -30,6 +30,21 @@ def _serialize_transcript_dict(transcript: dict[str, Any]) -> dict[str, Any]:
     return {k: _serialize_value(v) for k, v in transcript.items()}
 
 
+def _normalize_progress_callback(
+    callback: Callable[[float, str], None],
+) -> Callable[[float, str], None]:
+    """Wrap progress callback to normalize progress values and handle errors."""
+
+    def wrapper(pct: float, msg: str) -> None:
+        try:
+            pct = max(0.0, min(1.0, pct))
+            callback(pct, msg)
+        except Exception:
+            pass  # Ignore errors in progress callbacks
+
+    return wrapper
+
+
 async def run_transcript_pipeline_async(
     content_str: str,
     on_progress: Callable[[float, str], None],
@@ -40,23 +55,20 @@ async def run_transcript_pipeline_async(
     Processes VTT content through parsing, cleaning, and review stages.
     Returns serialized transcript data suitable for frontend consumption.
     """
-
     service = TranscriptService(api_key=api_key or "")
     transcript = service.process_vtt(content_str)
 
-    def progress_sync(pct: float, msg: str) -> None:
-        try:
-            pct = max(0.0, min(1.0, pct))
-            on_progress(pct, msg)
-        except Exception:
-            pass
-
-    result = await service.clean_transcript(transcript, progress_callback=progress_sync)
+    normalized_callback = _normalize_progress_callback(on_progress)
+    result = await service.clean_transcript(
+        transcript, progress_callback=normalized_callback
+    )
     return _serialize_transcript_dict(result)
 
 
 def run_transcript_pipeline(
-    content_str: str, on_progress: Callable[[float, str], None], api_key: str | None = None
+    content_str: str,
+    on_progress: Callable[[float, str], None],
+    api_key: str | None = None,
 ) -> dict[str, Any]:
     """Synchronous convenience wrapper for environments that need it."""
 
@@ -125,16 +137,10 @@ async def run_intelligence_pipeline_async(
             "No valid chunks found for intelligence extraction. All chunks are empty or contain no text."
         )
 
-    vtt_chunks = filtered_chunks
-
-    def progress_sync(pct: float, msg: str) -> None:
-        try:
-            pct = max(0.0, min(1.0, pct))
-            on_progress(pct, msg)
-        except Exception:
-            pass
-
-    result = await orchestrator.process_meeting(vtt_chunks, progress_callback=progress_sync)
+    normalized_callback = _normalize_progress_callback(on_progress)
+    result = await orchestrator.process_meeting(
+        filtered_chunks, progress_callback=normalized_callback
+    )
     return result.model_dump()
 
 
@@ -147,4 +153,3 @@ def run_intelligence_pipeline(
     return run_async(
         run_intelligence_pipeline_async(chunks_raw_or_dataclass, on_progress)
     )
-

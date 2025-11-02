@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 import json
 from typing import Any
 
@@ -16,8 +16,7 @@ from backend.intelligence.models import (
     ConversationState,
     IntermediateSummary,
 )
-
-ProgressCallback = Callable[[float, str], Any] | Callable[[float, str], Awaitable[Any]]
+from shared.types import ProgressCallback
 
 
 class SemanticAggregator:

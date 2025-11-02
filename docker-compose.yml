@@ -1,3 +1,0 @@
-# Docker compose configuration removed - use `reflex run` for local development
-# Reflex apps run directly via `reflex run` command
-# For production deployments, use Reflex's built-in deployment options

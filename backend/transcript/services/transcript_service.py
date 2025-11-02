@@ -9,11 +9,9 @@ import structlog
 
 from backend.config import settings
 from backend.intelligence.intelligence_orchestrator import IntelligenceOrchestrator
+from backend.transcript.agents.cleaner import cleaning_agent
+from backend.transcript.agents.reviewer import review_agent
 from backend.transcript.models import CleaningResult, ReviewResult, VTTChunk
-from backend.transcript.services.cleaning_service import (
-    TranscriptCleaningService,
-)
-from backend.transcript.services.review_service import TranscriptReviewService
 from backend.transcript.services.vtt_processor import VTTProcessor
 
 logger = structlog.get_logger(__name__)
@@ -60,9 +58,7 @@ class TranscriptService:
         # Initialize throttler for rate limiting
         self.throttler = Throttler(rate_limit=rate_limit, period=60)
 
-        # Initialize services using pure agents
-        self.cleaner = TranscriptCleaningService()
-        self.reviewer = TranscriptReviewService()
+        # Initialize intelligence orchestrator
         self._intelligence_orchestrator = IntelligenceOrchestrator(
             chunk_max_concurrency=intelligence_max_concurrency
         )
@@ -131,13 +127,14 @@ class TranscriptService:
     async def _process_chunk_with_concurrency_control(
         self, chunk: VTTChunk, chunk_index: int, prev_text: str = ""
     ) -> tuple[CleaningResult, ReviewResult]:
-        """Process a single chunk with concurrency control and rate limiting. Retries are handled by Pydantic AI agents."""
+        """Process a single chunk with concurrency control and rate limiting."""
         async with self.semaphore, self.throttler:
             start_time = time.time()
             chunk_speakers = list({entry.speaker for entry in chunk.entries})
+            chunk_text = chunk.to_transcript_text()
 
             logger.info(
-                "Processing chunk with concurrency control",
+                "Processing chunk",
                 chunk_id=chunk.chunk_id,
                 chunk_index=chunk_index,
                 token_count=chunk.token_count,
@@ -145,18 +142,35 @@ class TranscriptService:
                 unique_speakers=len(chunk_speakers),
                 speakers=chunk_speakers,
                 has_previous_context=len(prev_text) > 0,
-                semaphore_available=self.semaphore._value,
-                throttler_active=True,
             )
 
             try:
                 # Clean chunk
-                clean_result = await self.cleaner.clean_chunk(chunk, prev_text)
+                context = prev_text[-200:] if prev_text else ""
+                context_deps = {"prev_text": context}
+                user_prompt = f"""Previous context for flow: ...{context}
+
+Current chunk to clean:
+{chunk_text}
+
+Return JSON with cleaned_text, confidence, and changes_made."""
+
+                clean_result_response = await cleaning_agent.run(
+                    user_prompt, deps=context_deps
+                )
+                clean_result = clean_result_response.output
 
                 # Review cleaning
-                review_result = await self.reviewer.review_chunk(
-                    chunk, clean_result.cleaned_text
-                )
+                review_prompt = f"""Original transcript:
+{chunk_text}
+
+Cleaned version:
+{clean_result.cleaned_text}
+
+Evaluate the cleaning quality and return JSON with quality_score, issues, and accept."""
+
+                review_result_response = await review_agent.run(review_prompt)
+                review_result = review_result_response.output
 
                 processing_time = time.time() - start_time
                 logger.info(
@@ -377,80 +391,7 @@ class TranscriptService:
 
         return transcript
 
-    def export(self, transcript: dict, format: str) -> str:
-        """
-        Export cleaned transcript in requested format.
-
-        Formats:
-        - "vtt": WEBVTT with cleaned text, preserving timestamps
-        - "txt": Simple text with "Speaker: text" format
-        - "json": Complete data structure
-
-        For VTT: Reconstruct using original timestamps but cleaned text
-        For TXT: Simple concatenation of cleaned chunks
-        For JSON: Return full transcript dict as JSON string
-        """
-        if format == "vtt":
-            # Reconstruct VTT with original or cleaned text
-            lines = ["WEBVTT", ""]
-
-            # Use original entries for now (cleaned mapping is complex)
-            if "entries" in transcript:
-                for entry in transcript["entries"]:
-                    # Format VTT cue
-                    start_str = self._format_timestamp(entry.start_time)
-                    end_str = self._format_timestamp(entry.end_time)
-
-                    lines.append(entry.cue_id)
-                    lines.append(f"{start_str} --> {end_str}")
-                    lines.append(f"<v {entry.speaker}>{entry.text}</v>")
-                    lines.append("")
-
-            return "\n".join(lines)
-
-        elif format == "txt":
-            # Use final transcript if available, otherwise create from chunks
-            if "final_transcript" in transcript:
-                return transcript["final_transcript"]
-            elif "chunks" in transcript:
-                return "\n\n".join(
-                    chunk.to_transcript_text() for chunk in transcript["chunks"]
-                )
-            else:
-                return ""
-
-        elif format == "json":
-            import json
-
-            # Convert the transcript dict to JSON, handling Pydantic models
-            serializable_transcript = {}
-            for key, value in transcript.items():
-                if hasattr(value, "model_dump"):
-                    # Pydantic model
-                    serializable_transcript[key] = value.model_dump()
-                elif (
-                    isinstance(value, list)
-                    and value
-                    and hasattr(value[0], "model_dump")
-                ):
-                    # List of Pydantic models
-                    serializable_transcript[key] = [item.model_dump() for item in value]
-                else:
-                    serializable_transcript[key] = value
-            return json.dumps(serializable_transcript, indent=2, default=str)
-        else:
-            raise ValueError(f"Unsupported format: {format}")
-
-    def _format_timestamp(self, seconds: float) -> str:
-        """Format seconds as VTT timestamp (HH:MM:SS.mmm)."""
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = seconds % 60
-        return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
-
-    async def extract_intelligence(
-        self, transcript: dict
-    ) -> dict:
+    async def extract_intelligence(self, transcript: dict) -> dict:
         """
         Extract intelligence from cleaned transcript using comprehensive approach.
         Call after clean_transcript completes.

@@ -62,19 +62,25 @@ def upload_details() -> rx.Component:
             ),
             rx.el.div(
                 rx.el.div(
-                    rx.el.span("Filename", class_name="text-xs text-gray-500 uppercase"),
+                    rx.el.span(
+                        "Filename", class_name="text-xs text-gray-500 uppercase"
+                    ),
                     rx.el.p(State.uploaded_file_name, class_name="font-medium text-sm"),
                     class_name="flex-1",
                 ),
                 rx.el.div(
                     rx.el.span("Size", class_name="text-xs text-gray-500 uppercase"),
-                    rx.el.p(State.upload_size_display, class_name="font-medium text-sm"),
+                    rx.el.p(
+                        State.upload_size_display, class_name="font-medium text-sm"
+                    ),
                     class_name="flex-1",
                 ),
                 class_name="grid grid-cols-2 gap-4 mt-4",
             ),
             rx.el.div(
-                rx.el.span("Preview", class_name="text-xs font-bold text-black uppercase"),
+                rx.el.span(
+                    "Preview", class_name="text-xs font-bold text-black uppercase"
+                ),
                 rx.el.pre(
                     State.upload_preview,
                     class_name="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-sm bg-black text-yellow-400 px-4 py-3 border-4 border-black font-mono",
@@ -95,13 +101,31 @@ def upload_details() -> rx.Component:
 
 def upload_steps() -> rx.Component:
     return rx.el.div(
-        rx.el.h3("What happens during processing", class_name="text-base font-bold text-black"),
+        rx.el.h3(
+            "What happens during processing",
+            class_name="text-base font-bold text-black",
+        ),
         rx.el.ul(
-            rx.el.li("📤 Upload: File loaded into the app", class_name="text-sm font-medium text-black"),
-            rx.el.li("🔧 Parse: VTT parsed and chunked for AI processing", class_name="text-sm font-medium text-black"),
-            rx.el.li("🤖 Clean: AI agents clean speech-to-text errors", class_name="text-sm font-medium text-black"),
-            rx.el.li("📊 Review: Quality review ensures accuracy", class_name="text-sm font-medium text-black"),
-            rx.el.li("✅ Complete: Cleaned transcript ready for review", class_name="text-sm font-medium text-black"),
+            rx.el.li(
+                "📤 Upload: File loaded into the app",
+                class_name="text-sm font-medium text-black",
+            ),
+            rx.el.li(
+                "🔧 Parse: VTT parsed and chunked for AI processing",
+                class_name="text-sm font-medium text-black",
+            ),
+            rx.el.li(
+                "🤖 Clean: AI agents clean speech-to-text errors",
+                class_name="text-sm font-medium text-black",
+            ),
+            rx.el.li(
+                "📊 Review: Quality review ensures accuracy",
+                class_name="text-sm font-medium text-black",
+            ),
+            rx.el.li(
+                "✅ Complete: Cleaned transcript ready for review",
+                class_name="text-sm font-medium text-black",
+            ),
             class_name="mt-3 space-y-2 list-disc list-inside",
         ),
         class_name="mt-6 p-4 bg-cyan-100 border-4 border-dashed border-black",
@@ -113,8 +137,13 @@ def processing_progress_panel() -> rx.Component:
         (State.is_processing) | (State.processing_status != ""),
         rx.el.div(
             rx.el.div(
-                rx.el.span("Processing Status", class_name="text-xs uppercase font-bold text-black"),
-                rx.el.p(State.processing_status, class_name="text-sm font-bold text-black"),
+                rx.el.span(
+                    "Processing Status",
+                    class_name="text-xs uppercase font-bold text-black",
+                ),
+                rx.el.p(
+                    State.processing_status, class_name="text-sm font-bold text-black"
+                ),
                 class_name="flex items-center justify-between",
             ),
             rx.el.div(
@@ -141,7 +170,10 @@ def processing_progress_panel() -> rx.Component:
                 State.transcript_error != "",
                 rx.el.div(
                     rx.icon("triangle_alert", class_name="w-4 h-4 mr-2 text-red-600"),
-                    rx.el.span(State.transcript_error, class_name="text-xs font-bold text-black"),
+                    rx.el.span(
+                        State.transcript_error,
+                        class_name="text-xs font-bold text-black",
+                    ),
                     class_name="mt-3 flex items-start",
                 ),
             ),
@@ -172,4 +204,3 @@ def upload_panel() -> rx.Component:
         rx.cond(State.has_uploaded_file, rx.el.div(), upload_steps()),
         class_name="w-full max-w-3xl mx-auto",
     )
-

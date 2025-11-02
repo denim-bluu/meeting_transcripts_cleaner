@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from shared.utils.time_formatters import format_timestamp_vtt
+
 
 def generate_export_content(
     data: dict[str, Any], format_type: str, include_metadata: bool = True
@@ -33,8 +35,8 @@ def _format_as_vtt(data: dict[str, Any]) -> str:
     chunks = data.get("chunks", [])
     for chunk in chunks:
         for entry in chunk.get("entries", []):
-            start_formatted = _format_timestamp(entry.get("start_time", 0.0))
-            end_formatted = _format_timestamp(entry.get("end_time", 0.0))
+            start_formatted = format_timestamp_vtt(entry.get("start_time", 0.0))
+            end_formatted = format_timestamp_vtt(entry.get("end_time", 0.0))
             speaker = entry.get("speaker", "Speaker")
             text = entry.get("text", "")
             cue_id = entry.get("cue_id")
@@ -46,14 +48,6 @@ def _format_as_vtt(data: dict[str, Any]) -> str:
             lines.append("")
 
     return "\n".join(lines)
-
-
-def _format_timestamp(seconds: float) -> str:
-    """Format seconds as VTT timestamp (HH:MM:SS.mmm)."""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = seconds % 60
-    return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
 
 
 def _format_as_markdown(data: dict[str, Any], include_metadata: bool) -> str:
@@ -178,4 +172,3 @@ def _format_as_text(data: dict[str, Any], include_metadata: bool) -> str:
             lines.append(f"{formatted_key}: {value}")
 
     return "\n".join(lines)
-

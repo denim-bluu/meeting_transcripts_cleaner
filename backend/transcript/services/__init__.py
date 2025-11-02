@@ -1,8 +1,9 @@
-"""Transcript processing services that orchestrate pure Pydantic AI agents."""
+"""Transcript processing services."""
 
-from backend.transcript.services.cleaning_service import (
-    TranscriptCleaningService,
-)
-from backend.transcript.services.review_service import TranscriptReviewService
+from backend.transcript.services.transcript_service import TranscriptService
+from backend.transcript.services.vtt_processor import VTTProcessor
 
-__all__ = ["TranscriptCleaningService", "TranscriptReviewService"]
+__all__ = [
+    "TranscriptService",
+    "VTTProcessor",
+]
