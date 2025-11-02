@@ -539,46 +539,6 @@ class State(rx.State):
         return "Summary not available."
 
     @rx.var
-    def intelligence_summary_html(self) -> str:
-        """Convert markdown summary to HTML."""
-        try:
-            import markdown
-
-            summary = self.intelligence_summary_text
-            if not summary or summary == "Summary not available.":
-                return "<p>Summary not available.</p>"
-
-            md = markdown.Markdown(extensions=["fenced_code", "tables", "nl2br"])
-            html = md.convert(summary)
-            return html
-        except ImportError:
-            # Fallback to plain text if markdown library not available
-            summary = self.intelligence_summary_text
-            if not summary or summary == "Summary not available.":
-                return "Summary not available."
-            # Simple conversion: newlines to <br>, bold/headers preserved as-is for now
-            lines = summary.split("\n")
-            html_lines = []
-            for line in lines:
-                if line.strip().startswith("###"):
-                    text = line.replace("###", "").strip()
-                    html_lines.append(f"<h3>{text}</h3>")
-                elif line.strip().startswith("##"):
-                    text = line.replace("##", "").strip()
-                    html_lines.append(f"<h2>{text}</h2>")
-                elif line.strip().startswith("#"):
-                    text = line.replace("#", "").strip()
-                    html_lines.append(f"<h1>{text}</h1>")
-                elif line.strip().startswith("-") or line.strip().startswith("*"):
-                    text = line.strip().lstrip("-* ").strip()
-                    html_lines.append(f"<li>{text}</li>")
-                elif line.strip():
-                    html_lines.append(f"<p>{line}</p>")
-                else:
-                    html_lines.append("<br>")
-            return "".join(html_lines) if html_lines else summary
-
-    @rx.var
     def cleansed_transcript_text(self) -> str:
         """Get the final cleansed transcript text."""
         if not self.transcript_data:
