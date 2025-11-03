@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
-import json
-from typing import Any
 
 import structlog
 
@@ -18,19 +16,18 @@ from backend.intelligence.models import (
 )
 from shared.types import ProgressCallback
 
+logger = structlog.get_logger(__name__)
 
 class SemanticAggregator:
     """Aggregates intermediate chunk summaries into final meeting intelligence."""
 
-    def __init__(self, *, agent=aggregation_agent) -> None:
-        self._agent = agent
-        self._logger = structlog.get_logger(__name__)
+    def __init__(self) -> None:
+        self._agent = aggregation_agent
         self._semaphore = asyncio.Semaphore(1)  # sequential to maintain ordering
 
     async def aggregate(
         self,
         summaries: Sequence[IntermediateSummary],
-        *,
         conversation_state: ConversationState,
         progress_callback: ProgressCallback | None = None,
     ) -> AggregationAgentPayload:
@@ -38,32 +35,43 @@ class SemanticAggregator:
         if not summaries:
             raise ValueError("No intermediate summaries provided for aggregation.")
 
-        await _maybe_call(progress_callback, 0.45, "Aggregation: preparing context")
+        await _maybe_call(progress_callback, 0.52, "Preparing aggregation context...")
 
-        payload = {
-            "conversation_state": conversation_state.model_dump(),
-            "intermediate_summaries": [
-                _serialize_summary(summary) for summary in summaries
-            ],
-        }
-        prompt = (
-            "You are the aggregation stage for a meeting intelligence system.\n"
-            "Use the provided intermediate summaries (already speaker-aware and temporally ordered) "
-            "to produce meeting-level insights, following the AggregationAgentPayload schema.\n\n"
-            f"Context JSON:\n{json.dumps(payload, indent=2)}"
+        # Format summaries naturally for the agent
+        summaries_text = "\n\n".join(
+            f"Chunk {s.chunk_id} ({s.time_range}) - {s.speaker}:\n{s.narrative_summary}"
+            for s in summaries
         )
 
-        self._logger.info(
+        conversation_context = f"""Conversation state:
+- Last topic: {conversation_state.last_topic or 'None'}
+- Key decisions: {len(conversation_state.key_decisions)} tracked
+- Last speaker: {conversation_state.last_speaker or 'None'}
+"""
+
+        prompt = f"""Synthesize meeting intelligence from {len(summaries)} chunk summaries.
+
+{summaries_text}
+
+{conversation_context}
+
+Create narrative sections, identify key areas, consolidate action items, build a timeline, and flag any unresolved topics or contradictions."""
+
+        logger.info(
             "Running aggregation agent",
             summary_count=len(summaries),
             first_chunk=summaries[0].chunk_id,
             last_chunk=summaries[-1].chunk_id,
         )
 
+        await _maybe_call(progress_callback, 0.55, "Aggregating insights...")
+
         async with self._semaphore:
             result = await self._agent.run(prompt)
 
-        await _maybe_call(progress_callback, 0.7, "Aggregation completed")
+        await _maybe_call(
+            progress_callback, 0.75, "Organizing key areas and action items..."
+        )
         return result.output
 
     def build_artifacts(
@@ -75,11 +83,6 @@ class SemanticAggregator:
             unresolved_topics=agent_payload.unresolved_topics,
             validation_notes=agent_payload.validation_notes,
         )
-
-
-def _serialize_summary(summary: IntermediateSummary) -> dict[str, Any]:
-    """Serialize an IntermediateSummary for prompt usage."""
-    return summary.model_dump(exclude_none=True)
 
 
 async def _maybe_call(

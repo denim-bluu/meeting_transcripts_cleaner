@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
 import logging
 from typing import Any, TypedDict
 
@@ -18,6 +20,7 @@ from app.utils.state_transformers import (
 from backend.config import configure_structlog
 from shared.config import ERROR_MESSAGES
 from shared.services.pipeline import (
+    rehydrate_vtt_chunks,
     run_intelligence_pipeline_async,
     run_transcript_pipeline_async,
 )
@@ -115,6 +118,37 @@ class State(rx.State):
         """Update the current page for navigation highlighting."""
         self.current_page = page
 
+    def _create_normalized_progress_callback(
+        self,
+        progress_attr: str,
+        status_attr: str,
+    ) -> Callable[[float, str], None] | Callable[[float, str], Awaitable[None]]:
+        """Create a normalized progress callback that updates state attributes.
+
+        Normalizes progress values to [0.0, 1.0] and handles errors silently.
+        Returns an async callback that properly updates Reflex state.
+
+        Args:
+            progress_attr: Name of the state attribute to update with progress (float)
+            status_attr: Name of the state attribute to update with status message (str)
+
+        Returns:
+            Async callback function that can be passed to backend services
+        """
+        async def on_progress(pct: float, msg: str) -> None:
+            try:
+                # Normalize progress to valid range
+                pct = max(0.0, min(1.0, pct))
+                # Update state attributes directly - Reflex will detect these changes
+                setattr(self, progress_attr, pct)
+                setattr(self, status_attr, msg)
+            except Exception:
+                # Silently ignore errors in progress callbacks
+                # Don't let UI updates crash the backend processing
+                pass
+
+        return on_progress
+
     @rx.event
     async def handle_upload(self, files: list[rx.UploadFile]):
         """Handle uploaded VTT file and store metadata for processing."""
@@ -196,13 +230,23 @@ class State(rx.State):
 
         yield
 
-        def on_progress(pct: float, msg: str) -> None:
-            """Update progress state directly."""
-            self.processing_progress = pct
-            self.processing_status = msg
+        on_progress = self._create_normalized_progress_callback(
+            "processing_progress",
+            "processing_status",
+        )
+
+        # Run pipeline in background task while periodically yielding for UI updates
+        async def run_pipeline():
+            return await run_transcript_pipeline_async(self.vtt_content, on_progress)
+
+        pipeline_task = asyncio.create_task(run_pipeline())
 
         try:
-            result = await run_transcript_pipeline_async(self.vtt_content, on_progress)
+            # Periodically yield to allow Reflex to process state updates
+            while not pipeline_task.done():
+                await asyncio.sleep(0.1)  # Check every 100ms
+                yield
+            result = await pipeline_task
         except Exception as exc:  # pragma: no cover - backend guard
             logging.exception("Transcript processing failed: %s", exc)
             self.transcript_error = (
@@ -215,7 +259,7 @@ class State(rx.State):
             return
 
         # Progress already updated by callback
-        self.transcript_data = result
+        self.transcript_data = result.model_dump()
         self.processing_complete = True
         self.is_processing = False
         self.processing_progress = 1.0
@@ -241,10 +285,10 @@ class State(rx.State):
 
         yield
 
-        # Use raw chunks (VTTChunk objects) for intelligence pipeline
-        # The intelligence pipeline needs VTTChunk objects with entries, not CleaningResult objects
-        raw_chunks = self.transcript_data.get("chunks", [])
-        if not raw_chunks:
+        # Extract chunks from nested transcript structure
+        transcript_info = self.transcript_data.get("transcript", {})
+        chunks = rehydrate_vtt_chunks(transcript_info.get("chunks", []))
+        if not chunks:
             self.intelligence_error = "No chunks available for intelligence extraction. Please process a transcript first."
             self.intelligence_running = False
             self.intelligence_status = ""
@@ -252,13 +296,23 @@ class State(rx.State):
             yield
             return
 
-        def on_progress(pct: float, msg: str) -> None:
-            """Update intelligence progress state directly."""
-            self.intelligence_progress = pct
-            self.intelligence_status = msg
+        on_progress = self._create_normalized_progress_callback(
+            "intelligence_progress",
+            "intelligence_status",
+        )
+
+        # Run pipeline in background task while periodically yielding for UI updates
+        async def run_pipeline():
+            return await run_intelligence_pipeline_async(chunks, on_progress)
+
+        pipeline_task = asyncio.create_task(run_pipeline())
 
         try:
-            result = await run_intelligence_pipeline_async(raw_chunks, on_progress)
+            # Periodically yield to allow Reflex to process state updates
+            while not pipeline_task.done():
+                await asyncio.sleep(0.1)  # Check every 100ms
+                yield
+            result = await pipeline_task
         except Exception as exc:  # pragma: no cover - backend guard
             logging.exception("Intelligence extraction failed: %s", exc)
             self.intelligence_error = (
@@ -330,7 +384,8 @@ class State(rx.State):
 
     @rx.var
     def transcript_chunks(self) -> list[dict[str, Any]]:
-        return list(self.transcript_data.get("chunks", []))
+        transcript_info = self.transcript_data.get("transcript", {})
+        return list(transcript_info.get("chunks", []))
 
     @rx.var
     def transcript_cleaned_chunks(self) -> list[dict[str, Any]]:
@@ -354,7 +409,8 @@ class State(rx.State):
 
     @rx.var
     def transcript_speakers(self) -> list[str]:
-        speakers = self.transcript_data.get("speakers") or []
+        transcript_info = self.transcript_data.get("transcript", {})
+        speakers = transcript_info.get("speakers", [])
         return list(speakers)
 
     @rx.var
@@ -364,12 +420,14 @@ class State(rx.State):
 
     @rx.var
     def transcript_has_speakers(self) -> bool:
-        speakers = self.transcript_data.get("speakers") or []
+        transcript_info = self.transcript_data.get("transcript", {})
+        speakers = transcript_info.get("speakers", [])
         return len(speakers) > 0
 
     @rx.var
     def transcript_duration_display(self) -> str:
-        duration = float(self.transcript_data.get("duration") or 0.0)
+        transcript_info = self.transcript_data.get("transcript", {})
+        duration = float(transcript_info.get("duration", 0.0))
         if duration <= 0:
             return "0s"
         if duration < 60:
@@ -483,27 +541,11 @@ class State(rx.State):
         return float(self.intelligence_data.get("confidence") or 0.0)
 
     @rx.var
-    def intelligence_processing_time(self) -> float:
-        stats = self.intelligence_data.get("processing_stats") or {}
-        return float(stats.get("time_ms", 0.0)) / 1000.0
-
-    @rx.var
     def intelligence_confidence_display(self) -> str:
         confidence = self.intelligence_confidence
         if confidence <= 0:
             return "—"
         return f"{confidence * 100:.0f}%"
-
-    @rx.var
-    def intelligence_processing_time_display(self) -> str:
-        duration = self.intelligence_processing_time
-        if duration <= 0:
-            return "—"
-        if duration < 60:
-            return f"{duration:.1f}s"
-        minutes = int(duration // 60)
-        seconds = duration % 60
-        return f"{minutes}m {seconds:.0f}s"
 
     @rx.var
     def intelligence_has_action_items(self) -> bool:

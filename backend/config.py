@@ -23,9 +23,8 @@ class Settings(BaseSettings):
     aggregation_model: str = "o3-mini"
 
     # Concurrency + rate limits
-    transcript_max_concurrency: int = 20
-    transcript_rate_limit_per_minute: int = 80
-    intelligence_max_concurrency: int = 8
+    max_concurrency: int = 30
+    rate_limit: int = 80
 
 
 settings = Settings()

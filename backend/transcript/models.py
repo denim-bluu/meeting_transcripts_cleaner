@@ -1,12 +1,9 @@
 """Transcript processing models - VTT parsing, cleaning, and review."""
 
-from dataclasses import dataclass
-
 from pydantic import BaseModel, Field
 
 
-@dataclass
-class VTTEntry:
+class VTTEntry(BaseModel):
     """Single VTT cue exactly as it appears in the file."""
 
     cue_id: str  # e.g., "d700e97e-1c7f-4753-9597-54e5e43b4642/18-0"
@@ -16,8 +13,7 @@ class VTTEntry:
     text: str  # e.g., "OK. Yeah."
 
 
-@dataclass
-class VTTChunk:
+class VTTChunk(BaseModel):
     """Group of VTT entries chunked by token count for AI processing."""
 
     chunk_id: int  # Sequential: 0, 1, 2...
@@ -33,6 +29,15 @@ class VTTChunk:
         for entry in self.entries:
             lines.append(f"{entry.speaker}: {entry.text}")
         return "\n".join(lines)
+
+
+class VTTProcessingResult(BaseModel):
+    """Result of VTT processing."""
+
+    entries: list[VTTEntry]
+    chunks: list[VTTChunk]
+    speakers: list[str]  # Unique speakers in the document
+    duration: float  # Total seconds of the document
 
 
 class CleaningResult(BaseModel):
@@ -51,3 +56,10 @@ class ReviewResult(BaseModel):
     accept: bool  # True if quality_score >= 0.7
 
 
+class TranscriptProcessingResult(BaseModel):
+    """Result of transcript processing."""
+
+    transcript: VTTProcessingResult
+    cleaned_chunks: list[CleaningResult]
+    review_results: list[ReviewResult]
+    final_transcript: str

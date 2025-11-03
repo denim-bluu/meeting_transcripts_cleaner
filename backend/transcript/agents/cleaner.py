@@ -32,6 +32,13 @@ Output format: JSON with exactly these fields:
 - "confidence": Float 0.0-1.0 indicating your confidence in the improvements
 - "changes_made": Array of strings describing what was changed"""
 
+CLEANER_USER_PROMPT = """Previous context for flow: ...{context}
+
+Current chunk to clean:
+{chunk_text}
+
+Return JSON with cleaned_text, confidence, and changes_made."""
+
 # Pure agent definition - stateless and global
 cleaning_agent = Agent(
     OpenAIResponsesModel(settings.cleaning_model),

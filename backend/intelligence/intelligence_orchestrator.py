@@ -19,6 +19,7 @@ from backend.intelligence.models import (
 )
 from backend.intelligence.validation import ValidationService
 from backend.transcript.models import VTTChunk
+from shared.types import ProgressCallback
 
 logger = structlog.get_logger(__name__)
 
@@ -26,60 +27,51 @@ logger = structlog.get_logger(__name__)
 class IntelligenceOrchestrator:
     """Orchestrates the multi-stage meeting intelligence pipeline."""
 
-    def __init__(
-        self,
-        *,
-        chunk_processor: ChunkProcessor | None = None,
-        chunk_max_concurrency: int | None = None,
-    ) -> None:
-        if chunk_processor is not None:
-            self._chunk_processor = chunk_processor
-            self._chunk_concurrency = getattr(
-                chunk_processor, "_max_concurrency", None
-            )
-        else:
-            max_concurrency = (
-                chunk_max_concurrency or settings.intelligence_max_concurrency
-            )
-            self._chunk_processor = ChunkProcessor(max_concurrency=max_concurrency)
-            self._chunk_concurrency = max_concurrency
+    def __init__(self) -> None:
+        self._chunk_processor = ChunkProcessor()
+        self._chunk_concurrency = settings.max_concurrency
         self._aggregator = SemanticAggregator()
         self._validator = ValidationService()
         logger.info(
             "IntelligenceOrchestrator initialized",
-            chunk_model=getattr(settings, "chunk_model", None),
-            aggregation_model=getattr(settings, "aggregation_model", None),
+            chunk_model=settings.chunk_model,
+            aggregation_model=settings.aggregation_model,
             chunk_processor_concurrency=self._chunk_concurrency,
         )
 
     async def process_meeting(
         self,
-        cleaned_chunks: list[VTTChunk],
-        progress_callback=None,
+        chunks: list[VTTChunk],
+        progress_callback: ProgressCallback | None = None,
     ) -> MeetingIntelligence:
         """Run the structured multi-stage pipeline to generate meeting intelligence."""
         start_time = time.time()
-        total_chunks = len(cleaned_chunks)
+        total_chunks = len(chunks)
         logger.info(
             "Structured intelligence pipeline starting",
             vtt_chunks=total_chunks,
         )
 
-        # Stage 1: Chunk processing
+        await _maybe_call(
+            progress_callback, 0.0, "Initializing intelligence extraction..."
+        )
+
+        # Stage 1: Chunk processing (0% - 50%)
         stage1_start = time.time()
         summaries, conversation_state = await self._chunk_processor.process_chunks(
-            cleaned_chunks,
+            chunks,
             progress_callback=progress_callback,
         )
         stage1_time = int((time.time() - stage1_start) * 1000)
         logger.info(
             "Chunk processing completed",
-            summaries=[i.model_dump() for i in summaries],
-            conversation_state=conversation_state.model_dump(),
+            summary_count=len(summaries),
             stage_time_ms=stage1_time,
         )
 
-        # Stage 2: Aggregation
+        await _maybe_call(progress_callback, 0.5, "Analyzing summaries and patterns...")
+
+        # Stage 2: Aggregation (50% - 80%)
         stage2_start = time.time()
         aggregation_payload = await self._aggregator.aggregate(
             summaries,
@@ -89,14 +81,16 @@ class IntelligenceOrchestrator:
         stage2_time = int((time.time() - stage2_start) * 1000)
         logger.info(
             "Aggregation completed",
-            key_areas=aggregation_payload.key_areas,
-            timeline_events=len(aggregation_payload.timeline_events),
+            key_area_count=len(aggregation_payload.key_areas),
+            timeline_event_count=len(aggregation_payload.timeline_events),
             stage_time_ms=stage2_time,
         )
 
         aggregation_artifacts = self._aggregator.build_artifacts(aggregation_payload)
 
-        # Stage 3: Validation
+        await _maybe_call(progress_callback, 0.8, "Validating results...")
+
+        # Stage 3: Validation (80% - 90%)
         stage3_start = time.time()
         validation_result = self._validator.evaluate(summaries, aggregation_payload)
         stage3_time = int((time.time() - stage3_start) * 1000)
@@ -107,26 +101,18 @@ class IntelligenceOrchestrator:
             stage_time_ms=stage3_time,
         )
 
-        await _maybe_call(progress_callback, 0.9, "Synthesizing final output")
+        await _maybe_call(
+            progress_callback, 0.9, "Compiling final intelligence report..."
+        )
 
         intelligence = self._build_meeting_intelligence(
             aggregation_payload=aggregation_payload,
             aggregation_artifacts=aggregation_artifacts,
             validation_result=validation_result,
-            total_chunks=total_chunks,
-            stage_times={
-                "chunk_processing_ms": stage1_time,
-                "aggregation_ms": stage2_time,
-                "validation_ms": stage3_time,
-            },
             summaries=summaries,
         )
 
         total_time = int((time.time() - start_time) * 1000)
-        intelligence.processing_stats["time_ms"] = total_time
-        intelligence.processing_stats["pipeline"] = "structured"
-        intelligence.processing_stats["api_calls"] = total_chunks + 1  # chunk calls + aggregation
-        intelligence.processing_stats["chunk_summaries"] = len(summaries)
 
         await _maybe_call(progress_callback, 1.0, "Meeting intelligence ready")
 
@@ -141,12 +127,9 @@ class IntelligenceOrchestrator:
 
     def _build_meeting_intelligence(
         self,
-        *,
         aggregation_payload: AggregationAgentPayload,
         aggregation_artifacts: AggregationArtifacts,
         validation_result: ValidationResult,
-        total_chunks: int,
-        stage_times: dict[str, int],
         summaries: list[IntermediateSummary],
     ) -> MeetingIntelligence:
         """Compose final MeetingIntelligence object."""
@@ -154,15 +137,6 @@ class IntelligenceOrchestrator:
         adjusted_confidence = max(
             0.0, min(1.0, base_confidence + validation_result.confidence_adjustment)
         )
-
-        processing_stats = {
-            "vtt_chunks": total_chunks,
-            "phase_times": stage_times,
-            "validation": {
-                "passed": validation_result.passed,
-                "issues": [issue.model_dump() for issue in validation_result.issues],
-            },
-        }
 
         intelligence = MeetingIntelligence(
             summary=self._compose_summary_markdown(
@@ -174,7 +148,6 @@ class IntelligenceOrchestrator:
             key_areas=aggregation_payload.key_areas,
             aggregation_artifacts=aggregation_artifacts,
             confidence=adjusted_confidence,
-            processing_stats=processing_stats,
         )
 
         return intelligence

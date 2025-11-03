@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, ClassVar, Literal, Self
+from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_ai import ModelRetry
@@ -300,11 +300,6 @@ class MeetingIntelligence(BaseModel):
     confidence: float | None = Field(
         None, ge=0.0, le=1.0, description="Overall confidence for downstream display"
     )
-    processing_stats: dict[str, Any] = Field(
-        default_factory=dict, description="Processing metadata"
-    )
-
-    @field_validator("summary")
     @classmethod
     def validate_summary_quality(cls, value: str) -> str:
         if len(value.strip()) < 10:

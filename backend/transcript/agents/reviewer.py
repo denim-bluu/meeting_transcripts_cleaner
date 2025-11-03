@@ -37,6 +37,14 @@ Output format: JSON with exactly these fields:
 - "issues": Array of specific problems found (empty if none)
 - "accept": Boolean whether cleaning meets quality standards (score >= 0.7)"""
 
+REVIEWER_USER_PROMPT = """Original transcript:
+{original_text}
+
+Cleaned version:
+{cleaned_text}
+
+Evaluate the cleaning quality and return JSON with quality_score, issues, and accept."""
+
 # Pure agent definition - stateless and global
 review_agent = Agent(
     OpenAIResponsesModel(settings.review_model),

@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
-import json
 
 import structlog
 
+from backend.config import settings
 from backend.intelligence.agents.chunk import chunk_processing_agent
 from backend.intelligence.models import (
-    ChunkAgentPayload,
     ConversationState,
     IntermediateSummary,
 )
@@ -18,26 +17,19 @@ from backend.transcript.models import VTTChunk
 from shared.types import ProgressCallback
 from shared.utils.time_formatters import format_timestamp_vtt
 
+logger = structlog.get_logger(__name__)
+
 
 class ChunkProcessor:
     """Runs per-chunk analysis to create intermediate summaries."""
 
-    def __init__(
-        self,
-        *,
-        agent=chunk_processing_agent,
-        max_concurrency: int = 3,
-    ) -> None:
-        self._agent = agent
-        self._logger = structlog.get_logger(__name__)
-        normalized_concurrency = max(1, max_concurrency)
-        self._semaphore = asyncio.Semaphore(normalized_concurrency)
-        self._max_concurrency = normalized_concurrency
+    def __init__(self) -> None:
+        self._agent = chunk_processing_agent
+        self._semaphore = asyncio.Semaphore(settings.max_concurrency)
 
     async def process_chunks(
         self,
         chunks: Sequence[VTTChunk],
-        *,
         initial_state: ConversationState | None = None,
         progress_callback: ProgressCallback | None = None,
     ) -> tuple[list[IntermediateSummary], ConversationState]:
@@ -59,25 +51,29 @@ class ChunkProcessor:
         processed_count = 0
         progress_lock = asyncio.Lock()
 
+        await _maybe_call(
+            progress_callback, 0.05, f"Preparing to process {total} chunks..."
+        )
+
         async def handle_chunk(index: int) -> None:
             nonlocal processed_count
             chunk = chunks[index]
-            payload = await self._invoke_agent(
+            summary = await self._invoke_agent(
                 chunk,
                 state_snapshots[index],
                 prior_summary=None,
                 previous_context=prior_contexts[index],
             )
-            intermediate = self._build_intermediate_summary(chunk, payload)
-            summaries[index] = intermediate
+            summaries[index] = summary
 
             async with progress_lock:
                 processed_count += 1
-                progress = (processed_count / total) * 0.4
+                # Map to 5% - 50% range (chunk processing stage)
+                progress = 0.05 + (processed_count / total) * 0.45
             await _maybe_call(
                 progress_callback,
                 progress,
-                f"Chunk processing {processed_count}/{total}",
+                f"Processing chunks: {processed_count}/{total}",
             )
 
         tasks = [asyncio.create_task(handle_chunk(idx)) for idx in range(total)]
@@ -93,8 +89,8 @@ class ChunkProcessor:
 
         await _maybe_call(
             progress_callback,
-            0.4,
-            "Chunk processing completed",
+            0.5,
+            f"Processed {total} chunks, analyzing patterns...",
         )
 
         return ordered_summaries, updated_state
@@ -104,9 +100,8 @@ class ChunkProcessor:
         chunk: VTTChunk,
         state: ConversationState,
         prior_summary: IntermediateSummary | None,
-        *,
         previous_context: str | None = None,
-    ) -> ChunkAgentPayload:
+    ) -> IntermediateSummary:
         """Call the chunk processing agent with contextual data."""
         transcript_text = chunk.to_transcript_text()
         primary_speaker = (
@@ -116,78 +111,38 @@ class ChunkProcessor:
             {entry.speaker for entry in chunk.entries if entry.speaker}
         ) or [primary_speaker]
         speaker_label = ", ".join(speakers_in_chunk)
-        speaker_role = None
-        for name in speakers_in_chunk:
-            inferred = self._infer_speaker_role(name)
-            if inferred:
-                speaker_role = inferred
-                break
+        time_range = _chunk_time_range(chunk)
 
-        request_payload = {
-            "chunk_id": chunk.chunk_id,
-            "time_range": _chunk_time_range(chunk),
-            "speaker": speaker_label,
-            "speaker_role": speaker_role,
-            "transcript": transcript_text,
-            "previous_summary": prior_summary.narrative_summary
-            if prior_summary
-            else None,
-            "previous_chunk_transcript": previous_context,
-            "conversation_state": state.model_dump(),
-        }
+        prompt = f"""Analyze this speaker turn and extract structured insights.
 
-        prompt = (
-            "You are extracting structured insights from a single speaker turn in a meeting.\n"
-            "Return JSON that matches the ChunkAgentPayload schema. "
-            "Preserve factual accuracy, and note dependencies on earlier discussion.\n\n"
-            f"Context JSON:\n{json.dumps(request_payload, indent=2)}"
-        )
+Metadata:
+- chunk_id: {chunk.chunk_id}
+- time_range: {time_range}
+- speaker: {speaker_label}
 
-        self._logger.debug(
+Transcript:
+{transcript_text}
+
+{f'Previous chunk context: {previous_context}' if previous_context else ''}
+{f'Previous summary: {prior_summary.narrative_summary}' if prior_summary else ''}
+
+Conversation state:
+- Last topic: {state.last_topic or 'None'}
+- Key decisions: {len(state.key_decisions)} tracked
+- Last speaker: {state.last_speaker or 'None'}
+
+Include the metadata (chunk_id, time_range, speaker) in your response. Infer speaker_role from context if clear, otherwise set to None."""
+
+        logger.info(
             "Running chunk agent",
             chunk_id=chunk.chunk_id,
             speakers=speaker_label,
-            speaker_role=speaker_role,
             entry_count=len(chunk.entries),
         )
 
         async with self._semaphore:
             result = await self._agent.run(prompt)
         return result.output
-
-    def _build_intermediate_summary(
-        self,
-        chunk: VTTChunk,
-        payload: ChunkAgentPayload,
-    ) -> IntermediateSummary:
-        """Populate metadata around the agent payload."""
-        speakers_in_chunk = sorted(
-            {entry.speaker for entry in chunk.entries if entry.speaker}
-        )
-        speaker = (
-            ", ".join(speakers_in_chunk) if speakers_in_chunk else "Unknown Speaker"
-        )
-        speaker_role = None
-        for name in speakers_in_chunk:
-            inferred = self._infer_speaker_role(name)
-            if inferred:
-                speaker_role = inferred
-                break
-
-        return IntermediateSummary(
-            chunk_id=chunk.chunk_id,
-            time_range=_chunk_time_range(chunk),
-            speaker=speaker,
-            speaker_role=speaker_role,
-            narrative_summary=payload.narrative_summary,
-            key_concepts=payload.key_concepts,
-            decisions=payload.decisions,
-            action_items=payload.action_items,
-            conversation_links=payload.conversation_links,
-            continuation_flag=payload.continuation_flag,
-            insights=payload.insights,
-            confidence=payload.confidence,
-        )
 
     def _update_state(
         self,
@@ -212,24 +167,6 @@ class ChunkProcessor:
 
         new_state.unresolved_items = list(unresolved)
         return new_state
-
-    def _infer_speaker_role(self, speaker: str | None) -> str | None:
-        """Best-effort inference of speaker authority based on naming heuristics."""
-        if not speaker:
-            return None
-
-        lower = speaker.lower()
-        if "director" in lower:
-            return "Director"
-        if "manager" in lower:
-            return "Manager"
-        if "lead" in lower:
-            return "Team Lead"
-        if "vp" in lower or "vice president" in lower:
-            return "Executive"
-        if "chief" in lower or "cxo" in lower or "ceo" in lower:
-            return "Executive"
-        return None
 
     def _prepare_state_snapshots(
         self,

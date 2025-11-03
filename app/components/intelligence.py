@@ -159,7 +159,6 @@ def intelligence_metrics_header() -> rx.Component:
             metric_card("Confidence", State.intelligence_confidence_display),
             metric_card("Key Areas", State.intelligence_key_area_count),
             metric_card("Action Items", State.intelligence_action_item_count),
-            metric_card("Processing Time", State.intelligence_processing_time_display),
             class_name="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4",
         ),
         class_name="space-y-2",
