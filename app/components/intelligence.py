@@ -85,7 +85,10 @@ def intelligence_workspace():
                     html.Div(id="intelligence-error", style={"display": "none"}),
                     html.Div(id="intelligence-status-display", style={"display": "none"}),
                     cleansed_transcript_section(),
-                    extraction_prompt() if not get_has_intelligence() else intelligence_results(),
+                    html.Div(
+                        extraction_prompt() if not get_has_intelligence() else intelligence_results(),
+                        id="intelligence-content",
+                    ),
                 ],
                 style={"display": "flex", "flexDirection": "column", "gap": "2rem"},
             ),

@@ -509,6 +509,22 @@ def sync_intelligence_status_display(status):
     return status if status else dash.no_update
 
 
+# Update intelligence content (prompt vs results) when intelligence data changes
+@app.callback(
+    Output("intelligence-content", "children"),
+    Input("app-store", "data"),
+)
+def update_intelligence_content(store_data):
+    """Update intelligence content to show prompt or results based on data availability."""
+    from app.components.intelligence import extraction_prompt, intelligence_results
+    from app.state import get_has_intelligence
+
+    if get_has_intelligence():
+        return intelligence_results()
+    else:
+        return extraction_prompt()
+
+
 # Update summary content when intelligence data changes
 @app.callback(
     Output("summary-content", "children"),
