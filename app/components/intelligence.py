@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import reflex as rx
+from dash import dcc, html
 
 from app.components.common import (
     export_section as common_export_section,
@@ -12,422 +12,893 @@ from app.components.metrics import metric_card
 from app.state import (
     ActionItemDisplay,
     KeyAreaDisplay,
-    State,
     ValidationDisplay,
+    get_has_transcript,
+    get_has_intelligence,
+    get_intelligence_confidence_display,
+    get_intelligence_key_area_count,
+    get_intelligence_action_item_count,
+    get_intelligence_has_key_areas,
+    get_intelligence_key_area_cards,
+    get_intelligence_has_action_items,
+    get_intelligence_action_item_cards,
+    get_intelligence_validation_display,
+    get_cleansed_transcript_text,
+    get_intelligence_summary_text,
 )
 
 
-def intelligence_workspace() -> rx.Component:
-    return rx.el.section(
-        rx.el.h2("Meeting Intelligence", class_name="text-3xl font-black text-black"),
-        rx.el.p(
-            "Generate executive summaries, key themes, and action items from the cleaned transcript.",
-            class_name="mt-2 text-sm font-bold text-black",
-        ),
-        rx.cond(
-            State.has_transcript,
-            rx.el.div(
-                cleansed_transcript_section(),
-                rx.cond(
-                    State.has_intelligence,
-                    intelligence_results(),
-                    extraction_prompt(),
-                ),
-                class_name="space-y-8",
-            ),
-            missing_transcript_notice(
-                "No processed transcript available. Upload and process a VTT file to enable intelligence extraction."
-            ),
-        ),
-        class_name="max-w-6xl mx-auto space-y-6",
-    )
-
-
-def extraction_prompt() -> rx.Component:
-    return rx.el.section(
-        rx.el.div(
-            rx.icon("brain", class_name="w-6 h-6 text-black"),
-            rx.el.div(
-                rx.el.h3(
-                    "Extract Meeting Intelligence",
-                    class_name="text-lg font-bold text-black",
-                ),
-                rx.el.p(
-                    "Run the intelligence pipeline to generate summaries, key areas, and action items.",
-                    class_name="mt-1 text-sm font-medium text-black",
-                ),
-            ),
-            class_name="flex items-start space-x-3",
-        ),
-        rx.el.ul(
-            rx.el.li(
-                "📋 Executive summaries", class_name="text-sm font-medium text-black"
-            ),
-            rx.el.li(
-                "🎯 Action items with owners and due dates",
-                class_name="text-sm font-medium text-black",
-            ),
-            rx.el.li(
-                "🧩 Key themes with supporting evidence",
-                class_name="text-sm font-medium text-black",
-            ),
-            rx.el.li(
-                "✅ Validation notes and unresolved topics",
-                class_name="text-sm font-medium text-black",
-            ),
-            class_name="mt-4 list-disc list-inside space-y-1",
-        ),
-        rx.cond(
-            State.intelligence_running,
-            extraction_progress_panel(),
-            rx.button(
-                "🧠 Extract Intelligence",
-                on_click=State.extract_intelligence,
-                disabled=State.intelligence_running,
-                class_name="mt-5 inline-flex items-center justify-center px-6 py-3 bg-black text-yellow-400 font-bold border-4 border-yellow-400 hover:bg-yellow-400 hover:text-black transition-all",
-            ),
-        ),
-        rx.cond(
-            State.intelligence_error != "",
-            rx.el.div(
-                rx.icon("triangle_alert", class_name="w-4 h-4 mr-2 text-black"),
-                rx.el.span(
-                    State.intelligence_error, class_name="text-xs font-bold text-black"
-                ),
-                class_name="mt-4 flex items-center",
-            ),
-        ),
-        class_name="mt-6 p-6 bg-white border-4 border-black space-y-4",
-    )
-
-
-def extraction_progress_panel() -> rx.Component:
-    return rx.el.div(
-        rx.el.div(
-            rx.el.span(
-                "Extraction Status", class_name="text-xs uppercase font-bold text-black"
-            ),
-            rx.el.div(
-                rx.spinner(class_name="w-4 h-4 text-black mr-2"),
-                rx.el.p(
-                    State.intelligence_status, class_name="text-sm font-bold text-black"
-                ),
-                class_name="flex items-center",
-            ),
-            class_name="flex items-center justify-between",
-        ),
-        rx.el.div(
-            rx.el.div(
-                rx.el.div(
+def intelligence_workspace():
+    """Main intelligence workspace."""
+    if not get_has_transcript():
+        return html.Section(
+            [
+                html.H2(
+                    "Meeting Intelligence",
                     style={
-                        "width": State.intelligence_progress_percent,
-                        "background": "#6366f1",
-                        "height": "100%",
-                        "transition": "width 0.3s ease",
+                        "fontSize": "1.875rem",
+                        "fontWeight": "900",
+                        "color": "#000000",
                     },
                 ),
+                html.P(
+                    "Generate executive summaries, key themes, and action items from the cleaned transcript.",
+                    style={
+                        "marginTop": "0.5rem",
+                        "fontSize": "0.875rem",
+                        "fontWeight": "700",
+                        "color": "#000000",
+                    },
+                ),
+                missing_transcript_notice(
+                    "No processed transcript available. Upload and process a VTT file to enable intelligence extraction."
+                ),
+            ],
+            style={"maxWidth": "72rem", "margin": "0 auto"},
+        )
+
+    return html.Section(
+        [
+            html.H2(
+                "Meeting Intelligence",
                 style={
-                    "width": "100%",
-                    "background": "#e5e7eb",
-                    "height": "0.75rem",
-                    "borderRadius": "999px",
-                    "overflow": "hidden",
+                    "fontSize": "1.875rem",
+                    "fontWeight": "900",
+                    "color": "#000000",
                 },
             ),
-            class_name="mt-3",
-        ),
-        class_name="mt-5 p-4 border-4 border-black bg-yellow-200",
+            html.P(
+                "Generate executive summaries, key themes, and action items from the cleaned transcript.",
+                style={
+                    "marginTop": "0.5rem",
+                    "fontSize": "0.875rem",
+                    "fontWeight": "700",
+                    "color": "#000000",
+                },
+            ),
+            html.Div(
+                [
+                    dcc.Interval(id="intelligence-interval", interval=500, n_intervals=0),
+                    # Hidden components for callbacks
+                    html.Div(id="intelligence-status", style={"display": "none"}),
+                    html.Div(id="intelligence-progress", style={"display": "none"}),
+                    html.Div(id="intelligence-error", style={"display": "none"}),
+                    html.Div(id="intelligence-status-display", style={"display": "none"}),
+                    cleansed_transcript_section(),
+                    extraction_prompt() if not get_has_intelligence() else intelligence_results(),
+                ],
+                style={"display": "flex", "flexDirection": "column", "gap": "2rem"},
+            ),
+        ],
+        style={"maxWidth": "72rem", "margin": "0 auto"},
     )
 
 
-def intelligence_results() -> rx.Component:
-    return rx.el.div(
-        intelligence_metrics_header(),
-        summary_section(),
-        key_areas_section(),
-        action_items_section(),
-        validation_section(),
-        export_section(),
-        class_name="space-y-8",
-    )
-
-
-def intelligence_metrics_header() -> rx.Component:
-    return rx.el.section(
-        rx.el.h3("Pipeline Overview", class_name="text-xl font-black text-black"),
-        rx.el.div(
-            metric_card("Confidence", State.intelligence_confidence_display),
-            metric_card("Key Areas", State.intelligence_key_area_count),
-            metric_card("Action Items", State.intelligence_action_item_count),
-            class_name="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4",
-        ),
-        class_name="space-y-2",
-    )
-
-
-def cleansed_transcript_section() -> rx.Component:
-    return rx.el.section(
-        rx.el.h3("Cleansed Transcript", class_name="text-xl font-black text-black"),
-        rx.el.p(
-            "Review the cleaned transcript that will be used for intelligence extraction.",
-            class_name="mt-1 text-sm font-bold text-black",
-        ),
-        rx.cond(
-            State.cleansed_transcript_text != "",
-            rx.el.div(
-                rx.el.pre(
-                    State.cleansed_transcript_text,
-                    class_name="mt-2 whitespace-pre-wrap text-sm leading-relaxed bg-white border-4 border-black px-4 py-3 max-h-96 overflow-y-auto font-mono",
-                ),
-                class_name="mt-2 p-4 bg-white border-4 border-black",
-            ),
-            rx.el.div(
-                "No cleansed transcript available.",
-                class_name="mt-2 p-4 text-sm font-bold text-black bg-cyan-100 border-4 border-black",
-            ),
-        ),
-        class_name="space-y-2",
-    )
-
-
-def summary_section() -> rx.Component:
-    return rx.el.section(
-        rx.el.div(
-            rx.el.h3("Executive Summary", class_name="text-xl font-black text-black"),
-            rx.button(
-                rx.icon("refresh_cw", class_name="w-4 h-4 mr-2"),
-                "Regenerate Summary",
-                on_click=State.extract_intelligence,
-                disabled=rx.cond(
-                    State.intelligence_running,
-                    True,
-                    rx.cond(State.has_transcript, False, True),
-                ),
-                class_name="flex items-center px-4 py-2 text-sm font-bold text-black bg-white border-4 border-black hover:bg-yellow-200 hover:border-yellow-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all",
-            ),
-            class_name="flex items-center justify-between",
-        ),
-        rx.cond(
-            State.intelligence_running,
-            extraction_progress_panel(),
-            rx.el.div(
-                rx.markdown(
-                    State.intelligence_summary_text,
-                ),
-                class_name="mt-2 p-4 bg-white border-4 border-black prose prose-sm max-w-none",
-            ),
-        ),
-    )
-
-
-def key_areas_section() -> rx.Component:
-    return rx.el.section(
-        rx.el.div(
-            rx.el.h3("Key Areas & Themes", class_name="text-xl font-black text-black"),
-            rx.el.p(
-                "Explore thematic clusters with supporting evidence and follow-up actions.",
-                class_name="mt-1 text-sm font-bold text-black",
-            ),
-        ),
-        rx.cond(
-            State.intelligence_has_key_areas,
-            rx.el.div(
-                rx.foreach(State.intelligence_key_area_cards, key_area_card),
-                class_name="mt-4 space-y-4",
-            ),
-            rx.el.div(
-                "No key areas were generated for this meeting.",
-                class_name="mt-4 text-sm font-bold text-black",
-            ),
-        ),
-        class_name="space-y-2",
-    )
-
-
-def key_area_card(area: KeyAreaDisplay) -> rx.Component:
-    highlights_section = rx.cond(
-        area["has_highlights"],
-        rx.el.div(
-            rx.el.span(
-                "Highlights", class_name="text-xs font-bold text-black uppercase"
-            ),
-            rx.el.ul(
-                rx.foreach(
-                    area["highlights"],
-                    lambda highlight, _: rx.el.li(
-                        highlight, class_name="text-sm font-medium text-black"
+def extraction_prompt():
+    """Prompt to extract intelligence."""
+    return html.Section(
+        [
+            html.Div(
+                [
+                    html.Span("🧠", style={"fontSize": "1.5rem", "marginRight": "0.75rem"}),
+                    html.Div(
+                        [
+                            html.H3(
+                                "Extract Meeting Intelligence",
+                                style={
+                                    "fontSize": "1.125rem",
+                                    "fontWeight": "700",
+                                    "color": "#000000",
+                                },
+                            ),
+                            html.P(
+                                "Run the intelligence pipeline to generate summaries, key areas, and action items.",
+                                style={
+                                    "marginTop": "0.25rem",
+                                    "fontSize": "0.875rem",
+                                    "fontWeight": "500",
+                                    "color": "#000000",
+                                },
+                            ),
+                        ]
                     ),
-                ),
-                class_name="mt-2 list-disc list-inside space-y-1",
+                ],
+                style={"display": "flex", "alignItems": "flex-start", "gap": "0.75rem"},
             ),
-            class_name="mt-4",
-        ),
-        rx.fragment(),
-    )
-
-    decisions_section = rx.cond(
-        area["has_decisions"],
-        rx.el.div(
-            rx.el.span(
-                "Decisions", class_name="text-xs font-bold text-black uppercase"
-            ),
-            rx.el.ul(
-                rx.foreach(
-                    area["decisions"],
-                    lambda decision, _: rx.el.li(
-                        decision, class_name="text-sm font-medium text-black"
+            html.Ul(
+                [
+                    html.Li(
+                        "📋 Executive summaries",
+                        style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
                     ),
-                ),
-                class_name="mt-2 list-disc list-inside space-y-1",
-            ),
-            class_name="mt-4",
-        ),
-        rx.fragment(),
-    )
-
-    actions_section = rx.cond(
-        area["has_actions"],
-        rx.el.div(
-            rx.el.span("Actions", class_name="text-xs font-bold text-black uppercase"),
-            rx.el.ul(
-                rx.foreach(
-                    area["actions"],
-                    lambda action, _: rx.el.li(
-                        action, class_name="text-sm font-medium text-black"
+                    html.Li(
+                        "🎯 Action items with owners and due dates",
+                        style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
                     ),
-                ),
-                class_name="mt-2 list-disc list-inside space-y-1",
+                    html.Li(
+                        "🧩 Key themes with supporting evidence",
+                        style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
+                    ),
+                    html.Li(
+                        "✅ Validation notes and unresolved topics",
+                        style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
+                    ),
+                ],
+                style={
+                    "marginTop": "1rem",
+                    "listStyle": "disc",
+                    "paddingLeft": "1.5rem",
+                },
             ),
-            class_name="mt-4",
-        ),
-        rx.fragment(),
+            # Progress display container - shows extraction progress
+            html.Div(
+                extraction_progress_panel(),
+                id="intelligence-progress-display-container",
+                style={"display": "none"},
+            ),
+            html.Button(
+                "🧠 Extract Intelligence",
+                id="extract-intelligence-btn",
+                n_clicks=0,
+                style={
+                    "marginTop": "1.25rem",
+                    "display": "inline-flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "padding": "0.75rem 1.5rem",
+                    "backgroundColor": "#000000",
+                    "color": "#fbbf24",
+                    "fontWeight": "700",
+                    "border": "4px solid #fbbf24",
+                    "cursor": "pointer",
+                },
+            ),
+            # intelligence-error is in main layout
+        ],
+        style={
+            "marginTop": "1.5rem",
+            "padding": "1.5rem",
+            "backgroundColor": "#ffffff",
+            "border": "4px solid #000000",
+            "display": "flex",
+            "flexDirection": "column",
+            "gap": "1rem",
+        },
     )
 
-    supporting_section = rx.cond(
-        area["has_supporting"],
-        rx.el.span(
+
+def extraction_progress_panel():
+    """Progress panel for intelligence extraction."""
+    return html.Div(
+        [
+            html.Div(
+                [
+                    html.Span(
+                        "Extraction Status",
+                        style={
+                            "fontSize": "0.75rem",
+                            "textTransform": "uppercase",
+                            "fontWeight": "700",
+                            "color": "#000000",
+                        },
+                    ),
+                    html.Div(
+                        [
+                            html.Span("⏳", style={"marginRight": "0.5rem"}),
+                            html.P(
+                                id="intelligence-status-display-inner",
+                                style={
+                                    "fontSize": "0.875rem",
+                                    "fontWeight": "700",
+                                    "color": "#000000",
+                                },
+                            ),
+                        ],
+                        style={"display": "flex", "alignItems": "center"},
+                    ),
+                ],
+                style={
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "space-between",
+                },
+            ),
+            html.Div(
+                html.Div(
+                    html.Div(
+                        id="intelligence-progress-bar-inner",
+                        style={
+                            "width": "0%",
+                            "backgroundColor": "#6366f1",
+                            "height": "100%",
+                            "transition": "width 0.3s ease",
+                        },
+                    ),
+                    id="intelligence-progress-inner",
+                    style={
+                        "width": "100%",
+                        "backgroundColor": "#e5e7eb",
+                        "height": "0.75rem",
+                        "borderRadius": "999px",
+                        "overflow": "hidden",
+                    },
+                ),
+                style={"marginTop": "0.75rem"},
+            ),
+        ],
+        style={
+            "marginTop": "1.25rem",
+            "padding": "1rem",
+            "border": "4px solid #000000",
+            "backgroundColor": "#fef08a",
+        },
+    )
+
+
+def intelligence_results():
+    """Intelligence results display."""
+    return html.Div(
+        [
+            intelligence_metrics_header(),
+            summary_section(),
+            key_areas_section(),
+            action_items_section(),
+            validation_section(),
+            export_section(),
+        ],
+        style={"display": "flex", "flexDirection": "column", "gap": "2rem"},
+    )
+
+
+def intelligence_metrics_header():
+    """Metrics header for intelligence."""
+    return html.Section(
+        [
+            html.H3(
+                "Pipeline Overview",
+                style={
+                    "fontSize": "1.25rem",
+                    "fontWeight": "900",
+                    "color": "#000000",
+                },
+            ),
+            html.Div(
+                [
+                    metric_card("Confidence", get_intelligence_confidence_display()),
+                    metric_card("Key Areas", get_intelligence_key_area_count()),
+                    metric_card("Action Items", get_intelligence_action_item_count()),
+                ],
+                style={
+                    "marginTop": "1rem",
+                    "display": "grid",
+                    "gridTemplateColumns": "repeat(auto-fit, minmax(200px, 1fr))",
+                    "gap": "1rem",
+                },
+            ),
+        ],
+        style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+    )
+
+
+def cleansed_transcript_section():
+    """Section showing cleansed transcript."""
+    text = get_cleansed_transcript_text()
+    return html.Section(
+        [
+            html.H3(
+                "Cleansed Transcript",
+                style={
+                    "fontSize": "1.25rem",
+                    "fontWeight": "900",
+                    "color": "#000000",
+                },
+            ),
+            html.P(
+                "Review the cleaned transcript that will be used for intelligence extraction.",
+                style={
+                    "marginTop": "0.25rem",
+                    "fontSize": "0.875rem",
+                    "fontWeight": "700",
+                    "color": "#000000",
+                },
+            ),
+            html.Div(
+                html.Pre(
+                    text,
+                    style={
+                        "marginTop": "0.5rem",
+                        "whiteSpace": "pre-wrap",
+                        "fontSize": "0.875rem",
+                        "lineHeight": "1.75",
+                        "backgroundColor": "#ffffff",
+                        "border": "4px solid #000000",
+                        "padding": "1rem",
+                        "maxHeight": "24rem",
+                        "overflowY": "auto",
+                        "fontFamily": "monospace",
+                    },
+                )
+                if text
+                else html.Div(
+                    "No cleansed transcript available.",
+                    style={
+                        "marginTop": "0.5rem",
+                        "padding": "1rem",
+                        "fontSize": "0.875rem",
+                        "fontWeight": "700",
+                        "color": "#000000",
+                        "backgroundColor": "#cffafe",
+                        "border": "4px solid #000000",
+                    },
+                ),
+                style={"marginTop": "0.5rem"},
+            ),
+        ],
+        style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+    )
+
+
+def summary_section():
+    """Executive summary section."""
+    return html.Section(
+        [
+            html.Div(
+                [
+                    html.H3(
+                        "Executive Summary",
+                        style={
+                            "fontSize": "1.25rem",
+                            "fontWeight": "900",
+                            "color": "#000000",
+                        },
+                    ),
+                    html.Button(
+                        "🔄 Regenerate Summary",
+                        id="regenerate-summary-btn",
+                        n_clicks=0,
+                        style={
+                            "display": "flex",
+                            "alignItems": "center",
+                            "padding": "0.5rem 1rem",
+                            "fontSize": "0.875rem",
+                            "fontWeight": "700",
+                            "color": "#000000",
+                            "backgroundColor": "#ffffff",
+                            "border": "4px solid #000000",
+                            "cursor": "pointer",
+                        },
+                    ),
+                ],
+                style={
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "space-between",
+                },
+            ),
+            html.Div(
+                id="summary-content",
+                children=html.Div(
+                    get_intelligence_summary_text(),
+                    style={
+                        "marginTop": "0.5rem",
+                        "padding": "1rem",
+                        "backgroundColor": "#ffffff",
+                        "border": "4px solid #000000",
+                    },
+                ),
+            ),
+        ],
+        style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+    )
+
+
+def key_areas_section():
+    """Key areas and themes section."""
+    if not get_intelligence_has_key_areas():
+        return html.Section(
+            [
+                html.Div(
+                    [
+                        html.H3(
+                            "Key Areas & Themes",
+                            style={
+                                "fontSize": "1.25rem",
+                                "fontWeight": "900",
+                                "color": "#000000",
+                            },
+                        ),
+                        html.P(
+                            "Explore thematic clusters with supporting evidence and follow-up actions.",
+                            style={
+                                "marginTop": "0.25rem",
+                                "fontSize": "0.875rem",
+                                "fontWeight": "700",
+                                "color": "#000000",
+                            },
+                        ),
+                    ]
+                ),
+                html.Div(
+                    "No key areas were generated for this meeting.",
+                    style={
+                        "marginTop": "1rem",
+                        "fontSize": "0.875rem",
+                        "fontWeight": "700",
+                        "color": "#000000",
+                    },
+                ),
+            ],
+            style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+        )
+
+    areas = get_intelligence_key_area_cards()
+    area_cards = [key_area_card(area) for area in areas]
+
+    return html.Section(
+        [
+            html.Div(
+                [
+                    html.H3(
+                        "Key Areas & Themes",
+                        style={
+                            "fontSize": "1.25rem",
+                            "fontWeight": "900",
+                            "color": "#000000",
+                        },
+                    ),
+                    html.P(
+                        "Explore thematic clusters with supporting evidence and follow-up actions.",
+                        style={
+                            "marginTop": "0.25rem",
+                            "fontSize": "0.875rem",
+                            "fontWeight": "700",
+                            "color": "#000000",
+                        },
+                    ),
+                ]
+            ),
+            html.Div(
+                area_cards,
+                style={"marginTop": "1rem", "display": "flex", "flexDirection": "column", "gap": "1rem"},
+            ),
+        ],
+        style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+    )
+
+
+def key_area_card(area: KeyAreaDisplay):
+    """Individual key area card."""
+    highlights_section = (
+        html.Div(
+            [
+                html.Span(
+                    "Highlights",
+                    style={
+                        "fontSize": "0.75rem",
+                        "fontWeight": "700",
+                        "color": "#000000",
+                        "textTransform": "uppercase",
+                    },
+                ),
+                html.Ul(
+                    [
+                        html.Li(
+                            highlight,
+                            style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
+                        )
+                        for highlight in area.get("highlights", [])
+                    ],
+                    style={
+                        "marginTop": "0.5rem",
+                        "listStyle": "disc",
+                        "paddingLeft": "1.5rem",
+                    },
+                ),
+            ],
+            style={"marginTop": "1rem"},
+        )
+        if area.get("has_highlights", False)
+        else html.Div()
+    )
+
+    decisions_section = (
+        html.Div(
+            [
+                html.Span(
+                    "Decisions",
+                    style={
+                        "fontSize": "0.75rem",
+                        "fontWeight": "700",
+                        "color": "#000000",
+                        "textTransform": "uppercase",
+                    },
+                ),
+                html.Ul(
+                    [
+                        html.Li(
+                            decision,
+                            style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
+                        )
+                        for decision in area.get("decisions", [])
+                    ],
+                    style={
+                        "marginTop": "0.5rem",
+                        "listStyle": "disc",
+                        "paddingLeft": "1.5rem",
+                    },
+                ),
+            ],
+            style={"marginTop": "1rem"},
+        )
+        if area.get("has_decisions", False)
+        else html.Div()
+    )
+
+    actions_section = (
+        html.Div(
+            [
+                html.Span(
+                    "Actions",
+                    style={
+                        "fontSize": "0.75rem",
+                        "fontWeight": "700",
+                        "color": "#000000",
+                        "textTransform": "uppercase",
+                    },
+                ),
+                html.Ul(
+                    [
+                        html.Li(
+                            action,
+                            style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
+                        )
+                        for action in area.get("actions", [])
+                    ],
+                    style={
+                        "marginTop": "0.5rem",
+                        "listStyle": "disc",
+                        "paddingLeft": "1.5rem",
+                    },
+                ),
+            ],
+            style={"marginTop": "1rem"},
+        )
+        if area.get("has_actions", False)
+        else html.Div()
+    )
+
+    supporting_section = (
+        html.Span(
             area["supporting_text"],
-            class_name="mt-3 text-xs font-bold text-black",
-        ),
-        rx.fragment(),
+            style={
+                "marginTop": "0.75rem",
+                "fontSize": "0.75rem",
+                "fontWeight": "700",
+                "color": "#000000",
+            },
+        )
+        if area.get("has_supporting", False)
+        else html.Div()
     )
 
-    return rx.el.div(
-        rx.el.div(
-            rx.el.h4(area["title"], class_name="text-base font-black text-black"),
-            rx.el.span(area["meta"], class_name="text-xs font-bold text-black"),
-            class_name="flex flex-col",
-        ),
-        rx.el.p(area["summary"], class_name="mt-3 text-sm font-medium text-black"),
-        highlights_section,
-        decisions_section,
-        actions_section,
-        supporting_section,
-        class_name="p-5 bg-white border-4 border-black",
-    )
-
-
-def action_items_section() -> rx.Component:
-    return rx.el.section(
-        rx.el.div(
-            rx.el.h3("Action Items", class_name="text-xl font-black text-black"),
-            rx.el.p(
-                "Track owners, due dates, and confidence for each follow-up item.",
-                class_name="mt-1 text-sm font-bold text-black",
+    return html.Div(
+        [
+            html.Div(
+                [
+                    html.H4(
+                        area["title"],
+                        style={
+                            "fontSize": "1rem",
+                            "fontWeight": "900",
+                            "color": "#000000",
+                        },
+                    ),
+                    html.Span(
+                        area["meta"],
+                        style={
+                            "fontSize": "0.75rem",
+                            "fontWeight": "700",
+                            "color": "#000000",
+                        },
+                    ),
+                ],
+                style={"display": "flex", "flexDirection": "column"},
             ),
-        ),
-        rx.cond(
-            State.intelligence_has_action_items,
-            rx.el.div(
-                rx.foreach(State.intelligence_action_item_cards, action_item_card),
-                class_name="mt-4 grid gap-4 md:grid-cols-2",
+            html.P(
+                area["summary"],
+                style={
+                    "marginTop": "0.75rem",
+                    "fontSize": "0.875rem",
+                    "fontWeight": "500",
+                    "color": "#000000",
+                },
             ),
-            rx.el.div(
-                "No action items were generated for this meeting.",
-                class_name="mt-4 text-sm font-bold text-black",
-            ),
-        ),
-        class_name="space-y-2",
-    )
-
-
-def action_item_card(item: ActionItemDisplay) -> rx.Component:
-    confidence_section = rx.cond(
-        item["has_confidence"],
-        rx.el.span(
-            item["confidence_text"], class_name="text-xs font-bold text-black mt-3"
-        ),
-        rx.fragment(),
-    )
-
-    return rx.el.div(
-        rx.el.h4(item["title"], class_name="text-base font-black text-black"),
-        rx.el.div(
-            rx.el.span(item["owner_text"], class_name="text-sm font-medium text-black"),
-            rx.el.span(item["due_text"], class_name="text-sm font-medium text-black"),
-            class_name="flex items-center justify-between mt-2",
-        ),
-        confidence_section,
-        class_name="p-4 bg-white border-4 border-black",
+            highlights_section,
+            decisions_section,
+            actions_section,
+            supporting_section,
+        ],
+        style={
+            "padding": "1.25rem",
+            "backgroundColor": "#ffffff",
+            "border": "4px solid #000000",
+        },
     )
 
 
-def validation_section() -> rx.Component:
-    details: ValidationDisplay = State.intelligence_validation_display
+def action_items_section():
+    """Action items section."""
+    if not get_intelligence_has_action_items():
+        return html.Section(
+            [
+                html.Div(
+                    [
+                        html.H3(
+                            "Action Items",
+                            style={
+                                "fontSize": "1.25rem",
+                                "fontWeight": "900",
+                                "color": "#000000",
+                            },
+                        ),
+                        html.P(
+                            "Track owners, due dates, and confidence for each follow-up item.",
+                            style={
+                                "marginTop": "0.25rem",
+                                "fontSize": "0.875rem",
+                                "fontWeight": "700",
+                                "color": "#000000",
+                            },
+                        ),
+                    ]
+                ),
+                html.Div(
+                    "No action items were generated for this meeting.",
+                    style={
+                        "marginTop": "1rem",
+                        "fontSize": "0.875rem",
+                        "fontWeight": "700",
+                        "color": "#000000",
+                    },
+                ),
+            ],
+            style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+        )
 
-    return rx.el.section(
-        rx.el.h3("Validation & Quality", class_name="text-xl font-black text-black"),
-        rx.el.div(
-            rx.el.span(details["status_label"], class_name=details["status_class"]),
-            class_name="inline-flex",
-        ),
-        rx.cond(
-            details["has_issues"],
-            rx.el.div(
-                rx.el.span(
-                    "Detected Issues",
-                    class_name="text-xs font-bold text-black uppercase",
-                ),
-                rx.el.pre(
-                    details["issues_text"],
-                    class_name="mt-2 whitespace-pre-wrap text-sm font-medium text-black bg-white border-4 border-black px-2 py-2",
-                ),
-                class_name="mt-4",
+    items = get_intelligence_action_item_cards()
+    item_cards = [action_item_card(item) for item in items]
+
+    return html.Section(
+        [
+            html.Div(
+                [
+                    html.H3(
+                        "Action Items",
+                        style={
+                            "fontSize": "1.25rem",
+                            "fontWeight": "900",
+                            "color": "#000000",
+                        },
+                    ),
+                    html.P(
+                        "Track owners, due dates, and confidence for each follow-up item.",
+                        style={
+                            "marginTop": "0.25rem",
+                            "fontSize": "0.875rem",
+                            "fontWeight": "700",
+                            "color": "#000000",
+                        },
+                    ),
+                ]
             ),
-        ),
-        rx.cond(
-            details["has_unresolved"],
-            rx.el.div(
-                rx.el.span(
-                    "Unresolved Topics",
-                    class_name="text-xs font-bold text-black uppercase",
-                ),
-                rx.el.pre(
-                    details["unresolved_text"],
-                    class_name="mt-2 whitespace-pre-wrap text-sm font-medium text-black bg-white border-4 border-black px-2 py-2",
-                ),
-                class_name="mt-4",
+            html.Div(
+                item_cards,
+                style={
+                    "marginTop": "1rem",
+                    "display": "grid",
+                    "gridTemplateColumns": "repeat(2, 1fr)",
+                    "gap": "1rem",
+                },
             ),
-        ),
-        rx.cond(
-            details["has_notes"],
-            rx.el.div(
-                rx.el.span(
-                    "Validation Notes",
-                    class_name="text-xs font-bold text-black uppercase",
-                ),
-                rx.el.pre(
-                    details["notes_text"],
-                    class_name="mt-2 whitespace-pre-wrap text-sm font-medium text-black bg-white border-4 border-black px-2 py-2",
-                ),
-                class_name="mt-4",
-            ),
-        ),
-        class_name="space-y-3",
+        ],
+        style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
     )
 
 
-def export_section() -> rx.Component:
+def action_item_card(item: ActionItemDisplay):
+    """Individual action item card."""
+    confidence_section = (
+        html.Span(
+            item["confidence_text"],
+            style={
+                "marginTop": "0.75rem",
+                "fontSize": "0.75rem",
+                "fontWeight": "700",
+                "color": "#000000",
+            },
+        )
+        if item.get("has_confidence", False)
+        else html.Div()
+    )
+
+    return html.Div(
+        [
+            html.H4(
+                item["title"],
+                style={
+                    "fontSize": "1rem",
+                    "fontWeight": "900",
+                    "color": "#000000",
+                },
+            ),
+            html.Div(
+                [
+                    html.Span(
+                        item["owner_text"],
+                        style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
+                    ),
+                    html.Span(
+                        item["due_text"],
+                        style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
+                    ),
+                ],
+                style={
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "space-between",
+                    "marginTop": "0.5rem",
+                },
+            ),
+            confidence_section,
+        ],
+        style={
+            "padding": "1rem",
+            "backgroundColor": "#ffffff",
+            "border": "4px solid #000000",
+        },
+    )
+
+
+def validation_section():
+    """Validation and quality section."""
+    details: ValidationDisplay = get_intelligence_validation_display()
+
+    return html.Section(
+        [
+            html.H3(
+                "Validation & Quality",
+                style={
+                    "fontSize": "1.25rem",
+                    "fontWeight": "900",
+                    "color": "#000000",
+                },
+            ),
+            html.Div(
+                html.Span(
+                    details["status_label"],
+                    className=details["status_class"],
+                    style={
+                        "fontSize": "0.875rem",
+                        "fontWeight": "700",
+                        "padding": "0.25rem 0.75rem",
+                        "border": "4px solid #000000",
+                    },
+                ),
+                style={"display": "inline-flex"},
+            ),
+            html.Div(
+                [
+                    html.Span(
+                        "Detected Issues",
+                        style={
+                            "fontSize": "0.75rem",
+                            "fontWeight": "700",
+                            "color": "#000000",
+                            "textTransform": "uppercase",
+                        },
+                    ),
+                    html.Pre(
+                        details["issues_text"],
+                        style={
+                            "marginTop": "0.5rem",
+                            "whiteSpace": "pre-wrap",
+                            "fontSize": "0.875rem",
+                            "fontWeight": "500",
+                            "color": "#000000",
+                            "backgroundColor": "#ffffff",
+                            "border": "4px solid #000000",
+                            "padding": "0.5rem",
+                        },
+                    ),
+                ],
+                style={"marginTop": "1rem"},
+            )
+            if details.get("has_issues", False)
+            else html.Div(),
+            html.Div(
+                [
+                    html.Span(
+                        "Unresolved Topics",
+                        style={
+                            "fontSize": "0.75rem",
+                            "fontWeight": "700",
+                            "color": "#000000",
+                            "textTransform": "uppercase",
+                        },
+                    ),
+                    html.Pre(
+                        details["unresolved_text"],
+                        style={
+                            "marginTop": "0.5rem",
+                            "whiteSpace": "pre-wrap",
+                            "fontSize": "0.875rem",
+                            "fontWeight": "500",
+                            "color": "#000000",
+                            "backgroundColor": "#ffffff",
+                            "border": "4px solid #000000",
+                            "padding": "0.5rem",
+                        },
+                    ),
+                ],
+                style={"marginTop": "1rem"},
+            )
+            if details.get("has_unresolved", False)
+            else html.Div(),
+            html.Div(
+                [
+                    html.Span(
+                        "Validation Notes",
+                        style={
+                            "fontSize": "0.75rem",
+                            "fontWeight": "700",
+                            "color": "#000000",
+                            "textTransform": "uppercase",
+                        },
+                    ),
+                    html.Pre(
+                        details["notes_text"],
+                        style={
+                            "marginTop": "0.5rem",
+                            "whiteSpace": "pre-wrap",
+                            "fontSize": "0.875rem",
+                            "fontWeight": "500",
+                            "color": "#000000",
+                            "backgroundColor": "#ffffff",
+                            "border": "4px solid #000000",
+                            "padding": "0.5rem",
+                        },
+                    ),
+                ],
+                style={"marginTop": "1rem"},
+            )
+            if details.get("has_notes", False)
+            else html.Div(),
+        ],
+        style={"display": "flex", "flexDirection": "column", "gap": "0.75rem"},
+    )
+
+
+def export_section():
     """Export section for intelligence data."""
     return common_export_section(
         title="Export Intelligence",
@@ -436,10 +907,10 @@ def export_section() -> rx.Component:
             ("TXT", "📄", "txt"),
             ("Markdown", "📝", "md"),
         ],
-        on_click_handlers={
-            "txt": State.download_intelligence("txt"),
-            "md": State.download_intelligence("md"),
+        button_ids={
+            "txt": "download-intelligence-txt",
+            "md": "download-intelligence-md",
         },
-        disabled_condition=~State.has_intelligence,
-        grid_cols="sm:grid-cols-2",
+        disabled=not get_has_intelligence(),
+        grid_cols="repeat(2, 1fr)",
     )

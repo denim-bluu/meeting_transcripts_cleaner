@@ -2,165 +2,368 @@
 
 from __future__ import annotations
 
-import reflex as rx
+from dash import html
 
 from app.components.common import (
     export_section as common_export_section,
     missing_transcript_notice,
 )
 from app.components.metrics import transcript_quality_metrics
-from app.state import ChunkReviewDisplay, State
+from app.state import (
+    ChunkReviewDisplay,
+    get_has_transcript,
+    get_transcript_has_chunks,
+    get_transcript_chunk_pairs,
+)
 
 
-def review_workspace() -> rx.Component:
-    return rx.el.section(
-        rx.el.h2(
-            "Review Cleaned Transcript", class_name="text-3xl font-black text-black"
-        ),
-        rx.el.p(
-            "Inspect cleaned chunks, quality scores, and export the transcript in multiple formats.",
-            class_name="mt-2 text-sm font-bold text-black",
-        ),
-        rx.cond(
-            State.has_transcript,
+def review_workspace():
+    """Main review workspace."""
+    if not get_has_transcript():
+        return html.Section(
+            [
+                html.H2(
+                    "Review Cleaned Transcript",
+                    style={
+                        "fontSize": "1.875rem",
+                        "fontWeight": "900",
+                        "color": "#000000",
+                    },
+                ),
+                html.P(
+                    "Inspect cleaned chunks, quality scores, and export the transcript in multiple formats.",
+                    style={
+                        "marginTop": "0.5rem",
+                        "fontSize": "0.875rem",
+                        "fontWeight": "700",
+                        "color": "#000000",
+                    },
+                ),
+                missing_transcript_notice(),
+            ],
+            style={"maxWidth": "72rem", "margin": "0 auto"},
+        )
+
+    return html.Section(
+        [
+            html.H2(
+                "Review Cleaned Transcript",
+                style={
+                    "fontSize": "1.875rem",
+                    "fontWeight": "900",
+                    "color": "#000000",
+                },
+            ),
+            html.P(
+                "Inspect cleaned chunks, quality scores, and export the transcript in multiple formats.",
+                style={
+                    "marginTop": "0.5rem",
+                    "fontSize": "0.875rem",
+                    "fontWeight": "700",
+                    "color": "#000000",
+                },
+            ),
             review_content(),
-            missing_transcript_notice(),
-        ),
-        class_name="max-w-6xl mx-auto space-y-6",
+        ],
+        style={"maxWidth": "72rem", "margin": "0 auto"},
     )
 
 
-def review_content() -> rx.Component:
-    return rx.el.div(
-        transcript_quality_metrics(),
-        chunk_review_panel(),
-        export_section(),
-        class_name="space-y-8",
+def review_content():
+    """Review content with metrics and chunks."""
+    return html.Div(
+        [
+            transcript_quality_metrics(),
+            chunk_review_panel(),
+            export_section(),
+        ],
+        style={"display": "flex", "flexDirection": "column", "gap": "2rem"},
     )
 
 
-def chunk_review_panel() -> rx.Component:
-    return rx.el.section(
-        rx.el.div(
-            rx.el.h3(
-                "Detailed Chunk Review", class_name="text-xl font-black text-black"
-            ),
-            rx.el.p(
-                "Compare the original transcript with cleaned output and quality scores for each chunk.",
-                class_name="mt-1 text-sm font-bold text-black",
-            ),
-        ),
-        rx.cond(
-            State.transcript_has_chunks,
-            rx.el.div(
-                rx.foreach(State.transcript_chunk_pairs, chunk_card),
-                class_name="mt-4 space-y-4",
-            ),
-            rx.el.div(
-                "No chunks available to review.",
-                class_name="mt-4 text-sm font-bold text-black",
-            ),
-        ),
-        class_name="space-y-4",
-    )
-
-
-def chunk_card(pair: ChunkReviewDisplay) -> rx.Component:
-    confidence_helper = rx.cond(
-        pair["confidence_text"] != "",
-        rx.el.span(
-            pair["confidence_text"], class_name="text-xs font-bold text-black mt-1"
-        ),
-        rx.fragment(),
-    )
-
-    issues_list = rx.cond(
-        pair["has_issues"],
-        rx.el.div(
-            rx.el.span(
-                "Review Notes", class_name="text-xs font-bold text-black uppercase"
-            ),
-            rx.el.pre(
-                pair["issues_text"],
-                class_name="mt-2 whitespace-pre-wrap text-sm font-medium text-black bg-white border-4 border-black px-2 py-2",
-            ),
-            class_name="mt-4",
-        ),
-        rx.fragment(),
-    )
-
-    return rx.el.div(
-        rx.el.div(
-            rx.el.div(
-                rx.el.span(
-                    pair["index_label"],
-                    class_name="text-sm font-black text-black",
+def chunk_review_panel():
+    """Panel displaying chunk reviews."""
+    if not get_transcript_has_chunks():
+        return html.Section(
+            [
+                html.Div(
+                    [
+                        html.H3(
+                            "Detailed Chunk Review",
+                            style={
+                                "fontSize": "1.25rem",
+                                "fontWeight": "900",
+                                "color": "#000000",
+                            },
+                        ),
+                        html.P(
+                            "Compare the original transcript with cleaned output and quality scores for each chunk.",
+                            style={
+                                "marginTop": "0.25rem",
+                                "fontSize": "0.875rem",
+                                "fontWeight": "700",
+                                "color": "#000000",
+                            },
+                        ),
+                    ]
                 ),
-                rx.el.div(
-                    rx.el.span(
-                        pair["quality_label"],
-                        class_name=pair["quality_badge_class"],
-                    ),
-                    rx.el.span(
-                        pair["quality_score"],
-                        class_name="ml-2 text-xs font-bold text-black",
-                    ),
-                    class_name="inline-flex items-center",
+                html.Div(
+                    "No chunks available to review.",
+                    style={
+                        "marginTop": "1rem",
+                        "fontSize": "0.875rem",
+                        "fontWeight": "700",
+                        "color": "#000000",
+                    },
                 ),
-                class_name="flex items-center space-x-4",
+            ],
+            style={"display": "flex", "flexDirection": "column", "gap": "1rem"},
+        )
+
+    pairs = get_transcript_chunk_pairs()
+    chunk_cards = [chunk_card(pair) for pair in pairs]
+
+    return html.Section(
+        [
+            html.Div(
+                [
+                    html.H3(
+                        "Detailed Chunk Review",
+                        style={
+                            "fontSize": "1.25rem",
+                            "fontWeight": "900",
+                            "color": "#000000",
+                        },
+                    ),
+                    html.P(
+                        "Compare the original transcript with cleaned output and quality scores for each chunk.",
+                        style={
+                            "marginTop": "0.25rem",
+                            "fontSize": "0.875rem",
+                            "fontWeight": "700",
+                            "color": "#000000",
+                        },
+                    ),
+                ]
             ),
-            rx.el.span(
-                pair["status_label"],
-                class_name=pair["status_badge_class"],
+            html.Div(
+                chunk_cards,
+                style={"marginTop": "1rem", "display": "flex", "flexDirection": "column", "gap": "1rem"},
             ),
-            class_name="flex items-center justify-between",
-        ),
-        rx.el.div(
-            text_block("Original", pair["original_text"]),
-            text_block("Cleaned", pair["cleaned_text"], helper=confidence_helper),
-            class_name="mt-4 grid gap-4 md:grid-cols-2 items-start",
-        ),
-        issues_list,
-        class_name="p-5 bg-white border-4 border-black",
+        ],
+        style={"display": "flex", "flexDirection": "column", "gap": "1rem"},
+    )
+
+
+def chunk_card(pair: ChunkReviewDisplay):
+    """Individual chunk review card."""
+    confidence_helper = (
+        html.Span(
+            pair["confidence_text"],
+            style={
+                "fontSize": "0.75rem",
+                "fontWeight": "700",
+                "color": "#000000",
+                "marginTop": "0.25rem",
+            },
+        )
+        if pair.get("confidence_text", "") != ""
+        else html.Div()
+    )
+
+    issues_list = (
+        html.Div(
+            [
+                html.Span(
+                    "Review Notes",
+                    style={
+                        "fontSize": "0.75rem",
+                        "fontWeight": "700",
+                        "color": "#000000",
+                        "textTransform": "uppercase",
+                    },
+                ),
+                html.Pre(
+                    pair["issues_text"],
+                    style={
+                        "marginTop": "0.5rem",
+                        "whiteSpace": "pre-wrap",
+                        "fontSize": "0.875rem",
+                        "fontWeight": "500",
+                        "color": "#000000",
+                        "backgroundColor": "#ffffff",
+                        "border": "4px solid #000000",
+                        "padding": "0.5rem",
+                    },
+                ),
+            ],
+            style={"marginTop": "1rem"},
+        )
+        if pair.get("has_issues", False)
+        else html.Div()
+    )
+
+    return html.Div(
+        [
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            html.Span(
+                                pair["index_label"],
+                                style={
+                                    "fontSize": "0.875rem",
+                                    "fontWeight": "900",
+                                    "color": "#000000",
+                                },
+                            ),
+                            html.Div(
+                                [
+                                    html.Span(
+                                        pair["quality_label"],
+                                        className=pair["quality_badge_class"],
+                                        style={
+                                            "fontSize": "0.75rem",
+                                            "fontWeight": "700",
+                                            "padding": "0.25rem 0.5rem",
+                                            "border": "2px solid #000000",
+                                        },
+                                    ),
+                                    html.Span(
+                                        pair["quality_score"],
+                                        style={
+                                            "marginLeft": "0.5rem",
+                                            "fontSize": "0.75rem",
+                                            "fontWeight": "700",
+                                            "color": "#000000",
+                                        },
+                                    ),
+                                ],
+                                style={"display": "inline-flex", "alignItems": "center"},
+                            ),
+                        ],
+                        style={"display": "flex", "alignItems": "center", "gap": "1rem"},
+                    ),
+                    html.Span(
+                        pair["status_label"],
+                        className=pair["status_badge_class"],
+                        style={
+                            "fontSize": "0.75rem",
+                            "fontWeight": "700",
+                            "padding": "0.25rem 0.75rem",
+                            "border": "2px solid #000000",
+                        },
+                    ),
+                ],
+                style={
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "space-between",
+                },
+            ),
+            html.Div(
+                [
+                    text_block("Original", pair["original_text"]),
+                    text_block("Cleaned", pair["cleaned_text"], helper=confidence_helper),
+                ],
+                style={
+                    "marginTop": "1rem",
+                    "display": "grid",
+                    "gridTemplateColumns": "repeat(2, 1fr)",
+                    "gap": "1rem",
+                    "alignItems": "start",
+                },
+            ),
+            issues_list,
+        ],
+        style={
+            "padding": "1.25rem",
+            "backgroundColor": "#ffffff",
+            "border": "4px solid #000000",
+        },
     )
 
 
 def text_block(
-    title: str, content: rx.Var | str, helper: rx.Component | None = None
-) -> rx.Component:
+    title: str, content: str | dict, helper: html.Div | None = None
+):
+    """Text block component for original/cleaned text."""
     if helper is not None:
-        return rx.el.div(
-            rx.el.span(title, class_name="text-xs font-bold text-black uppercase"),
-            rx.el.div(
-                rx.el.div(
-                    rx.el.div(
-                        helper,
-                        class_name="mb-2 pb-2 border-b-2 border-black",
-                    ),
-                    rx.el.pre(
-                        content,
-                        class_name="whitespace-pre-wrap text-sm leading-relaxed font-mono",
-                    ),
-                    class_name="bg-yellow-100 border-4 border-black px-4 py-3 max-h-72 overflow-y-auto",
+        return html.Div(
+            [
+                html.Span(
+                    title,
+                    style={
+                        "fontSize": "0.75rem",
+                        "fontWeight": "700",
+                        "color": "#000000",
+                        "textTransform": "uppercase",
+                    },
                 ),
-                class_name="mt-2",
-            ),
-            class_name="flex flex-col",
+                html.Div(
+                    [
+                        html.Div(
+                            [
+                                helper,
+                                html.Pre(
+                                    str(content),
+                                    style={
+                                        "whiteSpace": "pre-wrap",
+                                        "fontSize": "0.875rem",
+                                        "lineHeight": "1.75",
+                                        "fontFamily": "monospace",
+                                    },
+                                ),
+                            ],
+                            style={
+                                "backgroundColor": "#fef08a",
+                                "border": "4px solid #000000",
+                                "padding": "0.75rem 1rem",
+                                "maxHeight": "18rem",
+                                "overflowY": "auto",
+                            },
+                        ),
+                    ],
+                    style={"marginTop": "0.5rem"},
+                ),
+            ],
+            style={"display": "flex", "flexDirection": "column"},
         )
     else:
-        return rx.el.div(
-            rx.el.span(title, class_name="text-xs font-bold text-black uppercase"),
-            rx.el.div(
-                rx.el.pre(
-                    content,
-                    class_name="mt-2 whitespace-pre-wrap text-sm leading-relaxed bg-yellow-100 border-4 border-black px-4 py-3 max-h-72 overflow-y-auto font-mono",
+        return html.Div(
+            [
+                html.Span(
+                    title,
+                    style={
+                        "fontSize": "0.75rem",
+                        "fontWeight": "700",
+                        "color": "#000000",
+                        "textTransform": "uppercase",
+                    },
                 ),
-            ),
-            class_name="flex flex-col",
+                html.Div(
+                    html.Pre(
+                        str(content),
+                        style={
+                            "marginTop": "0.5rem",
+                            "whiteSpace": "pre-wrap",
+                            "fontSize": "0.875rem",
+                            "lineHeight": "1.75",
+                            "backgroundColor": "#fef08a",
+                            "border": "4px solid #000000",
+                            "padding": "0.75rem 1rem",
+                            "maxHeight": "18rem",
+                            "overflowY": "auto",
+                            "fontFamily": "monospace",
+                        },
+                    ),
+                ),
+            ],
+            style={"display": "flex", "flexDirection": "column"},
         )
 
 
-def export_section() -> rx.Component:
+def export_section():
     """Export section for cleaned transcript."""
     return common_export_section(
         title="Export Cleaned Transcript",
@@ -170,10 +373,10 @@ def export_section() -> rx.Component:
             ("Markdown", "📝", "md"),
             ("VTT", "🎬", "vtt"),
         ],
-        on_click_handlers={
-            "txt": State.download_transcript("txt"),
-            "md": State.download_transcript("md"),
-            "vtt": State.download_transcript("vtt"),
+        button_ids={
+            "txt": "download-transcript-txt",
+            "md": "download-transcript-md",
+            "vtt": "download-transcript-vtt",
         },
-        disabled_condition=~State.has_transcript,
+        disabled=not get_has_transcript(),
     )

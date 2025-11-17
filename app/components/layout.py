@@ -1,63 +1,109 @@
 """Layout primitives shared across pages."""
 
-import reflex as rx
-
-from app.state import State
+from dash import dcc, html
 
 
-def header() -> rx.Component:
-    return rx.el.header(
-        rx.el.div(
-            rx.el.div(
-                rx.icon("file-text", class_name="w-8 h-8 text-white"),
-                rx.el.div(
-                    rx.el.h1(
-                        "Meeting Transcript Tool",
-                        class_name="text-xl font-bold text-white",
-                    ),
-                    rx.el.p(
-                        "Clean transcripts, review quality, and extract meeting intelligence.",
-                        class_name="text-sm text-yellow-200 font-medium",
-                    ),
-                    class_name="ml-3",
+def header():
+    """Application header with navigation."""
+    return html.Header(
+        html.Div(
+            [
+                html.Div(
+                    [
+                        html.Div(
+                            "📄",
+                            style={"fontSize": "2rem", "marginRight": "0.75rem"},
+                        ),
+                        html.Div(
+                            [
+                                html.H1(
+                                    "Meeting Transcript Tool",
+                                    style={
+                                        "fontSize": "1.25rem",
+                                        "fontWeight": "700",
+                                        "color": "#ffffff",
+                                        "margin": 0,
+                                    },
+                                ),
+                                html.P(
+                                    "Clean transcripts, review quality, and extract meeting intelligence.",
+                                    style={
+                                        "fontSize": "0.875rem",
+                                        "color": "#fef08a",
+                                        "fontWeight": "500",
+                                        "margin": 0,
+                                    },
+                                ),
+                            ],
+                            style={"marginLeft": "0.75rem"},
+                        ),
+                    ],
+                    style={"display": "flex", "alignItems": "center"},
                 ),
-                class_name="flex items-center",
-            ),
-            rx.el.nav(
-                nav_link("Upload", "/"),
-                nav_link("Review", "/review"),
-                nav_link("Intelligence", "/intelligence"),
-                class_name="flex items-center space-x-6",
-            ),
-            class_name="container mx-auto px-4 flex items-center justify-between",
+                html.Nav(
+                    [
+                        nav_link("Upload", "/"),
+                        nav_link("Review", "/review"),
+                        nav_link("Intelligence", "/intelligence"),
+                    ],
+                    style={
+                        "display": "flex",
+                        "alignItems": "center",
+                        "gap": "1.5rem",
+                    },
+                ),
+            ],
+            style={
+                "maxWidth": "1200px",
+                "margin": "0 auto",
+                "padding": "0 1rem",
+                "display": "flex",
+                "alignItems": "center",
+                "justifyContent": "space-between",
+            },
         ),
-        class_name="bg-black py-4 border-b-4 border-yellow-400",
+        style={
+            "backgroundColor": "#000000",
+            "padding": "1rem 0",
+            "borderBottom": "4px solid #fbbf24",
+        },
     )
 
 
-def nav_link(label: str, href: str) -> rx.Component:
-    is_active = State.current_page == href
-    active_class = "text-sm font-bold text-yellow-400 border-2 border-yellow-400 px-3 py-1 bg-black"
-    inactive_class = "text-sm font-bold text-white hover:text-yellow-400 hover:border-2 hover:border-yellow-400 hover:px-3 hover:py-1 transition-all"
-
-    return rx.link(
+def nav_link(label: str, href: str):
+    """Navigation link component."""
+    return dcc.Link(
         label,
         href=href,
-        on_click=State.set_current_page(href),
-        class_name=rx.cond(
-            is_active,
-            active_class,
-            inactive_class,
-        ),
+        style={
+            "fontSize": "0.875rem",
+            "fontWeight": "700",
+            "color": "#ffffff",
+            "textDecoration": "none",
+            "padding": "0.25rem 0.75rem",
+            "border": "2px solid transparent",
+        },
+        className="nav-link",
     )
 
 
-def page_container(*children: rx.Component) -> rx.Component:
-    return rx.el.main(
-        header(),
-        rx.el.div(
-            *children,
-            class_name="container mx-auto px-4 py-10",
-        ),
-        class_name="min-h-screen bg-yellow-50 font-['Montserrat']",
+def page_container(*children):
+    """Main page container with header."""
+    return html.Main(
+        [
+            header(),
+            html.Div(
+                list(children),
+                style={
+                    "maxWidth": "1200px",
+                    "margin": "0 auto",
+                    "padding": "2.5rem 1rem",
+                },
+            ),
+        ],
+        style={
+            "minHeight": "100vh",
+            "backgroundColor": "#fefce8",
+            "fontFamily": "'Montserrat', sans-serif",
+        },
     )

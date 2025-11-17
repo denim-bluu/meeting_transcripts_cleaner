@@ -1,90 +1,173 @@
 """Metrics visualization components."""
 
-import reflex as rx
+from dash import html
 
-from app.state import State
+from app.state import (
+    get_has_transcript,
+    get_transcript_chunk_count,
+    get_transcript_total_entries,
+    get_transcript_duration_display,
+    get_transcript_has_speakers,
+    get_transcript_speakers_display,
+    get_transcript_acceptance_count,
+    get_transcript_acceptance_helper,
+    get_transcript_average_quality_display,
+    get_transcript_quality_high,
+    get_transcript_quality_medium,
+    get_transcript_quality_low,
+)
 
 
-def metric_card(
-    title: str, value: rx.Var | str, helper: rx.Component | None = None
-) -> rx.Component:
-    elements: list[rx.Component] = [
-        rx.el.span(
-            title, class_name="text-xs font-bold text-black uppercase tracking-wide"
+def metric_card(title: str, value: str | int | float, helper: str | None = None):
+    """Metric card component."""
+    elements = [
+        html.Span(
+            title,
+            style={
+                "fontSize": "0.75rem",
+                "fontWeight": "700",
+                "color": "#000000",
+                "textTransform": "uppercase",
+                "letterSpacing": "0.05em",
+            },
         ),
-        rx.el.p(value, class_name="mt-1 text-3xl font-black text-black"),
+        html.P(
+            str(value),
+            style={
+                "marginTop": "0.25rem",
+                "fontSize": "1.875rem",
+                "fontWeight": "900",
+                "color": "#000000",
+            },
+        ),
     ]
     if helper is not None:
-        elements.append(helper)
-    return rx.el.div(
-        *elements,
-        class_name="p-4 bg-white border-4 border-black",
+        elements.append(
+            html.Span(
+                helper,
+                style={
+                    "fontSize": "0.75rem",
+                    "fontWeight": "700",
+                    "color": "#000000",
+                    "marginTop": "0.25rem",
+                },
+            )
+        )
+    return html.Div(
+        elements,
+        style={
+            "padding": "1rem",
+            "backgroundColor": "#ffffff",
+            "border": "4px solid #000000",
+        },
     )
 
 
-def transcript_summary_metrics() -> rx.Component:
-    return rx.cond(
-        State.has_transcript,
-        rx.el.div(
-            rx.el.h3("Processing Summary", class_name="text-xl font-black text-black"),
-            rx.el.div(
-                metric_card("Chunks", State.transcript_chunk_count),
-                metric_card("Entries", State.transcript_total_entries),
-                metric_card("Duration", State.transcript_duration_display),
-                class_name="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4",
+def transcript_summary_metrics():
+    """Summary metrics for transcript processing."""
+    if not get_has_transcript():
+        return html.Div()
+
+    return html.Div(
+        [
+            html.H3(
+                "Processing Summary",
+                style={
+                    "fontSize": "1.25rem",
+                    "fontWeight": "900",
+                    "color": "#000000",
+                },
             ),
-            rx.cond(
-                State.transcript_has_speakers,
-                rx.el.div(
-                    rx.icon("users", class_name="w-4 h-4 mr-2 text-black"),
-                    rx.el.span(
-                        State.transcript_speakers_display,
-                        class_name="text-sm font-bold text-black",
+            html.Div(
+                [
+                    metric_card("Chunks", get_transcript_chunk_count()),
+                    metric_card("Entries", get_transcript_total_entries()),
+                    metric_card("Duration", get_transcript_duration_display()),
+                ],
+                style={
+                    "marginTop": "1rem",
+                    "display": "grid",
+                    "gridTemplateColumns": "repeat(auto-fit, minmax(200px, 1fr))",
+                    "gap": "1rem",
+                },
+            ),
+            html.Div(
+                [
+                    html.Span("👥", style={"marginRight": "0.5rem", "fontSize": "1rem"}),
+                    html.Span(
+                        get_transcript_speakers_display(),
+                        style={"fontSize": "0.875rem", "fontWeight": "700", "color": "#000000"},
                     ),
-                    class_name="mt-4 inline-flex items-center px-3 py-2 bg-cyan-300 border-4 border-black",
-                ),
-            ),
-            class_name="mt-8",
-        ),
+                ],
+                style={
+                    "marginTop": "1rem",
+                    "display": "inline-flex",
+                    "alignItems": "center",
+                    "padding": "0.5rem 0.75rem",
+                    "backgroundColor": "#67e8f9",
+                    "border": "4px solid #000000",
+                },
+            )
+            if get_transcript_has_speakers()
+            else html.Div(),
+        ],
+        style={"marginTop": "2rem"},
     )
 
 
-def transcript_quality_metrics() -> rx.Component:
-    return rx.cond(
-        State.has_transcript,
-        rx.el.div(
-            rx.el.h3("Quality Overview", class_name="text-xl font-black text-black"),
-            rx.el.div(
-                metric_card(
-                    "Accepted",
-                    State.transcript_acceptance_count,
-                    helper=rx.cond(
-                        State.transcript_acceptance_helper != "—",
-                        rx.el.span(
-                            State.transcript_acceptance_helper,
-                            class_name="text-xs font-bold text-black mt-1",
-                        ),
-                        rx.el.span("—", class_name="text-xs font-bold text-black mt-1"),
-                    ),
-                ),
-                metric_card(
-                    "Avg Quality",
-                    State.transcript_average_quality_display,
-                ),
-                metric_card(
-                    "High Quality",
-                    State.transcript_quality_high,
-                ),
-                metric_card(
-                    "Medium Quality",
-                    State.transcript_quality_medium,
-                ),
-                metric_card(
-                    "Needs Review",
-                    State.transcript_quality_low,
-                ),
-                class_name="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4",
+def transcript_quality_metrics():
+    """Quality metrics for transcript."""
+    if not get_has_transcript():
+        return html.Div()
+
+    helper_text = get_transcript_acceptance_helper()
+    helper = (
+        html.Span(
+            helper_text,
+            style={
+                "fontSize": "0.75rem",
+                "fontWeight": "700",
+                "color": "#000000",
+                "marginTop": "0.25rem",
+            },
+        )
+        if helper_text != "—"
+        else html.Span(
+            "—",
+            style={
+                "fontSize": "0.75rem",
+                "fontWeight": "700",
+                "color": "#000000",
+                "marginTop": "0.25rem",
+            },
+        )
+    )
+
+    return html.Div(
+        [
+            html.H3(
+                "Quality Overview",
+                style={
+                    "fontSize": "1.25rem",
+                    "fontWeight": "900",
+                    "color": "#000000",
+                },
             ),
-            class_name="mt-10",
-        ),
+            html.Div(
+                [
+                    metric_card("Accepted", get_transcript_acceptance_count(), helper),
+                    metric_card("Avg Quality", get_transcript_average_quality_display()),
+                    metric_card("High Quality", get_transcript_quality_high()),
+                    metric_card("Medium Quality", get_transcript_quality_medium()),
+                    metric_card("Needs Review", get_transcript_quality_low()),
+                ],
+                style={
+                    "marginTop": "1rem",
+                    "display": "grid",
+                    "gridTemplateColumns": "repeat(auto-fit, minmax(150px, 1fr))",
+                    "gap": "1rem",
+                },
+            ),
+        ],
+        style={"marginTop": "2.5rem"},
     )
