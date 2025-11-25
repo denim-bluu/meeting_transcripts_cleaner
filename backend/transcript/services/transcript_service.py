@@ -126,7 +126,6 @@ class TranscriptService:
     async def clean_transcript(
         self,
         transcript: VTTProcessingResult,
-        progress_callback: Callable[[float, str], None] | None = None,
     ) -> TranscriptProcessingResult:
         """
         Run concurrent AI cleaning and review on all chunks using a single in-process
@@ -134,7 +133,6 @@ class TranscriptService:
 
         Args:
             transcript: Output from process_vtt()
-            progress_callback: Called with (progress_pct, status_msg)
 
         Returns transcript with added cleaned and reviewed data.
         """
@@ -178,20 +176,6 @@ class TranscriptService:
         # Progress tracking
         completed = 0
         progress_lock = asyncio.Lock()
-
-        async def _maybe_call_progress(progress: float, message: str) -> None:
-            """Call progress callback if provided, handling both sync and async."""
-            if not progress_callback:
-                return
-            if asyncio.iscoroutinefunction(progress_callback):
-                await progress_callback(progress, message)
-            else:
-                progress_callback(progress, message)
-
-        await _maybe_call_progress(
-            0.0,
-            f"Queued {total_chunks} chunks • Workers: {worker_count} • Concurrency limit: {getattr(self, 'max_concurrent', self.semaphore._value)}",
-        )
 
         async def worker(_id: int):
             nonlocal completed
@@ -244,25 +228,6 @@ class TranscriptService:
                     # Update progress after each chunk
                     async with progress_lock:
                         completed += 1
-                        progress = completed / total_chunks
-                        elapsed_time = time.time() - start_time
-                        chunks_per_sec = (
-                            completed / elapsed_time if elapsed_time > 0 else 0
-                        )
-                        remaining_chunks = total_chunks - completed
-                        eta = (
-                            remaining_chunks / chunks_per_sec
-                            if chunks_per_sec > 0
-                            else 0
-                        )
-                        in_queue = max(
-                            0, queue.qsize() - worker_count
-                        )  # rough estimate of not-yet-picked items
-                        status = (
-                            f"Processing {completed}/{total_chunks} • in-queue: {in_queue} "
-                            f"• concurrency: {worker_count} • {chunks_per_sec:.1f}/sec • ETA: {eta:.1f}s"
-                        )
-                        await _maybe_call_progress(progress, status)
                 finally:
                     # Mark task (including sentinel) as done
                     queue.task_done()
@@ -279,9 +244,6 @@ class TranscriptService:
 
         # Ensure workers exit after receiving sentinels
         await asyncio.gather(*workers, return_exceptions=False)
-
-        # Final progress update
-        await _maybe_call_progress(1.0, "Finalizing results...")
 
         # Combine all cleaned text
         final_transcript = "\n\n".join(

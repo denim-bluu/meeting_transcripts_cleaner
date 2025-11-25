@@ -6,8 +6,9 @@ import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
 
-from app.components.file_upload import upload_panel
+from app.components.file_upload import upload_panel, upload_steps
 from app.components.intelligence import intelligence_workspace
 from app.components.layout import page_container
 from app.components.metrics import (
@@ -16,11 +17,13 @@ from app.components.metrics import (
 )
 from app.components.review import review_workspace
 from app.state import (
-    clear_upload,
+    clear_upload_state,
     extract_intelligence,
-    get_state,
+    get_default_state,
+    get_intelligence_summary_text,
     get_upload_size_display,
     handle_upload,
+    has_intelligence,
     start_processing,
 )
 from shared.utils.exports import generate_export_content
@@ -34,37 +37,11 @@ app = dash.Dash(
         "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap",
     ],
     suppress_callback_exceptions=True,
+    assets_folder="assets",
 )
 
-# Add custom CSS
-app.index_string = """
-<!DOCTYPE html>
-<html>
-    <head>
-        {%metas%}
-        <title>Meeting Transcript Tool</title>
-        {%favicon%}
-        {%css%}
-        <style>
-            body {
-                font-family: 'Montserrat', sans-serif;
-                background-color: #fefce8;
-            }
-        </style>
-    </head>
-    <body>
-        {%app_entry%}
-        <footer>
-            {%config%}
-            {%scripts%}
-            {%renderer%}
-        </footer>
-    </body>
-</html>
-"""
-
 # Store component for client-side state
-store = dcc.Store(id="app-store", storage_type="memory", data={})
+store = dcc.Store(id="app-store", storage_type="memory", data=get_default_state())
 
 # Download component
 download_component = dcc.Download(id="download-data")
@@ -72,72 +49,56 @@ download_component = dcc.Download(id="download-data")
 # Location component for routing
 location = dcc.Location(id="url", refresh=False)
 
-# Interval component for periodic updates
-interval = dcc.Interval(
-    id="interval-component",
-    interval=500,  # Update every 500ms
-    n_intervals=0,
-)
-
-# Download buttons that are conditionally rendered but referenced in callbacks
-# These need to be in the main layout so Dash recognizes them on all pages at runtime
-download_intelligence_buttons = html.Div(
-    [
-        html.Button("Download TXT", id="download-intelligence-txt", n_clicks=0, style={"display": "none"}),
-        html.Button("Download MD", id="download-intelligence-md", n_clicks=0, style={"display": "none"}),
-    ]
-)
-
 # Main layout
-app.layout = html.Div(
-    [
-        store,
-        location,
-        interval,
-        download_component,
-        download_intelligence_buttons,
-        html.Div(id="page-content"),
-    ]
+app.layout = dmc.MantineProvider(
+    html.Div(
+        [
+            store,
+            location,
+            download_component,
+            html.Div(id="page-content"),
+        ]
+    )
 )
 
-def upload_page():
+
+def upload_page(data: dict):
     """Upload and processing page."""
     return page_container(
         html.Section(
             [
                 html.H2(
                     "Upload & Process",
-                    className="text-3xl font-black text-black text-center",
-                    style={"fontSize": "1.875rem", "fontWeight": "900"},
+                    className="page-title",
+                    style={"textAlign": "center"},
                 ),
                 html.P(
                     "Upload a VTT transcript to clean, review, and extract meeting intelligence.",
-                    className="mt-2 text-sm font-bold text-black text-center",
-                    style={"marginTop": "0.5rem", "fontSize": "0.875rem", "fontWeight": "700"},
+                    className="subtitle",
+                    style={"textAlign": "center"},
                 ),
                 html.Div(
                     upload_panel(),
-                    className="flex justify-center",
-                    style={"display": "flex", "justifyContent": "center"},
+                    className="flex-center",
                 ),
-                transcript_summary_metrics(),
-                transcript_quality_metrics(),
+                transcript_summary_metrics(data),
+                transcript_quality_metrics(data),
                 html.Div(id="processing-complete-message"),
             ],
-            className="max-w-5xl mx-auto space-y-6",
-            style={"maxWidth": "80rem", "margin": "0 auto"},
+            className="page-container",
+            style={"maxWidth": "80rem"},
         )
     )
 
 
-def review_page():
+def review_page(data: dict):
     """Review workspace page."""
-    return page_container(review_workspace())
+    return page_container(review_workspace(data))
 
 
-def intelligence_page():
+def intelligence_page(data: dict):
     """Intelligence extraction page."""
-    return page_container(intelligence_workspace())
+    return page_container(intelligence_workspace(data))
 
 
 # Validation layout ensures all components exist for callback validation
@@ -145,12 +106,10 @@ app.validation_layout = html.Div(
     [
         store,
         location,
-        interval,
         download_component,
-        download_intelligence_buttons,
-        upload_page(),
-        review_page(),
-        intelligence_page(),
+        upload_page(get_default_state()),
+        review_page(get_default_state()),
+        intelligence_page(get_default_state()),
     ]
 )
 
@@ -158,28 +117,28 @@ app.validation_layout = html.Div(
 # Routing callback
 @app.callback(
     Output("page-content", "children"),
-    Input("url", "pathname"),
+    [Input("url", "pathname"), Input("app-store", "data")],
 )
-def display_page(pathname):
+def display_page(pathname, store_data):
     """Route to appropriate page based on URL."""
+    data = store_data or get_default_state()
     if pathname == "/review":
-        return review_page()
+        return review_page(data)
     elif pathname == "/intelligence":
-        return intelligence_page()
+        return intelligence_page(data)
     else:
-        return upload_page()
+        return upload_page(data)
 
 
 # File upload callback
 @app.callback(
     [
-        Output("app-store", "data"),
+        Output("app-store", "data", allow_duplicate=True),
         Output("upload-error", "children"),
         Output("upload-error", "style"),
     ],
     Input("upload-data", "contents"),
-    State("upload-data", "filename"),
-    State("app-store", "data"),
+    [State("upload-data", "filename"), State("app-store", "data")],
     prevent_initial_call=True,
 )
 def handle_file_upload(contents, filename, store_data):
@@ -197,56 +156,32 @@ def handle_file_upload(contents, filename, store_data):
         content = decoded.decode("utf-8")
     except (ValueError, UnicodeDecodeError):
         error_msg = "Unable to decode file. Ensure the file is UTF-8 encoded."
-        return dash.no_update, html.Div(
-            [
-                html.Span("⚠️", style={"marginRight": "0.5rem"}),
-                html.Span(error_msg, style={"fontSize": "0.875rem"}),
-            ],
-            style={
-                "marginTop": "1rem",
-                "display": "flex",
-                "alignItems": "center",
-                "padding": "0.75rem",
-                "color": "#000000",
-                "backgroundColor": "#fca5a5",
-                "border": "4px solid #000000",
-                "fontWeight": "700",
-            },
+        return dash.no_update, dmc.Alert(
+            error_msg,
+            title="Upload Error",
+            color="red",
+            variant="light",
+            withCloseButton=True
         ), {"display": "block"}
 
     # Handle upload asynchronously
-    result = asyncio.run(handle_upload(content, filename))
+    current_state = store_data or get_default_state()
+    result = asyncio.run(handle_upload(content, filename, current_state))
 
     if not result.get("success"):
         error_msg = result.get("error", "Upload failed")
-        return dash.no_update, html.Div(
-            [
-                html.Span("⚠️", style={"marginRight": "0.5rem"}),
-                html.Span(error_msg, style={"fontSize": "0.875rem"}),
-            ],
-            style={
-                "marginTop": "1rem",
-                "display": "flex",
-                "alignItems": "center",
-                "padding": "0.75rem",
-                "color": "#000000",
-                "backgroundColor": "#fca5a5",
-                "border": "4px solid #000000",
-                "fontWeight": "700",
-            },
+        return dash.no_update, dmc.Alert(
+            error_msg,
+            title="Upload Failed",
+            color="red",
+            variant="light",
+            withCloseButton=True
         ), {"display": "block"}
 
-    # Update store with new state
-    state = get_state()
-    new_store = store_data or {}
-    new_store.update({
-        "uploaded_file_name": state.get("uploaded_file_name", ""),
-        "uploaded_file_size": state.get("uploaded_file_size", 0),
-        "upload_preview": state.get("upload_preview", ""),
-        "upload_preview_truncated": state.get("upload_preview_truncated", False),
-        "vtt_content": state.get("vtt_content", ""),
-        "processing_status": state.get("processing_status", ""),
-    })
+    # Update store with new state (remove success/error keys from result)
+    new_store = store_data or get_default_state()
+    updates = {k: v for k, v in result.items() if k not in ("success", "error")}
+    new_store.update(updates)
 
     return new_store, "", {"display": "none"}
 
@@ -258,13 +193,17 @@ def handle_file_upload(contents, filename, store_data):
         Output("upload-details", "style", allow_duplicate=True),
     ],
     Input("clear-upload-btn", "n_clicks"),
+    State("app-store", "data"),
     prevent_initial_call=True,
 )
-def clear_upload_handler(n_clicks):
+def clear_upload_handler(n_clicks, store_data):
     """Clear uploaded file."""
     if n_clicks:
-        clear_upload()
-        return {}, {"display": "none"}
+        current_state = store_data or get_default_state()
+        updates = clear_upload_state()
+        new_state = current_state.copy()
+        new_state.update(updates)
+        return new_state, {"display": "none"}
     return dash.no_update, dash.no_update
 
 
@@ -272,241 +211,133 @@ def clear_upload_handler(n_clicks):
 @app.callback(
     [
         Output("app-store", "data", allow_duplicate=True),
-        Output("processing-status", "children"),
-        Output("processing-progress", "style"),
         Output("processing-complete-message", "children"),
     ],
     Input("process-btn", "n_clicks"),
     State("app-store", "data"),
     prevent_initial_call=True,
+    running=[
+        (Output("process-btn", "loading"), True, False),
+    ],
 )
 def process_transcript(n_clicks, store_data):
     """Start transcript processing."""
     import asyncio
 
     if not n_clicks:
-        return dash.no_update, "", {"display": "none"}, ""
+        return dash.no_update, ""
 
-    state = get_state()
-    if not state.get("vtt_content"):
-        return dash.no_update, "No file uploaded", {"display": "block"}, ""
+    current_state = store_data or get_default_state()
+    vtt_content = current_state.get("vtt_content", "")
+    if not vtt_content:
+        return dash.no_update, ""
 
     # Run processing asynchronously
-    result = asyncio.run(start_processing())
+    result = asyncio.run(start_processing(vtt_content, current_state))
 
     if not result.get("success"):
         error_msg = result.get("error", "Processing failed")
-        return dash.no_update, error_msg, {"display": "block"}, ""
+        # Update store with error state
+        new_state = current_state.copy()
+        new_state.update({
+            "transcript_error": error_msg,
+            "is_processing": False,
+            "processing_status": "",
+            "processing_progress": 0.0,
+        })
+        return new_state, ""
 
-    # Update store
-    new_state = get_state()
-    new_store = store_data or {}
-    new_store.update({
-        "transcript_data": new_state.get("transcript_data", {}),
-        "processing_complete": new_state.get("processing_complete", False),
-        "processing_progress": new_state.get("processing_progress", 0.0),
-        "processing_status": new_state.get("processing_status", ""),
-    })
+    # Update store with results
+    new_state = current_state.copy()
+    updates = {k: v for k, v in result.items() if k not in ("success", "error", "data")}
+    new_state.update(updates)
 
-    status = new_state.get("processing_status", "")
     complete = new_state.get("processing_complete", False)
 
     complete_message = ""
     if complete:
-        complete_message = html.Div(
-            [
-                html.Div(
-                    [
-                        html.Span("→", style={"marginRight": "0.5rem"}),
-                        html.Span(
-                            "Processing complete. Continue to the review workspace to explore the results.",
-                            style={"fontSize": "0.875rem", "fontWeight": "700"},
+        complete_message = dmc.Alert(
+            children=[
+                dmc.Group(
+                    children=[
+                        dmc.Text("Processing complete. Continue to the review workspace to explore the results."),
+                        dcc.Link(
+                            dmc.Button(
+                                "Go to Review",
+                                variant="outline",
+                                color="blue",
+                                size="xs",
+                            ),
+                            href="/review",
                         ),
                     ],
-                    style={"display": "flex", "alignItems": "center", "justifyContent": "center"},
-                ),
-                html.Div(
-                    dcc.Link(
-                        "Go to Review",
-                        href="/review",
-                        style={
-                            "marginTop": "0.75rem",
-                            "display": "inline-flex",
-                            "alignItems": "center",
-                            "padding": "0.75rem 1.5rem",
-                            "backgroundColor": "#000000",
-                            "color": "#fbbf24",
-                            "fontWeight": "700",
-                            "border": "4px solid #fbbf24",
-                            "textDecoration": "none",
-                        },
-                    ),
-                    style={"display": "flex", "justifyContent": "center"},
-                ),
+                    justify="space-between",
+                )
             ],
-            style={
-                "marginTop": "2rem",
-                "padding": "1rem",
-                "backgroundColor": "#cffafe",
-                "border": "4px solid #000000",
-            },
+            title="Success",
+            color="green",
+            variant="light",
+            mt="lg",
         )
 
-    progress_style = {
-        "display": "block" if status else "none",
-        "width": "100%",
-        "backgroundColor": "#fbbf24",
-        "height": "0.75rem",
-        "borderRadius": "0px",
-        "overflow": "hidden",
-    }
-
-    return new_store, status, progress_style, complete_message
+    return new_state, complete_message
 
 
 # Intelligence extraction callback
 @app.callback(
     [
         Output("app-store", "data", allow_duplicate=True),
-        Output("intelligence-status", "children"),
-        Output("intelligence-progress", "style"),
         Output("intelligence-error", "children"),
         Output("intelligence-error", "style"),
-        Output("intelligence-progress-display-container", "style"),
-        Output("intelligence-status-display", "children", allow_duplicate=True),
     ],
     Input("extract-intelligence-btn", "n_clicks"),
     State("app-store", "data"),
     prevent_initial_call=True,
+    running=[
+        (Output("extract-intelligence-btn", "loading"), True, False),
+    ],
 )
 def extract_intelligence_handler(n_clicks, store_data):
     """Extract intelligence from transcript."""
     import asyncio
 
     if not n_clicks:
-        return dash.no_update, "", {"display": "none"}, "", {"display": "none"}, {"display": "none"}, dash.no_update
+        return dash.no_update, "", {"display": "none"}
+
+    current_state = store_data or get_default_state()
+    transcript_data = current_state.get("transcript_data", {})
 
     # Run extraction asynchronously
-    result = asyncio.run(extract_intelligence())
+    result = asyncio.run(extract_intelligence(transcript_data, current_state))
 
     if not result.get("success"):
         error_msg = result.get("error", "Extraction failed")
-        error_div = html.Div(
-            [
-                html.Span("⚠️", style={"marginRight": "0.5rem"}),
-                html.Span(error_msg, style={"fontSize": "0.75rem", "fontWeight": "700", "color": "#000000"}),
-            ],
-            style={"display": "flex", "alignItems": "center"},
+        error_div = dmc.Alert(
+            error_msg,
+            title="Extraction Failed",
+            color="red",
+            variant="light",
         )
+        # Update store with error
+        new_state = current_state.copy()
+        new_state.update({
+            "intelligence_error": error_msg,
+            "intelligence_running": False,
+            "intelligence_status": "",
+            "intelligence_progress": 0.0,
+        })
         return (
-            dash.no_update,
-            "",
-            {"display": "none"},
+            new_state,
             error_div,
             {"display": "block"},
-            {"display": "none"},
-            "",
         )
 
     # Update store
-    new_state = get_state()
-    new_store = store_data or {}
-    new_store.update({
-        "intelligence_data": new_state.get("intelligence_data", {}),
-        "intelligence_progress": new_state.get("intelligence_progress", 0.0),
-        "intelligence_status": new_state.get("intelligence_status", ""),
-        "intelligence_running": new_state.get("intelligence_running", False),
-    })
+    new_state = current_state.copy()
+    updates = {k: v for k, v in result.items() if k not in ("success", "error", "data")}
+    new_state.update(updates)
 
-    status = new_state.get("intelligence_status", "")
-    progress_style = {
-        "display": "block" if status else "none",
-        "width": "100%",
-        "backgroundColor": "#e5e7eb",
-        "height": "0.75rem",
-        "borderRadius": "999px",
-        "overflow": "hidden",
-    }
-
-    # Show progress container if running, hide if complete
-    running = new_state.get("intelligence_running", False)
-    progress_container_style = {"display": "block"} if running else {"display": "none"}
-
-    return new_store, status, progress_style, "", {"display": "none"}, progress_container_style, status
-
-
-# Periodic update callback for progress
-@app.callback(
-    [
-        Output("processing-progress-bar", "style"),
-    ],
-    Input("interval-component", "n_intervals"),
-    State("app-store", "data"),
-)
-def update_progress(n, store_data):
-    """Update progress bars periodically."""
-    state = get_state()
-
-    processing_progress = state.get("processing_progress", 0.0)
-
-    processing_style = {
-        "width": f"{processing_progress * 100:.0f}%",
-        "backgroundColor": "#000000",
-        "height": "100%",
-        "transition": "width 0.3s ease",
-        "display": "block" if processing_progress > 0 else "none",
-    }
-
-    return (processing_style,)
-
-
-@app.callback(
-    [
-        Output("intelligence-progress-bar-inner", "style"),
-        Output("intelligence-progress-inner", "style"),
-        Output("intelligence-status-display-inner", "children"),
-        Output("intelligence-progress-display-container", "style", allow_duplicate=True),
-    ],
-    Input("intelligence-interval", "n_intervals"),
-    prevent_initial_call="initial_duplicate",
-)
-def update_intelligence_progress(n):
-    """Update intelligence progress indicators when on intelligence page."""
-    state = get_state()
-    progress = state.get("intelligence_progress", 0.0)
-    status = state.get("intelligence_status", "")
-
-    bar_style = {
-        "width": f"{max(0.0, min(1.0, progress)) * 100:.0f}%",
-        "backgroundColor": "#6366f1",
-        "height": "100%",
-        "transition": "width 0.3s ease",
-    }
-    track_style = {
-        "width": "100%",
-        "backgroundColor": "#e5e7eb",
-        "height": "0.75rem",
-        "borderRadius": "999px",
-        "overflow": "hidden",
-        "display": "block" if progress > 0 else "none",
-    }
-    container_style = {
-        "marginTop": "1rem",
-        "display": "block" if progress > 0 or status else "none",
-    }
-
-    return bar_style, track_style, status, container_style
-
-
-# Sync intelligence status display
-@app.callback(
-    Output("intelligence-status-display-inner", "children", allow_duplicate=True),
-    Input("intelligence-status", "children"),
-    prevent_initial_call=True,
-)
-def sync_intelligence_status_display(status):
-    """Sync intelligence status to display element."""
-    return status if status else dash.no_update
+    return new_state, "", {"display": "none"}
 
 
 # Update intelligence content (prompt vs results) when intelligence data changes
@@ -517,12 +348,12 @@ def sync_intelligence_status_display(status):
 def update_intelligence_content(store_data):
     """Update intelligence content to show prompt or results based on data availability."""
     from app.components.intelligence import extraction_prompt, intelligence_results
-    from app.state import get_has_intelligence
 
-    if get_has_intelligence():
-        return intelligence_results()
+    data = store_data or get_default_state()
+    if has_intelligence(data):
+        return intelligence_results(data)
     else:
-        return extraction_prompt()
+        return extraction_prompt(data)
 
 
 # Update summary content when intelligence data changes
@@ -532,18 +363,13 @@ def update_intelligence_content(store_data):
 )
 def update_summary_content(store_data):
     """Update summary content when intelligence data is available."""
-    from app.state import get_intelligence_summary_text
+    from dash import dcc
 
-    summary_text = get_intelligence_summary_text()
+    data = store_data or get_default_state()
+    summary_text = get_intelligence_summary_text(data)
 
-    return html.Div(
+    return dcc.Markdown(
         summary_text,
-        style={
-            "marginTop": "0.5rem",
-            "padding": "1rem",
-            "backgroundColor": "#ffffff",
-            "border": "4px solid #000000",
-        },
     )
 
 
@@ -558,171 +384,101 @@ def update_summary_content(store_data):
 )
 def update_upload_details(store_data):
     """Update upload details display."""
-    from app.components.file_upload import upload_steps
+    # We don't need to import upload_steps here since we return a component
 
-    state = get_state()
-    has_file = bool(state.get("vtt_content", ""))
+    data = store_data or get_default_state()
+    has_file = bool(data.get("vtt_content", ""))
 
     if not has_file:
         return "", {"display": "none"}, upload_steps()
 
-    file_name = state.get("uploaded_file_name", "")
-    file_size = get_upload_size_display()
-    preview = state.get("upload_preview", "")
-    truncated = state.get("upload_preview_truncated", False)
+    file_name = data.get("uploaded_file_name", "")
+    file_size = get_upload_size_display(data)
+    preview = data.get("upload_preview", "")
+    truncated = data.get("upload_preview_truncated", False)
 
-    details = html.Div(
-        [
-            html.Div(
-                [
-                    html.H3(
-                        "File Details",
-                        style={
-                            "fontSize": "1rem",
-                            "fontWeight": "700",
-                            "color": "#000000",
-                        },
-                    ),
-                    html.Button(
-                        "✕ Remove",
+    details = dmc.Card(
+        withBorder=True,
+        shadow="sm",
+        padding="lg",
+        radius="md",
+        mt="lg",
+        children=[
+            dmc.Group(
+                justify="space-between",
+                children=[
+                    dmc.Title("File Details", order=4),
+                    dmc.Button(
+                        "Remove",
                         id="clear-upload-btn",
-                        n_clicks=0,
-                        style={
-                            "display": "flex",
-                            "alignItems": "center",
-                            "fontSize": "0.75rem",
-                            "fontWeight": "700",
-                            "padding": "0.5rem 0.75rem",
-                            "backgroundColor": "#fca5a5",
-                            "border": "2px solid #000000",
-                            "cursor": "pointer",
-                        },
+                        variant="light",
+                        color="red",
+                        size="xs",
+                        leftSection=dmc.Text("✕"),
                     ),
                 ],
-                style={
-                    "display": "flex",
-                    "alignItems": "center",
-                    "justifyContent": "space-between",
-                },
             ),
-            html.Div(
-                [
-                    html.Div(
-                        [
-                            html.Span(
-                                "Filename",
-                                style={
-                                    "fontSize": "0.75rem",
-                                    "color": "#6b7280",
-                                    "textTransform": "uppercase",
-                                },
-                            ),
-                            html.P(
-                                file_name,
-                                style={
-                                    "fontWeight": "500",
-                                    "fontSize": "0.875rem",
-                                    "margin": "0.25rem 0 0 0",
-                                },
-                            ),
+            dmc.SimpleGrid(
+                cols=2,
+                mt="md",
+                children=[
+                    dmc.Stack(
+                        gap=0,
+                        children=[
+                            dmc.Text("Filename", size="xs", c="dimmed", tt="uppercase", fw=700),
+                            dmc.Text(file_name, size="sm", fw=500),
                         ],
-                        style={"flex": "1"},
                     ),
-                    html.Div(
-                        [
-                            html.Span(
-                                "Size",
-                                style={
-                                    "fontSize": "0.75rem",
-                                    "color": "#6b7280",
-                                    "textTransform": "uppercase",
-                                },
-                            ),
-                            html.P(
-                                file_size,
-                                style={
-                                    "fontWeight": "500",
-                                    "fontSize": "0.875rem",
-                                    "margin": "0.25rem 0 0 0",
-                                },
-                            ),
+                    dmc.Stack(
+                        gap=0,
+                        children=[
+                            dmc.Text("Size", size="xs", c="dimmed", tt="uppercase", fw=700),
+                            dmc.Text(file_size, size="sm", fw=500),
                         ],
-                        style={"flex": "1"},
                     ),
                 ],
-                style={
-                    "display": "grid",
-                    "gridTemplateColumns": "repeat(2, 1fr)",
-                    "gap": "1rem",
-                    "marginTop": "1rem",
-                },
             ),
-            html.Div(
-                [
-                    html.Span(
-                        "Preview",
-                        style={
-                            "fontSize": "0.75rem",
-                            "fontWeight": "700",
-                            "color": "#000000",
-                            "textTransform": "uppercase",
-                        },
-                    ),
-                    html.Pre(
+            dmc.Stack(
+                gap="xs",
+                mt="md",
+                children=[
+                    dmc.Text("Preview", size="xs", c="dimmed", tt="uppercase", fw=700),
+                    dmc.Code(
                         preview,
-                        style={
-                            "marginTop": "0.5rem",
-                            "maxHeight": "12rem",
-                            "overflowY": "auto",
-                            "whiteSpace": "pre-wrap",
-                            "fontSize": "0.875rem",
-                            "backgroundColor": "#000000",
-                            "color": "#fbbf24",
-                            "padding": "0.75rem 1rem",
-                            "border": "4px solid #000000",
-                            "fontFamily": "monospace",
-                        },
+                        block=True,
+                        style={"maxHeight": "200px", "overflowY": "auto"},
                     ),
-                    html.Span(
-                        "Preview truncated to first 2000 characters.",
-                        style={
-                            "fontSize": "0.75rem",
-                            "fontWeight": "700",
-                            "color": "#000000",
-                            "marginTop": "0.5rem",
-                        },
-                    )
-                    if truncated
-                    else html.Div(),
+                    (
+                        dmc.Text(
+                            "Preview truncated to first 2000 characters.",
+                            size="xs",
+                            c="dimmed",
+                            mt=5,
+                        )
+                        if truncated
+                        else html.Div()
+                    ),
                 ],
-                style={"marginTop": "1rem"},
             ),
         ],
-        style={
-            "marginTop": "1.5rem",
-            "padding": "1rem",
-            "border": "4px solid #000000",
-            "backgroundColor": "#ffffff",
-        },
     )
 
     return details, {"display": "block"}, html.Div()
 
 
-# Download callbacks
+# Download callbacks - split into separate callbacks to avoid validation issues
 @app.callback(
-    Output("download-data", "data"),
+    Output("download-data", "data", allow_duplicate=True),
     [
         Input("download-transcript-txt", "n_clicks"),
         Input("download-transcript-md", "n_clicks"),
         Input("download-transcript-vtt", "n_clicks"),
-        Input("download-intelligence-txt", "n_clicks"),
-        Input("download-intelligence-md", "n_clicks"),
     ],
+    State("app-store", "data"),
     prevent_initial_call=True,
 )
-def handle_download(txt_clicks, md_clicks, vtt_clicks, intel_txt_clicks, intel_md_clicks):
-    """Handle file downloads."""
+def handle_transcript_download(txt_clicks, md_clicks, vtt_clicks, store_data):
+    """Handle transcript file downloads."""
     from dash import callback_context
 
     if not callback_context.triggered:
@@ -733,33 +489,64 @@ def handle_download(txt_clicks, md_clicks, vtt_clicks, intel_txt_clicks, intel_m
     prop_value = triggered.get("value")
 
     # Only proceed if button was actually clicked (value must be > 0)
-    # This prevents false triggers when buttons are recreated on page navigation
     if not button_id or prop_value is None or prop_value == 0:
         return None
 
-    state = get_state()
-
-    # Determine format and data type
-    if "transcript" in button_id:
-        data = state.get("transcript_data", {})
-        if not data:
-            return None
-        format_type = button_id.split("-")[-1]
-        filename_base = state.get("uploaded_file_name", "transcript.vtt")
-        filename = generate_download_filename(filename_base, "cleaned", format_type)
-    elif "intelligence" in button_id:
-        data = state.get("intelligence_data", {})
-        if not data:
-            return None
-        format_type = button_id.split("-")[-1]
-        filename_base = state.get("uploaded_file_name", "transcript.vtt")
-        filename = generate_download_filename(filename_base, "intelligence", format_type)
-    else:
+    data = store_data or get_default_state()
+    transcript_data = data.get("transcript_data", {})
+    if not transcript_data:
         return None
 
+    format_type = button_id.split("-")[-1]
+    filename_base = data.get("uploaded_file_name", "transcript.vtt")
+    filename = generate_download_filename(filename_base, "cleaned", format_type)
+
     try:
-        content, mime_type = generate_export_content(data, format_type)
-        # dcc.Download expects content as string or dict with content, filename, type
+        content, mime_type = generate_export_content(transcript_data, format_type)
+        if isinstance(content, bytes):
+            content = content.decode("utf-8")
+        return {"content": str(content), "filename": filename, "type": mime_type}
+    except Exception as e:
+        import logging
+        logging.exception("Download failed: %s", e)
+        return None
+
+
+@app.callback(
+    Output("download-data", "data", allow_duplicate=True),
+    [
+        Input("download-intelligence-txt", "n_clicks"),
+        Input("download-intelligence-md", "n_clicks"),
+    ],
+    State("app-store", "data"),
+    prevent_initial_call=True,
+)
+def handle_intelligence_download(txt_clicks, md_clicks, store_data):
+    """Handle intelligence file downloads."""
+    from dash import callback_context
+
+    if not callback_context.triggered:
+        return None
+
+    triggered = callback_context.triggered[0]
+    button_id = triggered["prop_id"].split(".")[0]
+    prop_value = triggered.get("value")
+
+    # Only proceed if button was actually clicked (value must be > 0)
+    if not button_id or prop_value is None or prop_value == 0:
+        return None
+
+    data = store_data or get_default_state()
+    intelligence_data = data.get("intelligence_data", {})
+    if not intelligence_data:
+        return None
+
+    format_type = button_id.split("-")[-1]
+    filename_base = data.get("uploaded_file_name", "transcript.vtt")
+    filename = generate_download_filename(filename_base, "intelligence", format_type)
+
+    try:
+        content, mime_type = generate_export_content(intelligence_data, format_type)
         if isinstance(content, bytes):
             content = content.decode("utf-8")
         return {"content": str(content), "filename": filename, "type": mime_type}

@@ -1,72 +1,58 @@
-"""Layout primitives shared across pages."""
+"""Layout primitives shared across pages using Dash Mantine Components."""
 
 from dash import dcc, html
+import dash_mantine_components as dmc
 
 
 def header():
     """Application header with navigation."""
-    return html.Header(
-        html.Div(
-            [
-                html.Div(
-                    [
-                        html.Div(
-                            "📄",
-                            style={"fontSize": "2rem", "marginRight": "0.75rem"},
-                        ),
-                        html.Div(
-                            [
-                                html.H1(
-                                    "Meeting Transcript Tool",
-                                    style={
-                                        "fontSize": "1.25rem",
-                                        "fontWeight": "700",
-                                        "color": "#ffffff",
-                                        "margin": 0,
-                                    },
-                                ),
-                                html.P(
-                                    "Clean transcripts, review quality, and extract meeting intelligence.",
-                                    style={
-                                        "fontSize": "0.875rem",
-                                        "color": "#fef08a",
-                                        "fontWeight": "500",
-                                        "margin": 0,
-                                    },
-                                ),
-                            ],
-                            style={"marginLeft": "0.75rem"},
-                        ),
-                    ],
-                    style={"display": "flex", "alignItems": "center"},
-                ),
-                html.Nav(
-                    [
-                        nav_link("Upload", "/"),
-                        nav_link("Review", "/review"),
-                        nav_link("Intelligence", "/intelligence"),
-                    ],
-                    style={
-                        "display": "flex",
-                        "alignItems": "center",
-                        "gap": "1.5rem",
-                    },
-                ),
-            ],
-            style={
-                "maxWidth": "1200px",
-                "margin": "0 auto",
-                "padding": "0 1rem",
-                "display": "flex",
-                "alignItems": "center",
-                "justifyContent": "space-between",
-            },
-        ),
-        style={
-            "backgroundColor": "#000000",
-            "padding": "1rem 0",
-            "borderBottom": "4px solid #fbbf24",
-        },
+    return dmc.Paper(
+        p="md",
+        radius=0,
+        bg="black",
+        style={"borderBottom": "4px solid #fbbf24"},
+        children=[
+            dmc.Container(
+                size="xl",
+                children=[
+                    dmc.Group(
+                        justify="space-between",
+                        children=[
+                            dmc.Group(
+                                gap="xs",
+                                children=[
+                                    dmc.Text("📄", size="xl"),
+                                    dmc.Stack(
+                                        gap=0,
+                                        children=[
+                                            dmc.Title(
+                                                "Meeting Transcript Tool",
+                                                order=1,
+                                                c="white",
+                                                size="h4",
+                                            ),
+                                            dmc.Text(
+                                                "Clean transcripts, review quality, and extract meeting intelligence.",
+                                                c="yellow.1",
+                                                size="sm",
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                            dmc.Group(
+                                gap="lg",
+                                children=[
+                                    nav_link("Upload", "/"),
+                                    nav_link("Review", "/review"),
+                                    nav_link("Intelligence", "/intelligence"),
+                                ],
+                            ),
+                        ],
+                    )
+                ],
+            )
+        ],
     )
 
 
@@ -81,9 +67,7 @@ def nav_link(label: str, href: str):
             "color": "#ffffff",
             "textDecoration": "none",
             "padding": "0.25rem 0.75rem",
-            "border": "2px solid transparent",
         },
-        className="nav-link",
     )
 
 
@@ -92,13 +76,10 @@ def page_container(*children):
     return html.Main(
         [
             header(),
-            html.Div(
-                list(children),
-                style={
-                    "maxWidth": "1200px",
-                    "margin": "0 auto",
-                    "padding": "2.5rem 1rem",
-                },
+            dmc.Container(
+                size="xl",
+                py="xl",
+                children=list(children),
             ),
         ],
         style={

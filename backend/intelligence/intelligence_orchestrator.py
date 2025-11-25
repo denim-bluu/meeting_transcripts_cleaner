@@ -42,7 +42,6 @@ class IntelligenceOrchestrator:
     async def process_meeting(
         self,
         chunks: list[VTTChunk],
-        progress_callback: ProgressCallback | None = None,
     ) -> MeetingIntelligence:
         """Run the structured multi-stage pipeline to generate meeting intelligence."""
         start_time = time.time()
@@ -52,15 +51,10 @@ class IntelligenceOrchestrator:
             vtt_chunks=total_chunks,
         )
 
-        await _maybe_call(
-            progress_callback, 0.0, "Initializing intelligence extraction..."
-        )
-
         # Stage 1: Chunk processing (0% - 50%)
         stage1_start = time.time()
         summaries, conversation_state = await self._chunk_processor.process_chunks(
             chunks,
-            progress_callback=progress_callback,
         )
         stage1_time = int((time.time() - stage1_start) * 1000)
         logger.info(
@@ -69,14 +63,11 @@ class IntelligenceOrchestrator:
             stage_time_ms=stage1_time,
         )
 
-        await _maybe_call(progress_callback, 0.5, "Analyzing summaries and patterns...")
-
         # Stage 2: Aggregation (50% - 80%)
         stage2_start = time.time()
         aggregation_payload = await self._aggregator.aggregate(
             summaries,
             conversation_state=conversation_state,
-            progress_callback=progress_callback,
         )
         stage2_time = int((time.time() - stage2_start) * 1000)
         logger.info(
@@ -87,8 +78,6 @@ class IntelligenceOrchestrator:
         )
 
         aggregation_artifacts = self._aggregator.build_artifacts(aggregation_payload)
-
-        await _maybe_call(progress_callback, 0.8, "Validating results...")
 
         # Stage 3: Validation (80% - 90%)
         stage3_start = time.time()
@@ -101,10 +90,6 @@ class IntelligenceOrchestrator:
             stage_time_ms=stage3_time,
         )
 
-        await _maybe_call(
-            progress_callback, 0.9, "Compiling final intelligence report..."
-        )
-
         intelligence = self._build_meeting_intelligence(
             aggregation_payload=aggregation_payload,
             aggregation_artifacts=aggregation_artifacts,
@@ -113,8 +98,6 @@ class IntelligenceOrchestrator:
         )
 
         total_time = int((time.time() - start_time) * 1000)
-
-        await _maybe_call(progress_callback, 1.0, "Meeting intelligence ready")
 
         logger.info(
             "Structured pipeline completed",

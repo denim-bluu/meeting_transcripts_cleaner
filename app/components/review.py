@@ -1,8 +1,9 @@
-"""Review workspace components."""
+"""Review workspace components using Dash Mantine Components."""
 
 from __future__ import annotations
 
 from dash import html
+import dash_mantine_components as dmc
 
 from app.components.common import (
     export_section as common_export_section,
@@ -11,359 +12,176 @@ from app.components.common import (
 from app.components.metrics import transcript_quality_metrics
 from app.state import (
     ChunkReviewDisplay,
-    get_has_transcript,
-    get_transcript_has_chunks,
     get_transcript_chunk_pairs,
+    get_transcript_has_chunks,
+    has_transcript,
 )
 
 
-def review_workspace():
+def review_workspace(data: dict):
     """Main review workspace."""
-    if not get_has_transcript():
-        return html.Section(
-            [
-                html.H2(
-                    "Review Cleaned Transcript",
-                    style={
-                        "fontSize": "1.875rem",
-                        "fontWeight": "900",
-                        "color": "#000000",
-                    },
-                ),
-                html.P(
+    if not has_transcript(data):
+        return dmc.Container(
+            size="xl",
+            children=[
+                dmc.Title("Review Cleaned Transcript", order=2),
+                dmc.Text(
                     "Inspect cleaned chunks, quality scores, and export the transcript in multiple formats.",
-                    style={
-                        "marginTop": "0.5rem",
-                        "fontSize": "0.875rem",
-                        "fontWeight": "700",
-                        "color": "#000000",
-                    },
+                    c="dimmed",
                 ),
                 missing_transcript_notice(),
             ],
-            style={"maxWidth": "72rem", "margin": "0 auto"},
         )
 
-    return html.Section(
-        [
-            html.H2(
-                "Review Cleaned Transcript",
-                style={
-                    "fontSize": "1.875rem",
-                    "fontWeight": "900",
-                    "color": "#000000",
-                },
-            ),
-            html.P(
+    return dmc.Container(
+        size="xl",
+        children=[
+            dmc.Title("Review Cleaned Transcript", order=2),
+            dmc.Text(
                 "Inspect cleaned chunks, quality scores, and export the transcript in multiple formats.",
-                style={
-                    "marginTop": "0.5rem",
-                    "fontSize": "0.875rem",
-                    "fontWeight": "700",
-                    "color": "#000000",
-                },
+                c="dimmed",
             ),
-            review_content(),
+            review_content(data),
         ],
-        style={"maxWidth": "72rem", "margin": "0 auto"},
     )
 
 
-def review_content():
+def review_content(data: dict):
     """Review content with metrics and chunks."""
-    return html.Div(
-        [
-            transcript_quality_metrics(),
-            chunk_review_panel(),
-            export_section(),
+    return dmc.Stack(
+        gap="xl",
+        children=[
+            transcript_quality_metrics(data),
+            chunk_review_panel(data),
+            export_section(data),
         ],
-        style={"display": "flex", "flexDirection": "column", "gap": "2rem"},
     )
 
 
-def chunk_review_panel():
+def chunk_review_panel(data: dict):
     """Panel displaying chunk reviews."""
-    if not get_transcript_has_chunks():
-        return html.Section(
-            [
-                html.Div(
-                    [
-                        html.H3(
-                            "Detailed Chunk Review",
-                            style={
-                                "fontSize": "1.25rem",
-                                "fontWeight": "900",
-                                "color": "#000000",
-                            },
-                        ),
-                        html.P(
-                            "Compare the original transcript with cleaned output and quality scores for each chunk.",
-                            style={
-                                "marginTop": "0.25rem",
-                                "fontSize": "0.875rem",
-                                "fontWeight": "700",
-                                "color": "#000000",
-                            },
-                        ),
-                    ]
+    if not get_transcript_has_chunks(data):
+        return dmc.Stack(
+            gap="md",
+            mt="xl",
+            children=[
+                dmc.Title("Detailed Chunk Review", order=3),
+                dmc.Text(
+                    "Compare the original transcript with cleaned output and quality scores for each chunk.",
+                    c="dimmed",
+                    size="sm",
                 ),
-                html.Div(
-                    "No chunks available to review.",
-                    style={
-                        "marginTop": "1rem",
-                        "fontSize": "0.875rem",
-                        "fontWeight": "700",
-                        "color": "#000000",
-                    },
-                ),
+                dmc.Text("No chunks available to review.", fw=700, mt="md"),
             ],
-            style={"display": "flex", "flexDirection": "column", "gap": "1rem"},
         )
 
-    pairs = get_transcript_chunk_pairs()
+    pairs = get_transcript_chunk_pairs(data)
     chunk_cards = [chunk_card(pair) for pair in pairs]
 
-    return html.Section(
-        [
-            html.Div(
-                [
-                    html.H3(
-                        "Detailed Chunk Review",
-                        style={
-                            "fontSize": "1.25rem",
-                            "fontWeight": "900",
-                            "color": "#000000",
-                        },
-                    ),
-                    html.P(
-                        "Compare the original transcript with cleaned output and quality scores for each chunk.",
-                        style={
-                            "marginTop": "0.25rem",
-                            "fontSize": "0.875rem",
-                            "fontWeight": "700",
-                            "color": "#000000",
-                        },
-                    ),
-                ]
+    return dmc.Stack(
+        gap="md",
+        mt="xl",
+        children=[
+            dmc.Title("Detailed Chunk Review", order=3),
+            dmc.Text(
+                "Compare the original transcript with cleaned output and quality scores for each chunk.",
+                c="dimmed",
+                size="sm",
             ),
-            html.Div(
-                chunk_cards,
-                style={"marginTop": "1rem", "display": "flex", "flexDirection": "column", "gap": "1rem"},
-            ),
+            dmc.Stack(gap="md", mt="md", children=chunk_cards),
         ],
-        style={"display": "flex", "flexDirection": "column", "gap": "1rem"},
     )
 
 
 def chunk_card(pair: ChunkReviewDisplay):
     """Individual chunk review card."""
     confidence_helper = (
-        html.Span(
-            pair["confidence_text"],
-            style={
-                "fontSize": "0.75rem",
-                "fontWeight": "700",
-                "color": "#000000",
-                "marginTop": "0.25rem",
-            },
-        )
+        dmc.Text(pair["confidence_text"], size="xs", fw=700, mt=5)
         if pair.get("confidence_text", "") != ""
         else html.Div()
     )
 
     issues_list = (
-        html.Div(
-            [
-                html.Span(
-                    "Review Notes",
-                    style={
-                        "fontSize": "0.75rem",
-                        "fontWeight": "700",
-                        "color": "#000000",
-                        "textTransform": "uppercase",
-                    },
-                ),
-                html.Pre(
-                    pair["issues_text"],
-                    style={
-                        "marginTop": "0.5rem",
-                        "whiteSpace": "pre-wrap",
-                        "fontSize": "0.875rem",
-                        "fontWeight": "500",
-                        "color": "#000000",
-                        "backgroundColor": "#ffffff",
-                        "border": "4px solid #000000",
-                        "padding": "0.5rem",
-                    },
-                ),
+        dmc.Alert(
+            title="Review Notes",
+            color="yellow",
+            variant="light",
+            mt="md",
+            children=[
+                dmc.Code(pair["issues_text"], block=True, color="yellow")
             ],
-            style={"marginTop": "1rem"},
         )
         if pair.get("has_issues", False)
         else html.Div()
     )
 
-    return html.Div(
-        [
-            html.Div(
-                [
-                    html.Div(
-                        [
-                            html.Span(
-                                pair["index_label"],
-                                style={
-                                    "fontSize": "0.875rem",
-                                    "fontWeight": "900",
-                                    "color": "#000000",
-                                },
+    # Determine badge colors based on logic in state.py but mapped to Mantine colors
+    quality_color = "cyan" if "High" in pair["quality_label"] else "yellow" if "Medium" in pair["quality_label"] else "red"
+    status_color = "cyan" if pair["status_label"] == "Accepted" else "yellow"
+
+    return dmc.Card(
+        withBorder=True,
+        shadow="sm",
+        padding="lg",
+        radius="md",
+        children=[
+            dmc.Group(
+                justify="space-between",
+                children=[
+                    dmc.Group(
+                        children=[
+                            dmc.Text(pair["index_label"], fw=900),
+                            dmc.Badge(
+                                pair["quality_label"],
+                                color=quality_color,
+                                variant="light",
                             ),
-                            html.Div(
-                                [
-                                    html.Span(
-                                        pair["quality_label"],
-                                        className=pair["quality_badge_class"],
-                                        style={
-                                            "fontSize": "0.75rem",
-                                            "fontWeight": "700",
-                                            "padding": "0.25rem 0.5rem",
-                                            "border": "2px solid #000000",
-                                        },
-                                    ),
-                                    html.Span(
-                                        pair["quality_score"],
-                                        style={
-                                            "marginLeft": "0.5rem",
-                                            "fontSize": "0.75rem",
-                                            "fontWeight": "700",
-                                            "color": "#000000",
-                                        },
-                                    ),
-                                ],
-                                style={"display": "inline-flex", "alignItems": "center"},
-                            ),
-                        ],
-                        style={"display": "flex", "alignItems": "center", "gap": "1rem"},
+                            dmc.Text(pair["quality_score"], size="xs", fw=700),
+                        ]
                     ),
-                    html.Span(
+                    dmc.Badge(
                         pair["status_label"],
-                        className=pair["status_badge_class"],
-                        style={
-                            "fontSize": "0.75rem",
-                            "fontWeight": "700",
-                            "padding": "0.25rem 0.75rem",
-                            "border": "2px solid #000000",
-                        },
+                        color=status_color,
+                        variant="filled",
                     ),
                 ],
-                style={
-                    "display": "flex",
-                    "alignItems": "center",
-                    "justifyContent": "space-between",
-                },
             ),
-            html.Div(
-                [
+            dmc.SimpleGrid(
+                cols={"base": 1, "sm": 2},
+                spacing="md",
+                mt="md",
+                children=[
                     text_block("Original", pair["original_text"]),
                     text_block("Cleaned", pair["cleaned_text"], helper=confidence_helper),
                 ],
-                style={
-                    "marginTop": "1rem",
-                    "display": "grid",
-                    "gridTemplateColumns": "repeat(2, 1fr)",
-                    "gap": "1rem",
-                    "alignItems": "start",
-                },
             ),
             issues_list,
         ],
-        style={
-            "padding": "1.25rem",
-            "backgroundColor": "#ffffff",
-            "border": "4px solid #000000",
-        },
     )
 
 
 def text_block(
-    title: str, content: str | dict, helper: html.Div | None = None
+    title: str, content: str | dict, helper: html.Div | dmc.Text | None = None
 ):
     """Text block component for original/cleaned text."""
-    if helper is not None:
-        return html.Div(
-            [
-                html.Span(
-                    title,
-                    style={
-                        "fontSize": "0.75rem",
-                        "fontWeight": "700",
-                        "color": "#000000",
-                        "textTransform": "uppercase",
-                    },
-                ),
-                html.Div(
-                    [
-                        html.Div(
-                            [
-                                helper,
-                                html.Pre(
-                                    str(content),
-                                    style={
-                                        "whiteSpace": "pre-wrap",
-                                        "fontSize": "0.875rem",
-                                        "lineHeight": "1.75",
-                                        "fontFamily": "monospace",
-                                    },
-                                ),
-                            ],
-                            style={
-                                "backgroundColor": "#fef08a",
-                                "border": "4px solid #000000",
-                                "padding": "0.75rem 1rem",
-                                "maxHeight": "18rem",
-                                "overflowY": "auto",
-                            },
-                        ),
-                    ],
-                    style={"marginTop": "0.5rem"},
-                ),
-            ],
-            style={"display": "flex", "flexDirection": "column"},
-        )
-    else:
-        return html.Div(
-            [
-                html.Span(
-                    title,
-                    style={
-                        "fontSize": "0.75rem",
-                        "fontWeight": "700",
-                        "color": "#000000",
-                        "textTransform": "uppercase",
-                    },
-                ),
-                html.Div(
-                    html.Pre(
-                        str(content),
-                        style={
-                            "marginTop": "0.5rem",
-                            "whiteSpace": "pre-wrap",
-                            "fontSize": "0.875rem",
-                            "lineHeight": "1.75",
-                            "backgroundColor": "#fef08a",
-                            "border": "4px solid #000000",
-                            "padding": "0.75rem 1rem",
-                            "maxHeight": "18rem",
-                            "overflowY": "auto",
-                            "fontFamily": "monospace",
-                        },
-                    ),
-                ),
-            ],
-            style={"display": "flex", "flexDirection": "column"},
-        )
+    return dmc.Stack(
+        gap="xs",
+        children=[
+            dmc.Text(title, size="xs", fw=700, tt="uppercase", c="dimmed"),
+            dmc.Paper(
+                withBorder=True,
+                p="xs",
+                bg="gray.0",
+                children=[
+                    (helper if helper else html.Div()),
+                    dmc.Code(str(content), block=True, color="gray", style={"whiteSpace": "pre-wrap"}),
+                ],
+            ),
+        ],
+    )
 
 
-def export_section():
+def export_section(data: dict):
     """Export section for cleaned transcript."""
     return common_export_section(
         title="Export Cleaned Transcript",
@@ -378,5 +196,5 @@ def export_section():
             "md": "download-transcript-md",
             "vtt": "download-transcript-vtt",
         },
-        disabled=not get_has_transcript(),
+        disabled=not has_transcript(data),
     )

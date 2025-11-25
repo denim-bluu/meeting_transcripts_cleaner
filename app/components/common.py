@@ -1,66 +1,33 @@
-"""Common reusable UI components."""
+"""Common reusable UI components using Dash Mantine Components."""
 
 from dash import dcc, html
+import dash_mantine_components as dmc
 
 
 def missing_transcript_notice(message: str = ""):
-    """Notice shown when no transcript is available.
-
-    Args:
-        message: Custom message (optional)
-    """
+    """Notice shown when no transcript is available."""
     default_message = (
         "No processed transcript available. Upload and process a VTT file first."
     )
-    return html.Div(
-        [
-            html.Span(
-                "⚠️",
-                style={
-                    "fontSize": "1.25rem",
-                    "color": "#000000",
-                    "marginRight": "0.5rem",
-                },
-            ),
-            html.Div(
-                [
-                    html.P(
-                        message or default_message,
-                        style={
-                            "fontSize": "0.875rem",
-                            "fontWeight": "700",
-                            "color": "#000000",
-                            "marginBottom": "0.75rem",
-                        },
-                    ),
-                    dcc.Link(
-                        "Go to Upload",
-                        href="/",
-                        style={
-                            "display": "inline-flex",
-                            "width": "fit-content",
-                            "alignItems": "center",
-                            "padding": "0.75rem 1.5rem",
-                            "backgroundColor": "#000000",
-                            "color": "#fbbf24",
-                            "fontWeight": "700",
-                            "border": "4px solid #fbbf24",
-                            "textDecoration": "none",
-                        },
-                    ),
-                ],
-                style={"flex": "1", "display": "flex", "flexDirection": "column"},
+    return dmc.Alert(
+        title="Missing Transcript",
+        children=[
+            dmc.Text(message or default_message),
+            dmc.Anchor(
+                "Go to Upload",
+                href="/",
+                underline=False,
+                fw=700,
+                c="blue",
+                mt="sm",
+                style={"display": "inline-block"},
             ),
         ],
-        style={
-            "marginTop": "1.5rem",
-            "display": "flex",
-            "alignItems": "flex-start",
-            "gap": "0.75rem",
-            "padding": "1rem",
-            "backgroundColor": "#fef08a",
-            "border": "4px solid #000000",
-        },
+        color="yellow",
+        variant="light",
+        withCloseButton=False,
+        icon=dmc.Text("⚠️", size="lg"),
+        mt="lg",
     )
 
 
@@ -71,33 +38,15 @@ def export_button(
     button_id: str,
     disabled: bool = False,
 ):
-    """Generic export button component.
-
-    Args:
-        label: Button label (e.g., "TXT", "Markdown")
-        icon: Icon emoji or name
-        format_type: Format identifier (e.g., "txt", "md")
-        button_id: Unique button ID for callback
-        disabled: Whether button is disabled
-    """
-    return html.Button(
-        f"{icon} Download {label}",
+    """Generic export button component."""
+    return dmc.Button(
+        f"Download {label}",
         id=button_id,
-        n_clicks=0,
+        leftSection=icon,
         disabled=disabled,
-        style={
-            "width": "100%",
-            "display": "flex",
-            "justifyContent": "center",
-            "padding": "0.5rem 1rem",
-            "backgroundColor": "#ffffff",
-            "border": "4px solid #000000",
-            "fontSize": "0.875rem",
-            "fontWeight": "700",
-            "color": "#000000",
-            "cursor": "pointer" if not disabled else "not-allowed",
-            "opacity": "0.4" if disabled else "1",
-        },
+        variant="outline",
+        fullWidth=True,
+        color="dark",
     )
 
 
@@ -107,39 +56,19 @@ def export_section(
     formats: list[tuple[str, str, str]],
     button_ids: dict[str, str],
     disabled: bool = False,
-    grid_cols: str = "repeat(3, 1fr)",
+    grid_cols: int = 3,
 ):
-    """Generic export section component.
-
-    Args:
-        title: Section title
-        description: Section description
-        formats: List of (label, icon, format_type) tuples
-        button_ids: Dict mapping format_type to button ID
-        disabled: Whether buttons are disabled
-        grid_cols: Grid column template
-    """
-    return html.Section(
-        [
-            html.H3(
-                title,
-                style={
-                    "fontSize": "1.25rem",
-                    "fontWeight": "900",
-                    "color": "#000000",
-                },
-            ),
-            html.P(
-                description,
-                style={
-                    "marginTop": "0.25rem",
-                    "fontSize": "0.875rem",
-                    "fontWeight": "700",
-                    "color": "#000000",
-                },
-            ),
-            html.Div(
-                [
+    """Generic export section component."""
+    return dmc.Stack(
+        gap="xs",
+        children=[
+            dmc.Title(title, order=3),
+            dmc.Text(description, size="sm", c="dimmed"),
+            dmc.SimpleGrid(
+                cols=grid_cols,
+                spacing="sm",
+                mt="sm",
+                children=[
                     export_button(
                         label=label,
                         icon=icon,
@@ -149,17 +78,11 @@ def export_section(
                     )
                     for label, icon, format_type in formats
                 ],
-                style={
-                    "marginTop": "1rem",
-                    "display": "grid",
-                    "gridTemplateColumns": grid_cols,
-                    "gap": "0.75rem",
-                },
             ),
             html.Div(
                 id=f"download-error-{title.lower().replace(' ', '-')}",
                 style={"display": "none"},
             ),
         ],
-        style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+        mt="xl",
     )

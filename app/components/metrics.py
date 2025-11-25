@@ -1,9 +1,10 @@
-"""Metrics visualization components."""
+"""Metrics visualization components using Dash Mantine Components."""
 
 from dash import html
+import dash_mantine_components as dmc
 
 from app.state import (
-    get_has_transcript,
+    has_transcript,
     get_transcript_chunk_count,
     get_transcript_total_entries,
     get_transcript_duration_display,
@@ -20,154 +21,84 @@ from app.state import (
 
 def metric_card(title: str, value: str | int | float, helper: str | None = None):
     """Metric card component."""
-    elements = [
-        html.Span(
-            title,
-            style={
-                "fontSize": "0.75rem",
-                "fontWeight": "700",
-                "color": "#000000",
-                "textTransform": "uppercase",
-                "letterSpacing": "0.05em",
-            },
-        ),
-        html.P(
-            str(value),
-            style={
-                "marginTop": "0.25rem",
-                "fontSize": "1.875rem",
-                "fontWeight": "900",
-                "color": "#000000",
-            },
-        ),
-    ]
-    if helper is not None:
-        elements.append(
-            html.Span(
-                helper,
-                style={
-                    "fontSize": "0.75rem",
-                    "fontWeight": "700",
-                    "color": "#000000",
-                    "marginTop": "0.25rem",
-                },
-            )
-        )
-    return html.Div(
-        elements,
-        style={
-            "padding": "1rem",
-            "backgroundColor": "#ffffff",
-            "border": "4px solid #000000",
-        },
+    return dmc.Card(
+        withBorder=True,
+        padding="md",
+        radius="md",
+        children=[
+            dmc.Text(title, size="xs", fw=700, tt="uppercase", c="dimmed"),
+            dmc.Text(str(value), size="xl", fw=900, mt=5),
+            (
+                dmc.Text(helper, size="xs", fw=700, c="dimmed", mt=5)
+                if helper
+                else html.Div()
+            ),
+        ],
     )
 
 
-def transcript_summary_metrics():
+def transcript_summary_metrics(data: dict):
     """Summary metrics for transcript processing."""
-    if not get_has_transcript():
+    if not has_transcript(data):
         return html.Div()
 
-    return html.Div(
-        [
-            html.H3(
-                "Processing Summary",
-                style={
-                    "fontSize": "1.25rem",
-                    "fontWeight": "900",
-                    "color": "#000000",
-                },
-            ),
-            html.Div(
-                [
-                    metric_card("Chunks", get_transcript_chunk_count()),
-                    metric_card("Entries", get_transcript_total_entries()),
-                    metric_card("Duration", get_transcript_duration_display()),
+    return dmc.Stack(
+        gap="xs",
+        mt="xl",
+        children=[
+            dmc.Title("Processing Summary", order=3),
+            dmc.SimpleGrid(
+                cols={"base": 1, "sm": 3},
+                spacing="md",
+                children=[
+                    metric_card("Chunks", get_transcript_chunk_count(data)),
+                    metric_card("Entries", get_transcript_total_entries(data)),
+                    metric_card("Duration", get_transcript_duration_display(data)),
                 ],
-                style={
-                    "marginTop": "1rem",
-                    "display": "grid",
-                    "gridTemplateColumns": "repeat(auto-fit, minmax(200px, 1fr))",
-                    "gap": "1rem",
-                },
             ),
-            html.Div(
-                [
-                    html.Span("👥", style={"marginRight": "0.5rem", "fontSize": "1rem"}),
-                    html.Span(
-                        get_transcript_speakers_display(),
-                        style={"fontSize": "0.875rem", "fontWeight": "700", "color": "#000000"},
-                    ),
-                ],
-                style={
-                    "marginTop": "1rem",
-                    "display": "inline-flex",
-                    "alignItems": "center",
-                    "padding": "0.5rem 0.75rem",
-                    "backgroundColor": "#67e8f9",
-                    "border": "4px solid #000000",
-                },
-            )
-            if get_transcript_has_speakers()
-            else html.Div(),
+            (
+                dmc.Group(
+                    gap="xs",
+                    mt="md",
+                    children=[
+                        dmc.Text("👥", size="lg"),
+                        dmc.Badge(
+                            get_transcript_speakers_display(data),
+                            variant="light",
+                            color="cyan",
+                            size="lg",
+                        ),
+                    ],
+                )
+                if get_transcript_has_speakers(data)
+                else html.Div()
+            ),
         ],
-        style={"marginTop": "2rem"},
     )
 
 
-def transcript_quality_metrics():
+def transcript_quality_metrics(data: dict):
     """Quality metrics for transcript."""
-    if not get_has_transcript():
+    if not has_transcript(data):
         return html.Div()
 
-    helper_text = get_transcript_acceptance_helper()
-    helper = (
-        html.Span(
-            helper_text,
-            style={
-                "fontSize": "0.75rem",
-                "fontWeight": "700",
-                "color": "#000000",
-                "marginTop": "0.25rem",
-            },
-        )
-        if helper_text != "—"
-        else html.Span(
-            "—",
-            style={
-                "fontSize": "0.75rem",
-                "fontWeight": "700",
-                "color": "#000000",
-                "marginTop": "0.25rem",
-            },
-        )
-    )
-
-    return html.Div(
-        [
-            html.H3(
-                "Quality Overview",
-                style={
-                    "fontSize": "1.25rem",
-                    "fontWeight": "900",
-                    "color": "#000000",
-                },
-            ),
-            html.Div(
-                [
-                    metric_card("Accepted", get_transcript_acceptance_count(), helper),
-                    metric_card("Avg Quality", get_transcript_average_quality_display()),
-                    metric_card("High Quality", get_transcript_quality_high()),
-                    metric_card("Medium Quality", get_transcript_quality_medium()),
-                    metric_card("Needs Review", get_transcript_quality_low()),
+    helper_text = get_transcript_acceptance_helper(data)
+    
+    return dmc.Stack(
+        gap="xs",
+        mt="xl",
+        children=[
+            dmc.Title("Quality Overview", order=3),
+            dmc.SimpleGrid(
+                cols={"base": 2, "md": 3, "lg": 5},
+                spacing="md",
+                children=[
+                    metric_card("Accepted", get_transcript_acceptance_count(data), helper_text),
+                    metric_card("Avg Quality", get_transcript_average_quality_display(data)),
+                    metric_card("High Quality", get_transcript_quality_high(data)),
+                    metric_card("Medium Quality", get_transcript_quality_medium(data)),
+                    metric_card("Needs Review", get_transcript_quality_low(data)),
                 ],
-                style={
-                    "marginTop": "1rem",
-                    "display": "grid",
-                    "gridTemplateColumns": "repeat(auto-fit, minmax(150px, 1fr))",
-                    "gap": "1rem",
-                },
             ),
         ],
-        style={"marginTop": "2.5rem"},
     )

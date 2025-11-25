@@ -1,13 +1,13 @@
 """Application state management for Dash frontend.
 
-This module provides state management using Dash's dcc.Store components
-and callback-based state updates.
+This module provides pure utility functions for state access and transformation.
+All functions are pure (no side effects) to improve testability and enable
+multi-session support.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -30,7 +30,6 @@ from shared.services.pipeline import (
 )
 from shared.utils.files import (
     format_file_size,
-    generate_download_filename,
     validate_file_metadata,
 )
 
@@ -66,328 +65,266 @@ class ValidationDisplay(dict):
     pass
 
 
-# Global state storage (in production, consider using Redis or similar)
-_app_state: dict[str, Any] = {
-    "uploaded_file_name": "",
-    "uploaded_file_size": 0,
-    "upload_preview": "",
-    "upload_preview_truncated": False,
-    "upload_error": "",
-    "vtt_content": "",
-    "is_processing": False,
-    "processing_status": "",
-    "processing_progress": 0.0,
-    "processing_complete": False,
-    "transcript_error": "",
-    "transcript_data": {},
-    "intelligence_running": False,
-    "intelligence_status": "",
-    "intelligence_progress": 0.0,
-    "intelligence_error": "",
-    "intelligence_data": {},
-    "last_download_error": "",
-    "current_page": "/",
-}
+def get_default_state() -> dict[str, Any]:
+    """Get default empty state."""
+    return {
+        "uploaded_file_name": "",
+        "uploaded_file_size": 0,
+        "upload_preview": "",
+        "upload_preview_truncated": False,
+        "upload_error": "",
+        "vtt_content": "",
+        "is_processing": False,
+        "processing_complete": False,
+        "transcript_error": "",
+        "transcript_data": {},
+        "intelligence_running": False,
+        "intelligence_error": "",
+        "intelligence_data": {},
+        "last_download_error": "",
+        "current_page": "/",
+    }
 
 
-def get_state() -> dict[str, Any]:
-    """Get current application state."""
-    return _app_state.copy()
-
-
-def update_state(**kwargs: Any) -> None:
-    """Update application state."""
-    _app_state.update(kwargs)
-
-
-def get_state_value(key: str, default: Any = None) -> Any:
-    """Get a specific state value."""
-    return _app_state.get(key, default)
-
-
-def _create_normalized_progress_callback(
-    progress_key: str,
-    status_key: str,
-) -> Callable[[float, str], None] | Callable[[float, str], Awaitable[None]]:
-    """Create a normalized progress callback that updates state.
-
-    Args:
-        progress_key: Key in state dict for progress (float)
-        status_key: Key in state dict for status message (str)
-
-    Returns:
-        Async callback function that can be passed to backend services
-    """
-
-    async def on_progress(pct: float, msg: str) -> None:
-        try:
-            # Normalize progress to valid range
-            pct = max(0.0, min(1.0, pct))
-            # Update state
-            update_state(**{progress_key: pct, status_key: msg})
-        except Exception:
-            # Silently ignore errors in progress callbacks
-            pass
-
-    return on_progress
-
-
-async def handle_upload(content: str, filename: str) -> dict[str, Any]:
-    """Handle uploaded VTT file and store metadata for processing.
+async def handle_upload(content: str, filename: str, current_state: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Handle uploaded VTT file and return state updates.
 
     Args:
         content: File content as string
         filename: Original filename
+        current_state: Current state dict (optional, for resetting related fields)
 
     Returns:
-        Dict with upload status and any error messages
+        Dict with state updates to merge into store
     """
-    update_state(
-        upload_error="",
-        transcript_error="",
-        processing_complete=False,
-        processing_status="",
-        processing_progress=0.0,
-        transcript_data={},
-        intelligence_data={},
-    )
+    state = current_state or {}
 
     size_bytes = len(content.encode("utf-8"))
     is_valid, message = validate_file_metadata(filename, size_bytes)
     if not is_valid:
-        update_state(upload_error=message)
-        return {"success": False, "error": message}
+        return {
+            "upload_error": message,
+            "success": False,
+            "error": message,
+        }
 
     preview_length = min(len(content), 2000)
 
-    update_state(
-        uploaded_file_name=filename,
-        uploaded_file_size=size_bytes,
-        vtt_content=content,
-        upload_preview=content[:preview_length],
-        upload_preview_truncated=len(content) > preview_length,
-        processing_status="Ready to process",
-    )
-
-    return {"success": True}
-
-
-def clear_upload() -> None:
-    """Reset upload-related state."""
-    update_state(
-        uploaded_file_name="",
-        uploaded_file_size=0,
-        upload_preview="",
-        upload_preview_truncated=False,
-        upload_error="",
-        vtt_content="",
-        processing_status="",
-        processing_progress=0.0,
-        processing_complete=False,
-        transcript_data={},
-        transcript_error="",
-        intelligence_data={},
-        intelligence_status="",
-        intelligence_error="",
-    )
+    return {
+        "uploaded_file_name": filename,
+        "uploaded_file_size": size_bytes,
+        "vtt_content": content,
+        "upload_preview": content[:preview_length],
+        "upload_preview_truncated": len(content) > preview_length,
+        "upload_error": "",
+        "transcript_error": "",
+        "processing_complete": False,
+        "transcript_data": {},
+        "intelligence_data": {},
+        "success": True,
+    }
 
 
-async def start_processing() -> dict[str, Any]:
+def clear_upload_state() -> dict[str, Any]:
+    """Return state updates to clear upload-related state."""
+    return {
+        "uploaded_file_name": "",
+        "uploaded_file_size": 0,
+        "upload_preview": "",
+        "upload_preview_truncated": False,
+        "upload_error": "",
+        "vtt_content": "",
+        "processing_complete": False,
+        "transcript_data": {},
+        "transcript_error": "",
+        "intelligence_data": {},
+        "intelligence_error": "",
+    }
+
+
+async def start_processing(
+    vtt_content: str,
+    current_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Execute the transcript processing pipeline.
 
+    Args:
+        vtt_content: VTT file content
+        current_state: Current state dict
+
     Returns:
-        Dict with processing status
+        Dict with processing status and state updates
     """
-    state = get_state()
-    vtt_content = state.get("vtt_content", "")
-
     if not vtt_content:
-        update_state(upload_error="Upload a VTT file before processing.")
-        return {"success": False, "error": "No file uploaded"}
+        return {
+            "success": False,
+            "error": "No file uploaded",
+            "upload_error": "Upload a VTT file before processing.",
+        }
 
+    state = current_state or {}
     if state.get("is_processing", False):
         return {"success": False, "error": "Already processing"}
 
-    update_state(
-        is_processing=True,
-        processing_status="Processing transcript...",
-        processing_progress=0.05,
-        transcript_error="",
-    )
-
-    on_progress = _create_normalized_progress_callback(
-        "processing_progress",
-        "processing_status",
-    )
-
     try:
-        result = await run_transcript_pipeline_async(vtt_content, on_progress)
-        update_state(
-            transcript_data=result.model_dump(),
-            processing_complete=True,
-            is_processing=False,
-            processing_progress=1.0,
-        )
-        return {"success": True, "data": result.model_dump()}
+        result = await run_transcript_pipeline_async(vtt_content)
+        return {
+            "success": True,
+            "data": result.model_dump(),
+            "transcript_data": result.model_dump(),
+            "processing_complete": True,
+            "is_processing": False,
+        }
     except Exception as exc:  # pragma: no cover - backend guard
         logging.exception("Transcript processing failed: %s", exc)
         error_msg = f"{ERROR_MESSAGES['processing_failed']} ({type(exc).__name__}: {exc})"
-        update_state(
-            transcript_error=error_msg,
-            is_processing=False,
-            processing_status="",
-            processing_progress=0.0,
-        )
-        return {"success": False, "error": error_msg}
+        return {
+            "success": False,
+            "error": error_msg,
+            "transcript_error": error_msg,
+            "is_processing": False,
+        }
 
 
-async def extract_intelligence() -> dict[str, Any]:
+async def extract_intelligence(
+    transcript_data: dict[str, Any],
+    current_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Run the intelligence pipeline on cleaned transcript chunks.
 
-    Returns:
-        Dict with intelligence extraction status
-    """
-    state = get_state()
-    transcript_data = state.get("transcript_data", {})
+    Args:
+        transcript_data: Transcript data dict
+        current_state: Current state dict
 
+    Returns:
+        Dict with intelligence extraction status and state updates
+    """
     if not transcript_data:
         error_msg = ERROR_MESSAGES["missing_transcript"]
-        update_state(intelligence_error=error_msg)
-        return {"success": False, "error": error_msg}
+        return {
+            "success": False,
+            "error": error_msg,
+            "intelligence_error": error_msg,
+        }
 
+    state = current_state or {}
     if state.get("intelligence_running", False):
         return {"success": False, "error": "Already running"}
-
-    update_state(
-        intelligence_running=True,
-        intelligence_status="Extracting insights...",
-        intelligence_progress=0.0,
-        intelligence_error="",
-    )
 
     # Extract chunks from nested transcript structure
     transcript_info = transcript_data.get("transcript", {})
     chunks = rehydrate_vtt_chunks(transcript_info.get("chunks", []))
     if not chunks:
         error_msg = "No chunks available for intelligence extraction. Please process a transcript first."
-        update_state(
-            intelligence_error=error_msg,
-            intelligence_running=False,
-            intelligence_status="",
-            intelligence_progress=0.0,
-        )
-        return {"success": False, "error": error_msg}
-
-    on_progress = _create_normalized_progress_callback(
-        "intelligence_progress",
-        "intelligence_status",
-    )
+        return {
+            "success": False,
+            "error": error_msg,
+            "intelligence_error": error_msg,
+            "intelligence_running": False,
+        }
 
     try:
-        result = await run_intelligence_pipeline_async(chunks, on_progress)
-        update_state(
-            intelligence_data=result,
-            intelligence_running=False,
-            intelligence_status="Intelligence ready",
-            intelligence_progress=1.0,
-        )
-        return {"success": True, "data": result}
+        result = await run_intelligence_pipeline_async(chunks)
+        return {
+            "success": True,
+            "data": result,
+            "intelligence_data": result,
+            "intelligence_running": False,
+        }
     except Exception as exc:  # pragma: no cover - backend guard
         logging.exception("Intelligence extraction failed: %s", exc)
         error_msg = f"{ERROR_MESSAGES['intelligence_failed']} ({type(exc).__name__}: {exc})"
-        update_state(
-            intelligence_error=error_msg,
-            intelligence_running=False,
-            intelligence_status="",
-            intelligence_progress=0.0,
-        )
-        return {"success": False, "error": error_msg}
+        return {
+            "success": False,
+            "error": error_msg,
+            "intelligence_error": error_msg,
+            "intelligence_running": False,
+        }
 
 
-# Computed properties (used in callbacks)
-def get_has_uploaded_file() -> bool:
+# Pure state accessor functions (accept data dict as argument)
+def has_uploaded_file(data: dict[str, Any]) -> bool:
     """Check if a file has been uploaded."""
-    return bool(get_state_value("vtt_content"))
+    return bool(data.get("vtt_content"))
 
 
-def get_processing_disabled() -> bool:
+def get_processing_disabled(data: dict[str, Any]) -> bool:
     """Check if processing should be disabled."""
-    state = get_state()
-    return (not bool(state.get("vtt_content"))) or state.get("is_processing", False)
+    return (not bool(data.get("vtt_content"))) or data.get("is_processing", False)
 
 
-def get_upload_size_display() -> str:
+def get_upload_size_display(data: dict[str, Any]) -> str:
     """Get formatted file size."""
-    size = get_state_value("uploaded_file_size", 0)
+    size = data.get("uploaded_file_size", 0)
     if not size:
         return ""
     return format_file_size(size)
 
 
-def get_has_transcript() -> bool:
+def has_transcript(data: dict[str, Any]) -> bool:
     """Check if transcript data exists."""
-    return bool(get_state_value("transcript_data"))
+    return bool(data.get("transcript_data"))
 
 
-def get_transcript_chunks() -> list[dict[str, Any]]:
+def get_transcript_chunks(data: dict[str, Any]) -> list[dict[str, Any]]:
     """Get transcript chunks."""
-    transcript_data = get_state_value("transcript_data", {})
+    transcript_data = data.get("transcript_data", {})
     transcript_info = transcript_data.get("transcript", {})
     return list(transcript_info.get("chunks", []))
 
 
-def get_transcript_cleaned_chunks() -> list[dict[str, Any]]:
+def get_transcript_cleaned_chunks(data: dict[str, Any]) -> list[dict[str, Any]]:
     """Get cleaned chunks."""
-    transcript_data = get_state_value("transcript_data", {})
+    transcript_data = data.get("transcript_data", {})
     return list(transcript_data.get("cleaned_chunks", []))
 
 
-def get_transcript_review_results() -> list[dict[str, Any]]:
+def get_transcript_review_results(data: dict[str, Any]) -> list[dict[str, Any]]:
     """Get review results."""
-    transcript_data = get_state_value("transcript_data", {})
+    transcript_data = data.get("transcript_data", {})
     return list(transcript_data.get("review_results", []))
 
 
-def get_transcript_chunk_count() -> int:
+def get_transcript_chunk_count(data: dict[str, Any]) -> int:
     """Get chunk count."""
-    return len(get_transcript_chunks())
+    return len(get_transcript_chunks(data))
 
 
-def get_transcript_has_chunks() -> bool:
+def get_transcript_has_chunks(data: dict[str, Any]) -> bool:
     """Check if chunks exist."""
-    return len(get_transcript_chunks()) > 0
+    return len(get_transcript_chunks(data)) > 0
 
 
-def get_transcript_total_entries() -> int:
+def get_transcript_total_entries(data: dict[str, Any]) -> int:
     """Get total entry count."""
-    chunks = get_transcript_chunks()
+    chunks = get_transcript_chunks(data)
     return sum(len(chunk.get("entries", [])) for chunk in chunks)
 
 
-def get_transcript_speakers() -> list[str]:
+def get_transcript_speakers(data: dict[str, Any]) -> list[str]:
     """Get speakers list."""
-    transcript_data = get_state_value("transcript_data", {})
+    transcript_data = data.get("transcript_data", {})
     transcript_info = transcript_data.get("transcript", {})
     speakers = transcript_info.get("speakers", [])
     return list(speakers)
 
 
-def get_transcript_speakers_display() -> str:
+def get_transcript_speakers_display(data: dict[str, Any]) -> str:
     """Get formatted speakers display."""
-    return format_speakers_display(get_transcript_speakers())
+    return format_speakers_display(get_transcript_speakers(data))
 
 
-def get_transcript_has_speakers() -> bool:
+def get_transcript_has_speakers(data: dict[str, Any]) -> bool:
     """Check if speakers exist."""
-    transcript_data = get_state_value("transcript_data", {})
+    transcript_data = data.get("transcript_data", {})
     transcript_info = transcript_data.get("transcript", {})
     speakers = transcript_info.get("speakers", [])
     return len(speakers) > 0
 
 
-def get_transcript_duration_display() -> str:
+def get_transcript_duration_display(data: dict[str, Any]) -> str:
     """Get formatted duration."""
-    transcript_data = get_state_value("transcript_data", {})
+    transcript_data = data.get("transcript_data", {})
     transcript_info = transcript_data.get("transcript", {})
     duration = float(transcript_info.get("duration", 0.0))
     if duration <= 0:
@@ -399,57 +336,57 @@ def get_transcript_duration_display() -> str:
     return f"{minutes}m {seconds:.0f}s"
 
 
-def get_transcript_acceptance_count() -> int:
+def get_transcript_acceptance_count(data: dict[str, Any]) -> int:
     """Get acceptance count."""
-    reviews = get_transcript_review_results()
+    reviews = get_transcript_review_results(data)
     return sum(1 for review in reviews if review and review.get("accept"))
 
 
-def get_transcript_average_quality() -> float:
+def get_transcript_average_quality(data: dict[str, Any]) -> float:
     """Get average quality score."""
-    reviews = get_transcript_review_results()
+    reviews = get_transcript_review_results(data)
     scores = [review.get("quality_score", 0.0) for review in reviews if review]
     if not scores:
         return 0.0
     return sum(scores) / len(scores)
 
 
-def get_transcript_acceptance_rate() -> float:
+def get_transcript_acceptance_rate(data: dict[str, Any]) -> float:
     """Get acceptance rate."""
-    total = len(get_transcript_review_results())
+    total = len(get_transcript_review_results(data))
     if total == 0:
         return 0.0
-    accepted = get_transcript_acceptance_count()
+    accepted = get_transcript_acceptance_count(data)
     return accepted / total
 
 
-def get_transcript_acceptance_rate_display() -> str:
+def get_transcript_acceptance_rate_display(data: dict[str, Any]) -> str:
     """Get formatted acceptance rate."""
-    rate = get_transcript_acceptance_rate()
+    rate = get_transcript_acceptance_rate(data)
     if rate == 0:
         return "—"
     return f"{rate * 100:.0f}%"
 
 
-def get_transcript_acceptance_helper() -> str:
+def get_transcript_acceptance_helper(data: dict[str, Any]) -> str:
     """Get acceptance helper text."""
-    display = get_transcript_acceptance_rate_display()
+    display = get_transcript_acceptance_rate_display(data)
     if display == "—":
         return "—"
     return f"{display} acceptance"
 
 
-def get_transcript_average_quality_display() -> str:
+def get_transcript_average_quality_display(data: dict[str, Any]) -> str:
     """Get formatted average quality."""
-    avg = get_transcript_average_quality()
+    avg = get_transcript_average_quality(data)
     if avg == 0:
         return "—"
     return f"{avg * 100:.0f}%"
 
 
-def get_transcript_quality_high() -> int:
+def get_transcript_quality_high(data: dict[str, Any]) -> int:
     """Get high quality count."""
-    reviews = get_transcript_review_results()
+    reviews = get_transcript_review_results(data)
     return sum(
         1
         for review in reviews
@@ -457,9 +394,9 @@ def get_transcript_quality_high() -> int:
     )
 
 
-def get_transcript_quality_medium() -> int:
+def get_transcript_quality_medium(data: dict[str, Any]) -> int:
     """Get medium quality count."""
-    reviews = get_transcript_review_results()
+    reviews = get_transcript_review_results(data)
     return sum(
         1
         for review in reviews
@@ -467,9 +404,9 @@ def get_transcript_quality_medium() -> int:
     )
 
 
-def get_transcript_quality_low() -> int:
+def get_transcript_quality_low(data: dict[str, Any]) -> int:
     """Get low quality count."""
-    reviews = get_transcript_review_results()
+    reviews = get_transcript_review_results(data)
     return sum(
         1
         for review in reviews
@@ -477,112 +414,108 @@ def get_transcript_quality_low() -> int:
     )
 
 
-def get_transcript_chunk_pairs() -> list[ChunkReviewDisplay]:
+def get_transcript_chunk_pairs(data: dict[str, Any]) -> list[ChunkReviewDisplay]:
     """Transform chunks into display-ready pairs."""
     return transform_chunk_pairs(
-        get_transcript_chunks(),
-        get_transcript_cleaned_chunks(),
-        get_transcript_review_results(),
+        get_transcript_chunks(data),
+        get_transcript_cleaned_chunks(data),
+        get_transcript_review_results(data),
     )
 
 
-def get_has_intelligence() -> bool:
+def has_intelligence(data: dict[str, Any]) -> bool:
     """Check if intelligence data exists."""
-    return bool(get_state_value("intelligence_data"))
+    return bool(data.get("intelligence_data"))
 
 
-def get_intelligence_action_items() -> list[dict[str, Any]]:
+def get_intelligence_action_items(data: dict[str, Any]) -> list[dict[str, Any]]:
     """Get action items."""
-    intelligence_data = get_state_value("intelligence_data", {})
+    intelligence_data = data.get("intelligence_data", {})
     return list(intelligence_data.get("action_items", []))
 
 
-def get_intelligence_key_areas() -> list[dict[str, Any]]:
+def get_intelligence_key_areas(data: dict[str, Any]) -> list[dict[str, Any]]:
     """Get key areas."""
-    intelligence_data = get_state_value("intelligence_data", {})
+    intelligence_data = data.get("intelligence_data", {})
     return list(intelligence_data.get("key_areas", []))
 
 
-def get_intelligence_confidence() -> float:
+def get_intelligence_confidence(data: dict[str, Any]) -> float:
     """Get confidence score."""
-    intelligence_data = get_state_value("intelligence_data", {})
+    intelligence_data = data.get("intelligence_data", {})
     return float(intelligence_data.get("confidence") or 0.0)
 
 
-def get_intelligence_confidence_display() -> str:
+def get_intelligence_confidence_display(data: dict[str, Any]) -> str:
     """Get formatted confidence."""
-    confidence = get_intelligence_confidence()
+    confidence = get_intelligence_confidence(data)
     if confidence <= 0:
         return "—"
     return f"{confidence * 100:.0f}%"
 
 
-def get_intelligence_has_action_items() -> bool:
+def get_intelligence_has_action_items(data: dict[str, Any]) -> bool:
     """Check if action items exist."""
-    return len(get_intelligence_action_items()) > 0
+    return len(get_intelligence_action_items(data)) > 0
 
 
-def get_intelligence_has_key_areas() -> bool:
+def get_intelligence_has_key_areas(data: dict[str, Any]) -> bool:
     """Check if key areas exist."""
-    return len(get_intelligence_key_areas()) > 0
+    return len(get_intelligence_key_areas(data)) > 0
 
 
-def get_intelligence_action_item_count() -> int:
+def get_intelligence_action_item_count(data: dict[str, Any]) -> int:
     """Get action item count."""
-    return len(get_intelligence_action_items())
+    return len(get_intelligence_action_items(data))
 
 
-def get_intelligence_key_area_count() -> int:
+def get_intelligence_key_area_count(data: dict[str, Any]) -> int:
     """Get key area count."""
-    return len(get_intelligence_key_areas())
+    return len(get_intelligence_key_areas(data))
 
 
-def get_processing_progress_percent() -> str:
+def get_processing_progress_percent(data: dict[str, Any]) -> str:
     """Get formatted progress percentage."""
-    progress = get_state_value("processing_progress", 0.0)
-    pct = max(0.0, min(1.0, progress))
-    return f"{pct * 100:.0f}%"
+    return "0%"
 
 
-def get_intelligence_progress_percent() -> str:
+def get_intelligence_progress_percent(data: dict[str, Any]) -> str:
     """Get formatted intelligence progress."""
-    progress = get_state_value("intelligence_progress", 0.0)
-    pct = max(0.0, min(1.0, progress))
-    return f"{pct * 100:.0f}%"
+    return "0%"
 
 
-def get_intelligence_running() -> bool:
+def get_intelligence_running(data: dict[str, Any]) -> bool:
     """Check if intelligence extraction is running."""
-    return bool(get_state_value("intelligence_running", False))
+    return bool(data.get("intelligence_running", False))
 
 
-def get_intelligence_status() -> str:
+def get_intelligence_status(data: dict[str, Any]) -> str:
     """Get intelligence extraction status."""
-    return str(get_state_value("intelligence_status", ""))
+    return ""
 
 
-def get_intelligence_error() -> str:
+def get_intelligence_error(data: dict[str, Any]) -> str:
     """Get intelligence extraction error."""
-    return str(get_state_value("intelligence_error", ""))
+    return str(data.get("intelligence_error", ""))
 
 
-def get_last_download_error() -> str:
+def get_last_download_error(data: dict[str, Any]) -> str:
     """Get last download error."""
-    return str(get_state_value("last_download_error", ""))
+    return str(data.get("last_download_error", ""))
 
 
-def get_intelligence_summary_text() -> str:
+def get_intelligence_summary_text(data: dict[str, Any]) -> str:
     """Get summary text."""
-    intelligence_data = get_state_value("intelligence_data", {})
+    intelligence_data = data.get("intelligence_data", {})
     summary = intelligence_data.get("summary") if intelligence_data else ""
     if isinstance(summary, str) and summary.strip():
         return summary
     return "Summary not available."
 
 
-def get_cleansed_transcript_text() -> str:
+def get_cleansed_transcript_text(data: dict[str, Any]) -> str:
     """Get the final cleansed transcript text."""
-    transcript_data = get_state_value("transcript_data", {})
+    transcript_data = data.get("transcript_data", {})
     if not transcript_data:
         return ""
 
@@ -609,19 +542,19 @@ def get_cleansed_transcript_text() -> str:
     return ""
 
 
-def get_intelligence_key_area_cards() -> list[KeyAreaDisplay]:
+def get_intelligence_key_area_cards(data: dict[str, Any]) -> list[KeyAreaDisplay]:
     """Transform intelligence key areas into display-ready cards."""
-    return transform_key_area_cards(get_intelligence_key_areas())
+    return transform_key_area_cards(get_intelligence_key_areas(data))
 
 
-def get_intelligence_action_item_cards() -> list[ActionItemDisplay]:
+def get_intelligence_action_item_cards(data: dict[str, Any]) -> list[ActionItemDisplay]:
     """Transform intelligence action items into display-ready cards."""
-    return transform_action_item_cards(get_intelligence_action_items())
+    return transform_action_item_cards(get_intelligence_action_items(data))
 
 
-def get_intelligence_validation_display() -> ValidationDisplay:
+def get_intelligence_validation_display(data: dict[str, Any]) -> ValidationDisplay:
     """Get validation display data."""
-    intelligence_data = get_state_value("intelligence_data", {})
+    intelligence_data = data.get("intelligence_data", {})
     stats = intelligence_data.get("processing_stats") if intelligence_data else {}
     stats = stats if isinstance(stats, dict) else {}
     validation = stats.get("validation") if isinstance(stats, dict) else {}

@@ -25,7 +25,6 @@ def _serialize_value(value: Any) -> Any:
 
 async def run_transcript_pipeline_async(
     content_str: str,
-    on_progress: ProgressCallback | None = None,
     api_key: str | None = None,
 ) -> TranscriptProcessingResult:
     """Async transcript pipeline.
@@ -37,7 +36,7 @@ async def run_transcript_pipeline_async(
     processing_result = service.process_vtt(content_str)
 
     result = await service.clean_transcript(
-        processing_result, progress_callback=on_progress
+        processing_result
     )
     return result
 
@@ -49,7 +48,6 @@ def rehydrate_vtt_chunks(raw_chunks: list[dict[str, Any]]) -> list[VTTChunk]:
 
 async def run_intelligence_pipeline_async(
     chunks: list[VTTChunk] | list[dict[str, Any]],
-    on_progress: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Async intelligence extraction pipeline.
 
@@ -66,5 +64,5 @@ async def run_intelligence_pipeline_async(
     if chunks and not isinstance(chunks[0], VTTChunk):
         chunks = rehydrate_vtt_chunks(chunks)
 
-    result = await orchestrator.process_meeting(chunks, progress_callback=on_progress)  # type: ignore[arg-type]
+    result = await orchestrator.process_meeting(chunks)  # type: ignore[arg-type]
     return _serialize_value(result)

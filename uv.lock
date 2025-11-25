@@ -609,6 +609,18 @@ wheels = [
 ]
 
 [[package]]
+name = "dash-mantine-components"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "dash" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d2/f4/91b70926ea68354b8a63f0fc30407e00511aac836695e8b67c06430ad844/dash_mantine_components-2.4.0.tar.gz", hash = "sha256:5c937d671013493806793fd67c9d036d200872baeba2990e7dd9120866704d26", size = 900019 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1c/1b/3e3c9d03d250f86d1891fb305b438952aba237c8cb92ca7bead910c89e65/dash_mantine_components-2.4.0-py3-none-any.whl", hash = "sha256:fdc98a6e9e32b56b43b001e8e047d087f48ea8f104110107e09c802eab32b0f8", size = 1333614 },
+]
+
+[[package]]
 name = "diskcache"
 version = "5.6.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1615,6 +1627,7 @@ dependencies = [
     { name = "asyncio-throttle" },
     { name = "dash" },
     { name = "dash-bootstrap-components" },
+    { name = "dash-mantine-components" },
     { name = "langchain" },
     { name = "markdown" },
     { name = "openai" },
@@ -1670,6 +1683,7 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=24.0.0" },
     { name = "dash", specifier = ">=2.17.0" },
     { name = "dash-bootstrap-components", specifier = ">=1.6.0" },
+    { name = "dash-mantine-components", specifier = ">=2.4.0" },
     { name = "faker", marker = "extra == 'test'", specifier = ">=25.0.0" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.27.0" },
     { name = "hypothesis", marker = "extra == 'test'", specifier = ">=6.100.0" },

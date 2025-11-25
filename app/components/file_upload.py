@@ -1,61 +1,41 @@
-"""Upload and processing components."""
+"""Upload and processing components using Dash Mantine Components."""
 
 from dash import dcc, html
+import dash_mantine_components as dmc
 
 
 def upload_dropzone():
     """File upload dropzone."""
     return dcc.Upload(
-        html.Div(
-            html.Div(
-                [
-                    html.Div("☁️", style={"fontSize": "3rem", "marginBottom": "1rem"}),
-                    html.H3(
-                        "Upload VTT File",
-                        style={
-                            "marginTop": "1rem",
-                            "fontSize": "1.125rem",
-                            "fontWeight": "700",
-                            "color": "#000000",
-                        },
-                    ),
-                    html.P(
-                        "Drag and drop or click to upload your meeting transcript.",
-                        style={
-                            "marginTop": "0.25rem",
-                            "fontSize": "0.875rem",
-                            "fontWeight": "500",
-                            "color": "#000000",
-                        },
-                    ),
-                    html.Span(
-                        "VTT files only",
-                        style={
-                            "marginTop": "0.5rem",
-                            "fontSize": "0.75rem",
-                            "fontWeight": "700",
-                            "color": "#000000",
-                        },
-                    ),
-                ],
-                style={
-                    "display": "flex",
-                    "flexDirection": "column",
-                    "alignItems": "center",
-                    "justifyContent": "center",
-                    "padding": "2rem",
-                },
-            ),
-            style={
-                "width": "100%",
-                "border": "4px dashed #000000",
-                "cursor": "pointer",
-                "backgroundColor": "#fef08a",
-            },
-        ),
         id="upload-data",
         accept=".vtt",
         multiple=False,
+        children=dmc.Paper(
+            p="xl",
+            radius="md",
+            withBorder=True,
+            style={
+                "border": "4px dashed #e5e7eb",
+                "backgroundColor": "#f9fafb",
+                "cursor": "pointer",
+            },
+            children=[
+                dmc.Stack(
+                    align="center",
+                    gap="xs",
+                    children=[
+                        dmc.Text("☁️", size="3rem"),
+                        dmc.Text("Upload VTT File", size="lg", fw=700),
+                        dmc.Text(
+                            "Drag and drop or click to upload your meeting transcript.",
+                            size="sm",
+                            c="dimmed",
+                        ),
+                        dmc.Badge("VTT files only", color="gray", variant="light"),
+                    ],
+                )
+            ],
+        ),
         style={"width": "100%"},
     )
 
@@ -79,150 +59,50 @@ def upload_details():
 
 def upload_steps():
     """Information about processing steps."""
-    return html.Div(
-        [
-            html.H3(
-                "What happens during processing",
-                style={
-                    "fontSize": "1rem",
-                    "fontWeight": "700",
-                    "color": "#000000",
-                },
-            ),
-            html.Ul(
-                [
-                    html.Li(
-                        "📤 Upload: File loaded into the app",
-                        style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
-                    ),
-                    html.Li(
-                        "🔧 Parse: VTT parsed and chunked for AI processing",
-                        style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
-                    ),
-                    html.Li(
-                        "🤖 Clean: AI agents clean speech-to-text errors",
-                        style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
-                    ),
-                    html.Li(
-                        "📊 Review: Quality review ensures accuracy",
-                        style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
-                    ),
-                    html.Li(
-                        "✅ Complete: Cleaned transcript ready for review",
-                        style={"fontSize": "0.875rem", "fontWeight": "500", "color": "#000000"},
-                    ),
+    return dmc.Alert(
+        title="What happens during processing",
+        color="cyan",
+        variant="light",
+        children=[
+            dmc.List(
+                size="sm",
+                spacing="xs",
+                children=[
+                    dmc.ListItem("📤 Upload: File loaded into the app"),
+                    dmc.ListItem("🔧 Parse: VTT parsed and chunked for AI processing"),
+                    dmc.ListItem("🤖 Clean: AI agents clean speech-to-text errors"),
+                    dmc.ListItem("📊 Review: Quality review ensures accuracy"),
+                    dmc.ListItem("✅ Complete: Cleaned transcript ready for review"),
                 ],
-                style={
-                    "marginTop": "0.75rem",
-                    "listStyle": "disc",
-                    "paddingLeft": "1.5rem",
-                },
-            ),
+            )
         ],
-        style={
-            "marginTop": "1.5rem",
-            "padding": "1rem",
-            "backgroundColor": "#cffafe",
-            "border": "4px dashed #000000",
-        },
-    )
-
-
-def processing_progress_panel():
-    """Processing progress indicator."""
-    return html.Div(
-        [
-            html.Div(
-                [
-                    html.Span(
-                        "Processing Status",
-                        style={
-                            "fontSize": "0.75rem",
-                            "textTransform": "uppercase",
-                            "fontWeight": "700",
-                            "color": "#000000",
-                        },
-                    ),
-                    html.P(
-                        id="processing-status",
-                        style={"fontSize": "0.875rem", "fontWeight": "700", "color": "#000000"},
-                    ),
-                ],
-                style={
-                    "display": "flex",
-                    "alignItems": "center",
-                    "justifyContent": "space-between",
-                },
-            ),
-            html.Div(
-                html.Div(
-                    html.Div(
-                        id="processing-progress-bar",
-                        style={
-                            "width": "0%",
-                            "backgroundColor": "#000000",
-                            "height": "100%",
-                            "transition": "width 0.3s ease",
-                        },
-                    ),
-                    id="processing-progress",
-                    style={
-                        "width": "100%",
-                        "backgroundColor": "#fbbf24",
-                        "height": "0.75rem",
-                        "borderRadius": "0px",
-                        "overflow": "hidden",
-                    },
-                ),
-                style={"marginTop": "0.75rem"},
-            ),
-            html.Div(
-                id="transcript-error",
-                style={"display": "none"},
-            ),
-        ],
-        style={
-            "marginTop": "1.5rem",
-            "padding": "1rem",
-            "backgroundColor": "#ffffff",
-            "border": "4px solid #000000",
-        },
+        mt="lg",
     )
 
 
 def process_action_buttons():
     """Action buttons for processing."""
-    return html.Div(
-        html.Button(
-            "Process VTT File",
-            id="process-btn",
-            n_clicks=0,
-            style={
-                "width": "100%",
-                "display": "flex",
-                "justifyContent": "center",
-                "padding": "0.75rem 1.5rem",
-                "backgroundColor": "#000000",
-                "color": "#fbbf24",
-                "fontWeight": "700",
-                "border": "4px solid #fbbf24",
-                "cursor": "pointer",
-            },
-        ),
-        style={"marginTop": "1.5rem"},
+    return dmc.Button(
+        "Process VTT File",
+        id="process-btn",
+        size="lg",
+        fullWidth=True,
+        color="dark",
+        mt="lg",
+        loading=False,
+        disabled=False,
     )
 
 
 def upload_panel():
     """Main upload panel component."""
-    return html.Div(
-        [
+    return dmc.Container(
+        size="sm",
+        children=[
             upload_dropzone(),
             upload_error_banner(),
             upload_details(),
             process_action_buttons(),
-            processing_progress_panel(),
             html.Div(id="upload-steps-container"),
         ],
-        style={"width": "100%", "maxWidth": "48rem", "margin": "0 auto"},
     )
